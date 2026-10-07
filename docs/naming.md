@@ -18,6 +18,13 @@ Digital Performer.
 | Settings and data, macOS | `~/Library/Application Support/Umpire` |
 | C++ namespace | `umpire` |
 
+## Shared code: uw-core
+
+The code StageHand and Umpire share (and the UMP core, which the plugins can
+use too) is **uw-core**: repo `uw-core`, CMake targets `uw::...`, C++
+namespace `uw`. "uw" is unlikelyware. It doesn't say MIDI because it also
+holds the CLAP host and the audio backends (decisions.md, Shared code).
+
 ## Why the `-daw` suffix
 
 LLNL's [Umpire](https://github.com/llnl/Umpire), a memory-management library

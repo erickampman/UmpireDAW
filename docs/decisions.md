@@ -19,8 +19,13 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
 
 ## Shared code (decided 2026-10-07)
 
-- **Its own repo**, private on GitHub (`erickampman`) for now. Neither
-  StageHand nor Umpire holds the other's code.
+- **Its own repo: `uw-core`** (decided 2026-10-07), in
+  `~/dev/dev-common/uw-core` on the Linux PC and private on GitHub
+  (`erickampman/uw-core`) for now.
+  Neither StageHand nor Umpire holds the other's code. One repo, with the
+  layers as separate CMake targets (`uw::ump`, `uw::clap-host`, `uw::audio`,
+  ...) and the C++ namespace `uw`. The company name keeps it neutral: it
+  isn't only MIDI (the CLAP host, the audio backends) and isn't either app's.
 - **Static libraries**, built by each app's CMake. No shared library (.so):
   the apps aren't packaged, and static linking avoids ABI and install-path
   questions.
@@ -30,7 +35,7 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
 - **Contents:** UMP types, the CLAP host, and the MIDI and audio backends
   behind their interfaces. DPF is not in it (below).
 - **Layered for plugins (probably; 2026-10-07, to confirm in the roadmap
-  session):** a **UMP core** target with no dependencies (message types,
+  session):** a **UMP core** target (`uw::ump`) with no dependencies (message types,
   decoding by message type and status, Pitch 7.9, later per-note data),
   largely header-only. The synth and effect plugins (StruckSynth, StruckKit,
   IFSynth, ModicumFM, ...) can use it as well as the apps, so everything
@@ -39,11 +44,13 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
   so two plugins pinned to different versions don't bind to each other's
   symbols. The CLAP host and backends are separate targets that only the apps
   build.
-- **Name:** to be chosen when the repo is made. Neither app's name, and
-  following naming.md's conventions.
-- Making the repo and moving the code into it is its own milestone, the
-  roadmap's first. StageHand moves to the submodule in the same milestone,
-  and its tests must still pass.
+- **Building uw-core is separate from using it.** Making the repo and moving
+  the code into it (from StageHand, with uw-core's own tests) is its own
+  milestone, the roadmap's first. Switching each consumer to the submodule
+  (StageHand, Umpire, later each plugin) is separate work in that consumer's
+  repo; StageHand's tests must still pass after its switch.
+- **Licence:** not chosen yet. Umpire is MIT and links it statically, so
+  uw-core's must allow that.
 
 ## DPF fork (probably; 2026-10-07, to confirm in the roadmap session)
 
@@ -51,7 +58,8 @@ Today every DPF user has its own modified copy. StageHand's carries PMU's
 patches and its own. Each plugin has a `dpf` submodule with separate
 changes, including the CLAP wrapper's UMP handling.
 
-- **DPF becomes its own private repo** on GitHub: a fork of upstream DPF
+- **DPF becomes its own private repo** on GitHub (in `~/dev/dev-common`
+  beside uw-core on the Linux PC): a fork of upstream DPF
   holding all the local patches (PMU's, StageHand's, the plugins').
   StageHand, Umpire and every plugin use it as a git submodule, each pinned
   to a commit. It replaces StageHand's vendored copy and Umpire's
