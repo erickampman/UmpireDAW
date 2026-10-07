@@ -19,7 +19,12 @@ beside it). A milestone says which repo it works in.
 
 [ui-spike.md](ui-spike.md).
 
-## 2. uw-core: copy the shared code from StageHand (uw-core)
+## 2. uw-core: copy the shared code from StageHand (uw-core): done 2026-10-07
+
+uw-core's README.md says what moved and how it changed. The changes list
+there is what StageHand's switch works from. Six tests pass on Linux,
+including a CLAP instrument (ModicumFM) processing into memory. The macOS
+sources were copied but haven't been built.
 
 Copy StageHand's code that both apps need into uw-core, as the layered
 targets that decisions.md describes:
