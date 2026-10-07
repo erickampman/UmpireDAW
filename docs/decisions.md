@@ -27,15 +27,54 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
 - **A git submodule in each app**, as StageHand has CLAP. Each app pins its
   own commit, so a change made for one app reaches the other only when its
   pin is moved.
-- **Contents:** UMP types, the CLAP host, the MIDI and audio backends behind
-  their interfaces, and the vendored DPF/DGL with its local patches (PMU's
-  and StageHand's). Moving DGL there replaces Umpire's `UMPIRE_DPF_DIR`, and
-  StageHand and Umpire then share one copy.
+- **Contents:** UMP types, the CLAP host, and the MIDI and audio backends
+  behind their interfaces. DPF is not in it (below).
+- **Layered for plugins (probably; 2026-10-07, to confirm in the roadmap
+  session):** a **UMP core** target with no dependencies (message types,
+  decoding by message type and status, Pitch 7.9, later per-note data),
+  largely header-only. The synth and effect plugins (StruckSynth, StruckKit,
+  IFSynth, ModicumFM, ...) can use it as well as the apps, so everything
+  decodes UMP the same way. Built with `-fPIC` (it's linked into `.clap`
+  shared objects) and kept hidden inside each plugin (`-fvisibility=hidden`),
+  so two plugins pinned to different versions don't bind to each other's
+  symbols. The CLAP host and backends are separate targets that only the apps
+  build.
 - **Name:** to be chosen when the repo is made. Neither app's name, and
   following naming.md's conventions.
 - Making the repo and moving the code into it is its own milestone, the
   roadmap's first. StageHand moves to the submodule in the same milestone,
   and its tests must still pass.
+
+## DPF fork (probably; 2026-10-07, to confirm in the roadmap session)
+
+Today every DPF user has its own modified copy. StageHand's carries PMU's
+patches and its own. Each plugin has a `dpf` submodule with separate
+changes, including the CLAP wrapper's UMP handling.
+
+- **DPF becomes its own private repo** on GitHub: a fork of upstream DPF
+  holding all the local patches (PMU's, StageHand's, the plugins').
+  StageHand, Umpire and every plugin use it as a git submodule, each pinned
+  to a commit. It replaces StageHand's vendored copy and Umpire's
+  `UMPIRE_DPF_DIR`.
+- **Both machines:** a submodule is a URL and a commit, so the Linux PC
+  and the Mac work the same way, whatever the local paths. Each needs access
+  to the private repo (the same SSH key or credentials as StageHand's). Clone
+  with `--recurse-submodules`, and run `git submodule update --init` after a
+  pull. The macOS patches (PMU's Retina fixes, StageHand's `pugl.mm`, the file
+  browser) then reach every consumer.
+- **Workflow:** change DPF on a branch inside a consumer's submodule, push the
+  fork, then commit and push the consumer's new pin. Push the fork first:
+  `git config push.recurseSubmodules check` refuses a pin the fork doesn't
+  have yet.
+- **Every consumer sets its own `DGL_NAMESPACE`** (`StageHandDGL`,
+  `UmpireDGL`, `StruckSynthDGL`, ...). On macOS pugl names its Objective-C
+  classes after it, and two binaries in one process with the same name
+  collide (StageHand's macos.md, milestone 5). With a shared fork, two
+  plugins would otherwise register the same classes.
+- **Moving the plugins onto the fork** is separate work in the plugin repos,
+  and belongs to the plugin roadmap rather than Umpire's: diff each plugin's
+  `dpf` against upstream, merge the changes into the fork, and repoint the
+  submodule.
 
 ## Platform and technology
 
