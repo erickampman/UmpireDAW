@@ -113,6 +113,99 @@ The hard parts:
 4. **Export.** The standard clip format stores events, so exporting flattens
    the clip, with the recipe kept alongside as extra data.
 
+## MIDI 2.0-specific features
+
+Possible features that MIDI 2.0 makes available to Umpire, by layer of the
+specification. Pitch 7.9 is covered in idea 1. ★ marks the ones a DAW
+designed around MIDI 1.0 would find hardest to add later.
+
+### Channel voice messages
+
+1. **16-bit velocity.** Real precision for velocity editing and curves.
+2. **32-bit controllers, pitch bend and channel pressure.** Smooth automation
+   with no steps, and no 14-bit MSB/LSB pairs to manage.
+3. ★ **Single-message RPNs and NRPNs** (16,384 registered, 16,384
+   assignable). MIDI 1.0's four-message sequences depended on remembered
+   state. Each MIDI 2.0 event stands alone, so cut, copy and seek can't leave
+   a controller half-set.
+4. **Relative controllers.** Increment and decrement versions of registered
+   and assignable controllers, for encoders. A recorded nudge stays a nudge.
+5. **Bank and program in one message.** Atomic patch changes, shown as one
+   event ("Strings 3 / Bank B").
+6. ★ **Per-note pitch bend on one channel.** Per-note glides without MPE's
+   channel-per-note scheme. Notes stay on their track's channel and the bend
+   belongs to the note.
+7. ★ **Per-note controllers** (256 registered, 256 assignable, per note).
+   Each note can have its own expression lanes.
+8. ★ **Per-note management.** Detach a note's controllers (a release tail
+   keeps its expression while a new note on the same key starts fresh) or
+   reset them. Retrigger and legato become explicit and editable.
+9. ★ **Articulation through note attributes.** Manufacturer- or
+   profile-specific attributes let each note carry its articulation instead
+   of keyswitch notes. The Orchestral Articulation Profile builds on this
+   (check how far it has been adopted).
+
+### UMP stream and structure
+
+10. **Groups: 256 channels per connection.** A whole orchestral template over
+    one device connection.
+11. ★ **Endpoint discovery and Function Blocks.** Devices report named blocks,
+    group ranges and direction. Tracks and routing can be created from that,
+    and updated when a device changes its function blocks while running.
+12. ★ **Product Instance ID.** A stable identity for one physical unit.
+    Routing is remembered per device rather than per port name, so a renamed
+    port or a different USB socket doesn't break a project.
+13. **Stream Configuration.** Umpire can switch an endpoint to the MIDI 2.0
+    protocol and turn on JR timestamps.
+14. **JR timestamps.** Record when a note was played, not when it arrived.
+    Umpire can also send them to devices.
+15. ★ **Flex Data**: tempo, time and key signature, chord names, metronome
+    settings, lyrics and text, as standard messages. Possible features:
+    - a chord track that arrangers and accompaniment devices understand,
+    - a lyrics track sent to devices that display text,
+    - click settings (beats, accents, subdivisions) sent to hardware,
+    - key and tempo travelling with exported clips.
+16. **Start/End of Clip and Delta Clockstamps.** Clips are self-contained on
+    disk (MIDI Clip File) and on the wire.
+17. **8-bit SysEx and Mixed Data Sets.** Faster, 8-bit-clean sample, preset and
+    firmware dumps, without 7-bit packing. Room for a built-in librarian.
+
+### MIDI-CI
+
+18. ★ **Profiles** (Default Control Change Mapping, Drawbar Organ, Rotary
+    Speaker, MPE, Orchestral Articulation). Detect them, switch them on, and
+    set up the matching editor and controller mapping.
+19. ★ **Property Exchange** (named device data, as JSON):
+    - **total recall for hardware synths**: device state stored in the
+      project and restored when it opens,
+    - a patch browser built from the device's own program list,
+    - automation lanes named with the device's controller names and ranges
+      instead of "CC 74",
+    - channel and device information in the routing screen.
+20. ★ **Process Inquiry.** Ask a device for its current controller values:
+    check state when a project opens, check after a seek that the device
+    matches what playback expects, record a starting state with a
+    performance.
+21. **Two-way communication as standard.** Value feedback for motorized
+    faders and encoder rings, without vendor-specific SysEx.
+
+### Transport
+
+22. **USB MIDI 2.0 and Network MIDI 2.0.** More bandwidth, so dense per-note
+    data is practical. Network MIDI 2.0 (UDP with loss recovery) allows
+    multi-machine rigs and remote devices.
+23. **Translation per device.** Record and store MIDI 2.0. For MIDI 1.0
+    devices, scale values down and turn per-note data into MPE or channel
+    messages at output, so one project plays on old and new gear.
+
+### Strongest bets
+
+3 and 6–9 (simpler, more exact data than MIDI 1.0 DAWs), 11–12 (routing that
+sets itself up and survives reconnecting), 15 (standard chord, lyrics and
+metronome tracks) and 19–20 (hardware total recall and state checks).
+Support is uneven, especially for MIDI-CI, so each needs a graceful fallback
+when a device doesn't answer.
+
 ## Design principles worth keeping
 
 - **Store UMP; translate only at the edges.** Translate to MIDI 1.0 on the way

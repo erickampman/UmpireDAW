@@ -10,3 +10,5 @@ Status: planning. There is no code yet.
 - [Naming](docs/naming.md): product name, repo, binary, IDs
 - [Ideas](docs/ideas.md): candidate UI and data ideas, design principles, open
   questions (nothing decided)
+- [Plugin roadmap](docs/plugins-roadmap.md): MIDI 2.0 features to add to our
+  CLAP synths
