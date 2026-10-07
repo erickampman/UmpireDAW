@@ -9,9 +9,10 @@ StageHand's DGL, both layers draw in one window without interfering, and
 input can be routed correctly between them. The decision stands, and Qt isn't
 needed. Using the stock widget as it ships causes three problems: input goes
 to the wrong layer, it redraws at 60 fps forever, and its font rescale is
-broken. The spike fixes all three by subclassing the widget. Separately from
-ImGui, a vsync stall under XWayland affects any DGL window, StageHand's
-included.
+broken. The spike fixes all three by subclassing the widget. The author's
+hand test passed (2026-10-07). Separately from ImGui, a DGL window stalled
+once with vsync on under XWayland. The cause isn't pinned down, and StageHand
+doesn't show it (finding 6).
 
 ## What was built
 
@@ -162,30 +163,33 @@ for comparison.
 
 Each frame draws both layers, because a DGL repaint redraws the whole window.
 
-### 6. The vsync stall (not ImGui's: any DGL window)
+### 6. A vsync stall, seen once (not ImGui's)
 
 The first self-test runs failed almost every check because only about 2
-frames a second were drawn. One `app.idle()` took 997 ms. That was
-`glXSwapBuffers` waiting under XWayland on a window the compositor wasn't
-showing (it had opened behind another window). With vsync on, an XWayland
-window the compositor doesn't present is throttled to about 1 Hz, and each
-swap blocks the thread that swaps. DGL never sets pugl's
-`PUGL_SWAP_INTERVAL` hint, so the driver's default (vsync on) applies.
+frames a second were drawn. One `app.idle()` took 997 ms, which was
+`glXSwapBuffers` waiting. That fits XWayland throttling a window the
+compositor isn't presenting to about 1 Hz while vsync is on: each swap then
+blocks the thread that swaps. DGL never sets pugl's `PUGL_SWAP_INTERVAL`
+hint, so the driver's default (vsync on) applies.
 
 With vsync off (Mesa's `vblank_mode=0`, or `glXSwapIntervalEXT(…, 0)`, which
 the spike now calls after creating the window), everything passed and the
 longest `app.idle()` was about 28 ms. The compositor still composites, so
 there's no tearing; on-demand drawing keeps the frame rate low anyway.
-`--vsync` keeps the driver's default, to reproduce the stall.
+`--vsync` keeps the driver's default.
 
-This matters for a DAW: the thread that swaps also runs plugin editors and,
-in StageHand, the controller. **StageHand probably has the same stall**
-whenever its rack window is hidden on a Wayland desktop. It's worth checking
-there. The proper fix is to set `PUGL_SWAP_INTERVAL` to 0 when DGL creates
-the view. That's a small DGL patch, against the shared DGL.
+**What triggers it isn't pinned down.** Being covered isn't enough. The
+author ran StageHand with a sequence editor window open and playing, which
+redraws it continuously, and put another window in front of it: no stall
+(2026-10-07). So the self-test window was in some other state that the
+compositor doesn't present. It may not have been shown yet, or it may have
+been on another workspace or minimized. Not investigated further.
 
-Tested on Ubuntu (GNOME, Wayland) with XWayland and Intel UHD 630 (Mesa).
-Other drivers may behave differently.
+Turning vsync off is still cheap insurance against it, since the thread that
+swaps also runs plugin editors. It's a small patch to the shared DGL (set
+`PUGL_SWAP_INTERVAL` to 0 when the view is made), but no longer urgent.
+
+Seen on Ubuntu (GNOME, Wayland) with XWayland and Intel UHD 630 (Mesa).
 
 ### 7. HiDPI and the scale factor
 
@@ -227,10 +231,10 @@ To check on the Mac:
   stays empty unless Umpire adds a native one (StageHand has none either:
   macos.md, decision 1).
 
-## Not tested: for the author, by hand
+## Checked by hand
 
 The self-test sends events at the top-level widget, skipping pugl and X11.
-These need a person:
+The author checked the following by hand, and **all passed** (2026-10-07):
 
 - typing in the clip-name field: shifted characters, key repeat, Ctrl-A, C,
   V and X, Home and End, and a compose key or input method (DGL's
@@ -242,7 +246,6 @@ These need a person:
 - View > "Redraw every frame" against the default, with `--log-frames`
   (expect no lines while idle, about 60 a second with it on);
 - View > "Dear ImGui demo window": a large ImGui surface over the canvas;
-- `--vsync`, with the window hidden behind another one, to see the stall;
 - `DPF_SCALE_FACTOR=1.5` and `2`, and a real second monitor if available.
 
 ## Proposals (not decided)
@@ -254,6 +257,8 @@ These need a person:
    ISC-licensed one. It would still use the ImGui sources and DPF's patch to
    them, and could switch to the docking branch.
 3. **Turn vsync off in DGL** (`PUGL_SWAP_INTERVAL` 0), for Umpire and
-   StageHand, once the shared DGL has a home.
-4. Where the shared library lives is still open (decisions.md). Until then,
-   Umpire builds against a StageHand checkout's DGL.
+   StageHand, once the shared DGL has a home. Insurance, not urgent
+   (finding 6).
+4. Where the shared library lives was decided after the spike: its own repo
+   (decisions.md, "Shared code"). Until it exists, Umpire builds against a
+   StageHand checkout's DGL.

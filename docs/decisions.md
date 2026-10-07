@@ -14,9 +14,28 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
   hardware, and save it. One linear timeline.
 - **Relationship to StageHand:** code both apps need (UMP types, the CLAP
   host, the MIDI and audio backends) moves out of StageHand into a shared
-  library that both use. Where that library lives (its own repo, a
-  submodule, or inside one of the repos) is not decided yet.
+  library that both use (see Shared code, below).
 - **Plugins:** Umpire hosts CLAP plugins from the first version.
+
+## Shared code (decided 2026-10-07)
+
+- **Its own repo**, private on GitHub (`erickampman`) for now. Neither
+  StageHand nor Umpire holds the other's code.
+- **Static libraries**, built by each app's CMake. No shared library (.so):
+  the apps aren't packaged, and static linking avoids ABI and install-path
+  questions.
+- **A git submodule in each app**, as StageHand has CLAP. Each app pins its
+  own commit, so a change made for one app reaches the other only when its
+  pin is moved.
+- **Contents:** UMP types, the CLAP host, the MIDI and audio backends behind
+  their interfaces, and the vendored DPF/DGL with its local patches (PMU's
+  and StageHand's). Moving DGL there replaces Umpire's `UMPIRE_DPF_DIR`, and
+  StageHand and Umpire then share one copy.
+- **Name:** to be chosen when the repo is made. Neither app's name, and
+  following naming.md's conventions.
+- Making the repo and moving the code into it is its own milestone, the
+  roadmap's first. StageHand moves to the submodule in the same milestone,
+  and its tests must still pass.
 
 ## Platform and technology
 
@@ -96,8 +115,12 @@ checks for the author to make by hand. The spike is `spike/`
   library has a home.
 - DGL's namespace is `UmpireDGL`.
 
-Next: draft the roadmap (see Working method), deciding on ui-spike.md's
-proposals: owning the ImGui widget, and turning vsync off in DGL.
+The author's hand test passed. StageHand showed no vsync stall (ui-spike.md,
+finding 6).
+
+Next: draft the roadmap (see Working method), starting with the shared-code
+milestone, and deciding on ui-spike.md's proposals: owning the ImGui
+widget, and turning vsync off in DGL.
 
 **Goal:** one DGL window on Linux containing:
 - a NanoVG canvas (a simple note grid, or a piece of StageHand's sequence
