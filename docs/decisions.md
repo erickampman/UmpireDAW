@@ -87,6 +87,18 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
 
 The first milestone, and the check on the UI decision.
 
+**Status: done 2026-10-07.** It works, and the UI decision stands. The
+findings and proposals are in [ui-spike.md](ui-spike.md), with a list of
+checks for the author to make by hand. The spike is `spike/`
+(`umpire-ui-spike`). Set up during the milestone:
+- DPF-Widgets is a git submodule (`external/DPF-Widgets`, pinned).
+- DGL comes from a StageHand checkout (`UMPIRE_DPF_DIR`) until the shared
+  library has a home.
+- DGL's namespace is `UmpireDGL`.
+
+Next: draft the roadmap (see Working method), deciding on ui-spike.md's
+proposals: owning the ImGui widget, and turning vsync off in DGL.
+
 **Goal:** one DGL window on Linux containing:
 - a NanoVG canvas (a simple note grid, or a piece of StageHand's sequence
   editor),
