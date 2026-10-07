@@ -70,9 +70,13 @@ changes, including the CLAP wrapper's UMP handling.
   pull. The macOS patches (PMU's Retina fixes, StageHand's `pugl.mm`, the file
   browser) then reach every consumer.
 - **Workflow:** change DPF on a branch inside a consumer's submodule, push the
-  fork, then commit and push the consumer's new pin. Push the fork first:
-  `git config push.recurseSubmodules check` refuses a pin the fork doesn't
-  have yet.
+  fork, then commit and push the consumer's new pin. The same applies to
+  uw-core.
+- **Push the submodule first.** Use `git push --recurse-submodules=check`, or
+  set `git config push.recurseSubmodules check` once per clone, so git
+  refuses to push a pin the submodule's remote doesn't have yet. The setting
+  is per clone: set it in every clone with submodules (StageHand, Umpire,
+  each plugin), on the Linux PC and on the Mac.
 - **Every consumer sets its own `DGL_NAMESPACE`** (`StageHandDGL`,
   `UmpireDGL`, `StruckSynthDGL`, ...). On macOS pugl names its Objective-C
   classes after it, and two binaries in one process with the same name

@@ -21,6 +21,10 @@ Its docs (`docs/architecture.md`, `docs/sequences.md`, `docs/rack-view.md`,
 
 - The author commits to `main` directly. Never open pull requests. Ask before
   pushing.
+- Submodules (uw-core, the DPF fork, DPF-Widgets): push the submodule's commit
+  before the pin that points at it. Use `git push --recurse-submodules=check`,
+  or set `git config push.recurseSubmodules check` once per clone, on the
+  Linux PC and on the Mac (decisions.md, "DPF fork").
 - One milestone per session, about a day of work each.
 - Keep tests silent (no audible output). The author tests anything audible
   themselves; warn before doing something that makes sound.
