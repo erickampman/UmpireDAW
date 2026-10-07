@@ -5,8 +5,8 @@ MIDI-only to start, Linux first. Planning stage.
 
 ## Read first
 
-1. [docs/decisions.md](docs/decisions.md): what has been decided, the current
-   milestone, and the working method.
+1. [docs/decisions.md](docs/decisions.md): what has been decided and the
+   working method; [docs/roadmap.md](docs/roadmap.md): the milestones.
 2. [docs/naming.md](docs/naming.md): product name, binary, IDs, namespace.
 3. As needed: [docs/ideas.md](docs/ideas.md) (candidate ideas, MIDI 2.0
    features, design principles), [docs/plugins-roadmap.md](docs/plugins-roadmap.md),

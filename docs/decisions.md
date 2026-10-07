@@ -34,8 +34,8 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
   pin is moved.
 - **Contents:** UMP types, the CLAP host, and the MIDI and audio backends
   behind their interfaces. DPF is not in it (below).
-- **Layered for plugins (probably; 2026-10-07, to confirm in the roadmap
-  session):** a **UMP core** target (`uw::ump`) with no dependencies (message types,
+- **Layered for plugins (confirmed 2026-10-07):** a **UMP core** target
+  (`uw::ump`) with no dependencies (message types,
   decoding by message type and status, Pitch 7.9, later per-note data),
   largely header-only. The synth and effect plugins (StruckSynth, StruckKit,
   IFSynth, ModicumFM, ...) can use it as well as the apps, so everything
@@ -49,10 +49,9 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
   milestone, the roadmap's first. Switching each consumer to the submodule
   (StageHand, Umpire, later each plugin) is separate work in that consumer's
   repo; StageHand's tests must still pass after its switch.
-- **Licence:** not chosen yet. Umpire is MIT and links it statically, so
-  uw-core's must allow that.
+- **Licence: MIT** (decided 2026-10-07), as Umpire's.
 
-## DPF fork (probably; 2026-10-07, to confirm in the roadmap session)
+## DPF fork (confirmed 2026-10-07)
 
 Today every DPF user has its own modified copy. StageHand's carries PMU's
 patches and its own. Each plugin has a `dpf` submodule with separate
@@ -146,8 +145,9 @@ changes, including the CLAP wrapper's UMP handling.
 - **Milestones are about a day each, with a fresh Claude session per
   milestone.** StageHand used too few sessions. Each milestone starts by
   reading this file, the roadmap, and the docs it names.
-- The roadmap beyond milestone 1 hasn't been written yet. Draft it after
-  milestone 1 settles the UI question.
+- The roadmap is [roadmap.md](roadmap.md), drafted 2026-10-07 after
+  milestone 1. It adopts ui-spike.md's proposals: Umpire owns its ImGui
+  widget (milestone 4), and the DPF fork turns vsync off (milestone 3).
 
 ## Milestone 1: DGL plus Dear ImGui spike (Linux)
 
@@ -165,9 +165,7 @@ checks for the author to make by hand. The spike is `spike/`
 The author's hand test passed. StageHand showed no vsync stall (ui-spike.md,
 finding 6).
 
-Next: draft the roadmap (see Working method), starting with the shared-code
-milestone, and deciding on ui-spike.md's proposals: owning the ImGui
-widget, and turning vsync off in DGL.
+Next: [roadmap.md](roadmap.md).
 
 **Goal:** one DGL window on Linux containing:
 - a NanoVG canvas (a simple note grid, or a piece of StageHand's sequence

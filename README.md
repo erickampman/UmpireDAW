@@ -16,6 +16,7 @@ build/umpire-ui-spike
 ```
 
 - [Decisions](docs/decisions.md): what's decided, and the current milestone
+- [Roadmap](docs/roadmap.md): the milestones to a first useful version
 - [UI spike](docs/ui-spike.md): milestone 1's findings on DGL plus Dear ImGui
 - [Naming](docs/naming.md): product name, repo, binary, IDs
 - [Ideas](docs/ideas.md): candidate UI and data ideas, design principles, open
