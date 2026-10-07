@@ -128,9 +128,10 @@ These are separate work in other repos, and can be done whenever:
 
 - **StageHand switches to uw-core** (StageHand): done 2026-10-07 on
   StageHand's branch `uw-core-switch`, from `macos-milestone-6`. It's on
-  uw-core `d147dfb`. Linux builds without warnings and the tests pass; the
-  macOS build hasn't been tried. CI needs a `SUBMODULES_TOKEN` secret to
-  check out the private uw-core.
+  uw-core `a200ba4`. Linux builds without warnings and the tests pass; the
+  macOS build hasn't been tried (uw-core's `docs/macos-check.md` is the
+  checklist). CI checks out the private uw-core with a `SUBMODULES_TOKEN`
+  secret (a read-only token for uw-core, expiring 2026-12-31).
 - **StageHand switches to the DPF fork** (StageHand), after milestone 3.
 - **Plugins move onto the DPF fork, then use `uw::ump`** (the plugin
   roadmap, `plugins-roadmap.md`): diff each plugin's `dpf` against upstream,
