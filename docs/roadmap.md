@@ -130,12 +130,19 @@ These are separate work in other repos, and can be done whenever:
   StageHand's branch `uw-core-switch`, from `macos-milestone-6`. It's on
   uw-core `a200ba4`. StageHand's CI passes on Linux and macOS, building
   uw-core's CoreAudio, CoreMIDI and CLAP code on macOS without warnings
-  (uw-core's `docs/macos-check.md`, Results). Still to do on a Mac: the app
-  checks in that checklist. CI checks out the private uw-core with a
+  (uw-core's `docs/macos-check.md`, Results). On 2026-10-08, uw-core's own
+  build and tests passed on the Mac (checklist steps 1 and 2: no warnings, 5
+  suites, and the UMP-only build). Still to do on a Mac: step 3, StageHand
+  over uw-core, and its app checks. StageHand's `main` has two commits
+  (docs, rack UI) that `uw-core-switch` doesn't, so the branch needs a merge
+  from `main` before it goes back. CI checks out the private uw-core with a
   `SUBMODULES_TOKEN` secret: a read-only token for uw-core and StageHand,
   expiring 2026-12-31.
 - **StageHand switches to the DPF fork** (StageHand), after milestone 3.
 - **Plugins move onto the DPF fork, then use `uw::ump`** (the plugin
   roadmap, `plugins-roadmap.md`): diff each plugin's `dpf` against upstream,
   merge the changes into the fork, and give each plugin its own
-  `DGL_NAMESPACE`.
+  `DGL_NAMESPACE`. The namespace is needed now: on the Mac on 2026-10-08, the
+  9 installed DPF plugins all defined pugl's Objective-C classes as
+  `DGL_17000604_Pugl*`, and the runtime warned about the clash when one host
+  (uw-core's `test-clap-host`) loaded them together.
