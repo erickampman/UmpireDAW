@@ -136,10 +136,8 @@ These are separate work in other repos, and can be done whenever:
   the Mac: no warnings, 11 suites, the listings, the virtual inputs, and the
   author's audible checks (`--tone`, and a rack with a keyboard and an
   editor). Only the click on a second device (the aggregate device) is
-  untested, because the Mac has no second output. Still to do: merge
-  `uw-core-switch` into `main`. StageHand's `main` has two commits
-  (docs, rack UI) that `uw-core-switch` doesn't, so the branch needs a merge
-  from `main` before it goes back. CI checks out the private uw-core with a
+  untested, because the Mac has no second output. Merged into StageHand's
+  `main` on 2026-10-08 (`afb60f2`), still pinned to uw-core `a200ba4`. CI checks out the private uw-core with a
   `SUBMODULES_TOKEN` secret: a read-only token for uw-core and StageHand,
   expiring 2026-12-31.
 - **StageHand switches to the DPF fork** (StageHand), after milestone 3.
