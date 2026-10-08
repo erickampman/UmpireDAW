@@ -132,8 +132,12 @@ These are separate work in other repos, and can be done whenever:
   uw-core's CoreAudio, CoreMIDI and CLAP code on macOS without warnings
   (uw-core's `docs/macos-check.md`, Results). On 2026-10-08, uw-core's own
   build and tests passed on the Mac (checklist steps 1 and 2: no warnings, 5
-  suites, and the UMP-only build). Still to do on a Mac: step 3, StageHand
-  over uw-core, and its app checks. StageHand's `main` has two commits
+  suites, and the UMP-only build). So did step 3, StageHand over uw-core on
+  the Mac: no warnings, 11 suites, the listings, the virtual inputs, and the
+  author's audible checks (`--tone`, and a rack with a keyboard and an
+  editor). Only the click on a second device (the aggregate device) is
+  untested, because the Mac has no second output. Still to do: merge
+  `uw-core-switch` into `main`. StageHand's `main` has two commits
   (docs, rack UI) that `uw-core-switch` doesn't, so the branch needs a merge
   from `main` before it goes back. CI checks out the private uw-core with a
   `SUBMODULES_TOKEN` secret: a read-only token for uw-core and StageHand,
