@@ -17,6 +17,22 @@ Umpire shares code with StageHand (`~/Dev-MIDI/StageHand` on the Mac,
 Its docs (`docs/architecture.md`, `docs/sequences.md`, `docs/rack-view.md`,
 `docs/macos.md`) explain the code Umpire will reuse.
 
+## On the Mac
+
+The Mac hasn't run the shared code yet. Before Umpire work there:
+
+1. Clone uw-core (private; the same GitHub access as StageHand's):
+   ```bash
+   git clone --recurse-submodules https://github.com/erickampman/uw-core.git ~/Dev-Common/uw-core
+   ```
+   If the author keeps it elsewhere, use that path.
+2. Follow `~/Dev-Common/uw-core/docs/macos-check.md`: uw-core's tests,
+   StageHand's `uw-core-switch` branch over it, and the app checks (the
+   audible ones are the author's). Record the results there, and in this
+   repo's `docs/roadmap.md` ("Outside Umpire's roadmap").
+3. In each Mac clone with submodules (this one, StageHand, uw-core), once:
+   `git config push.recurseSubmodules check`.
+
 ## Working with the author
 
 - The author commits to `main` directly. Never open pull requests. Ask before
