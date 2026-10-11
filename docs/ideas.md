@@ -174,7 +174,8 @@ designed around MIDI 1.0 would find hardest to add later.
 
 18. ★ **Profiles** (Default Control Change Mapping, Drawbar Organ, Rotary
     Speaker, MPE, Orchestral Articulation). Detect them, switch them on, and
-    set up the matching editor and controller mapping.
+    set up the matching editor and controller mapping. MPE on input only
+    (decisions.md, "MPE").
 19. ★ **Property Exchange** (named device data, as JSON):
     - **total recall for hardware synths**: device state stored in the
       project and restored when it opens,
@@ -195,8 +196,9 @@ designed around MIDI 1.0 would find hardest to add later.
     data is practical. Network MIDI 2.0 (UDP with loss recovery) allows
     multi-machine rigs and remote devices.
 23. **Translation per device.** Record and store MIDI 2.0. For MIDI 1.0
-    devices, scale values down and turn per-note data into MPE or channel
-    messages at output, so one project plays on old and new gear.
+    devices, scale values down and turn per-note data into channel messages
+    at output, so one project plays on old and new gear. Never MPE
+    (decisions.md, "MPE"); MPE is converted to MIDI 2.0 on input only.
 
 ### Strongest bets
 

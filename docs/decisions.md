@@ -128,6 +128,37 @@ changes, including the CLAP wrapper's UMP handling.
   standard MIDI Clip Files (M2-116-U).
 - **MIDI 1.0 hardware** works from the start, converted to UMP on the way in.
 
+## MPE (decided 2026-10-11)
+
+- **The policy, across the projects:** support no MPE feature that MIDI 2.0
+  duplicates. Synths (PlainOldSynth and the other plugin modules) accept MPE
+  as a compatibility input; StageHand passes it through untouched; KeyboardEDO
+  doesn't send it; Umpire converts it on the way in and never sends it. The
+  aims: push toward MIDI 2.0, and keep support for a transitional scheme small.
+- **Input: MPE becomes MIDI 2.0 per-note data, behind a per-input "MPE"
+  toggle.** A toggle, not detection of the MPE Configuration Message, because
+  not every controller sends that message. The layout is the MPE lower zone
+  (master channel 1, member channels 2-16). With the toggle on, a take is
+  stored as MIDI 2.0 like any other:
+  - a member-channel note becomes a note on the track's channel;
+  - member-channel pitch bend becomes per-note pitch bend, rescaled from the
+    member bend range (±48 by default, or what the controller set with RPN 0)
+    to Umpire's per-note range;
+  - member-channel pressure becomes polyphonic pressure, and member-channel
+    CC74 becomes registered per-note controller 74;
+  - master-channel messages (pitch wheel, sustain, mod wheel) become ordinary
+    channel messages on the track's channel;
+  - RPN 0 on a member channel sets the bend range the conversion uses, and the
+    MPE Configuration Message resets it to the default.
+- **Output: never MPE.** For MIDI 1.0 devices and plugins, per-note data
+  becomes channel messages (ideas.md, 23).
+- **Open:** a key held on two member channels at once can't be two notes with
+  the same number on one MIDI 2.0 channel. Leaning: StageHand's sequencer rule
+  (its domain-model.md): move the second to the nearest free note number, with
+  a Pitch 7.9 attribute carrying its real pitch.
+- **When:** not scheduled. It touches milestone 5's input path and depends on
+  per-note data in the clip model (Deferred, below).
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
