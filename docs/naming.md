@@ -1,8 +1,8 @@
 # Naming
 
 The product is **Umpire**, a play on UMP. "MIDI" stays out of every name
-because Umpire may grow audio support later, the way MOTU's Performer became
-Digital Performer.
+because Umpire grows audio support (printing tracks, the mixdown, playback:
+decisions.md, "Audio"), the way MOTU's Performer became Digital Performer.
 
 | Where | Name |
 |---|---|

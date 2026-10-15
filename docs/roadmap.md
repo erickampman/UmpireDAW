@@ -75,7 +75,8 @@ start of the milestone.
 - Read and write standard MIDI Clip Files (M2-116-U), with tests that
   round-trip clips, including Pitch 7.9 notes.
 - Umpire's session file (JSON, as StageHand's files are): tracks and clip
-  references.
+  references. Leave room for audio file references (decisions.md, "Audio";
+  milestones 14-16).
 - Open and Save from the menu, through DPF's file browser or StageHand's
   zenity/kdialog approach.
 
@@ -100,6 +101,9 @@ pitch bend and controllers later (decisions.md, "Deferred").
   `uw::clap-host`. The transport feeds the plugin's events, with
   sample-accurate timing, as StageHand's engine does.
 - Translate MIDI 2.0 to MIDI 1.0 only for plugins that need it (`uw::ump`).
+- Design the engine so it can also run offline, driven by a render loop
+  instead of the audio device. Milestone 13 builds on that, for printing and
+  the mixdown (decisions.md, "Audio").
 
 ## 10. Plugin editor windows (uw-core, then Umpire)
 
@@ -118,9 +122,52 @@ state is saved in the session file.
 ## 12. First useful version (Umpire)
 
 The decisions.md scope from end to end with KeyEDO: record, edit, play to a
-plugin and to hardware, save, reopen. Fix what that turns up. Then decide
-what comes next: the macOS port (following StageHand's), or the deferred
-features.
+plugin and to hardware, save, reopen. Fix what that turns up. Next comes the
+audio phase (below). Where the macOS port fits is decided then.
+
+## After the first useful version: audio
+
+Decided 2026-10-14 (decisions.md, "Audio: printing, mixdown, playback").
+Plugin tracks come first; hardware comes last.
+
+### 13. The mixer and offline rendering (Umpire)
+
+- Per-track gain, pan, mute and solo, and a master bus, in the engine and on
+  screen (ImGui).
+- The engine renders offline: the transport and plugins are driven by a
+  render loop, faster than real time, without the audio device. Tests
+  compare offline and real-time renders of the same session, in memory and
+  silent.
+
+### 14. Printing a plugin track (Umpire)
+
+- Render a CLAP instrument track to an audio file (WAV, 32-bit float, the
+  session's rate) in the session's folder, linked to its track.
+- Record what made it (a hash of the clips and the plugin's state), so the
+  view can show when the print is out of date.
+- Choose the WAV library (decisions.md, "Audio", open questions).
+
+### 15. The audio overlay (Umpire)
+
+- Draw a printed track's waveform over its MIDI track and in the piano roll,
+  in time with the notes, from a peak cache so long files draw fast.
+- Decide where printed audio lives (a lane of the MIDI track, or separate
+  audio tracks).
+
+### 16. Audio playback and the mixdown (Umpire)
+
+- Play printed audio in the transport, in place of the instrument when
+  chosen (freeing the plugin).
+- Mix the session to a file through the mixer (offline), with a choice of
+  formats, and play the mix in the app.
+
+### 17. Printing hardware tracks (uw-core, then Umpire)
+
+- Audio inputs in `uw::audio`: JACK capture ports, CoreAudio input.
+- Record a hardware or KeyEDO track's audio in real time while its MIDI
+  plays, with latency compensation (measured round trip), into the same kind
+  of print as milestone 14.
+- Audible: the author tests it.
 
 ## Outside Umpire's roadmap
 

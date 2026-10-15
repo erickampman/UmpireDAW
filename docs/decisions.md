@@ -159,6 +159,44 @@ changes, including the CLAP wrapper's UMP handling.
 - **When:** not scheduled. It touches milestone 5's input path and depends on
   per-note data in the clip model (Deferred, below).
 
+## Audio: printing, mixdown, playback (decided 2026-10-14)
+
+Umpire stays MIDI-first, but it needs audio for these (naming.md already
+allowed for it, as with MOTU's Digital Performer):
+
+- **Print a MIDI track to an audio file**, the track's instrument rendered.
+- **Show the printed audio over the MIDI track view**: its waveform drawn in
+  time with the notes it came from.
+- **Mix to a file** (a mixdown of the tracks).
+- **Play audio files in the app**: printed tracks and the mix.
+
+Decided:
+- **When: right after the first useful version.** v1 stays MIDI-only (Scope,
+  above), and the audio work is the next phase (roadmap.md, milestones
+  13-17). But v1 is designed for it:
+  - the engine can run offline, without the audio device, to render;
+  - the session file has room for audio file references.
+- **Printing covers plugin tracks first.** A CLAP instrument track is
+  rendered offline, faster than real time, inside the app. Printing a
+  hardware or KeyEDO track comes later. It needs audio inputs in `uw::audio`
+  (JACK capture, CoreAudio input; StageHand has outputs only), real-time
+  recording, and latency compensation.
+- **A mixer is part of it:** per-track gain, pan, mute and solo, and a
+  master bus. The mixdown renders through it.
+
+Open (decide in the milestones):
+- Where printed audio lives. Leaning: a lane of its MIDI track, which matches
+  "over the MIDI track view", with a switch to play the audio instead of the
+  instrument (as freezing does, freeing the plugin). The alternative is
+  separate audio tracks.
+- Knowing when a print is out of date (the MIDI or the plugin's state changed
+  since): a hash of what made it, stored with it.
+- The file format and library: WAV at the session's sample rate, as 32-bit
+  float for prints and with a choice of formats for the mix. Library
+  candidates: dr_wav (single header, public domain or MIT-0), or libsndfile
+  (LGPL, linked dynamically, which the licence decision allows).
+- Where files go: in the session's folder, beside its MIDI Clip Files.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
