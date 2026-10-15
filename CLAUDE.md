@@ -13,7 +13,7 @@ MIDI-only to start, Linux first. Planning stage.
    [docs/ui-spike.md](docs/ui-spike.md) (milestone 1: DGL plus Dear ImGui).
 
 Umpire shares code with StageHand (`~/Dev-MIDI/StageHand` on the Mac,
-`~/dev/dev-audio/StageHand` on the Linux PC), a live-performance CLAP host.
+`~/dev/dev-midi/StageHand` on the Linux PC), a live-performance CLAP host.
 Its docs (`docs/architecture.md`, `docs/sequences.md`, `docs/rack-view.md`,
 `docs/macos.md`) explain the code Umpire will reuse.
 

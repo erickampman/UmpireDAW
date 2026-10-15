@@ -63,6 +63,12 @@ changes, including the CLAP wrapper's UMP handling.
   StageHand, Umpire and every plugin use it as a git submodule, each pinned
   to a commit. It replaces StageHand's vendored copy and Umpire's
   `UMPIRE_DPF_DIR`.
+- **pugl is forked too (decided 2026-10-14):** upstream DPF holds pugl as a
+  submodule, and PMU's macOS patches are in pugl. So pugl has its own private
+  fork (`erickampman/pugl`, `~/dev/dev-common/pugl`), which the DPF fork
+  (`erickampman/DPF`, `~/dev/dev-common/DPF`) pins. Upstream merges stay
+  plain git merges in both; the cost is one more repo to push first (pugl,
+  then DPF, then the consumer), and CI tokens need access to both.
 - **Both machines:** a submodule is a URL and a commit, so the Linux PC
   and the Mac work the same way, whatever the local paths. Each needs access
   to the private repo (the same SSH key or credentials as StageHand's). Clone

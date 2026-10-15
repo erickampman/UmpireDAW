@@ -39,7 +39,17 @@ Also: the namespace `uw`, StageHand's tests for these parts, an MIT licence,
 and options so a plugin can build `uw::ump` alone, without JACK, ALSA or
 CLAP. StageHand isn't changed: it keeps its own copy until its switch.
 
-## 3. The DPF fork (DPF fork)
+## 3. The DPF fork (DPF fork): done 2026-10-14
+
+The fork is `erickampman/DPF` (`~/dev/dev-common/DPF`), with pugl in a
+second fork, `erickampman/pugl` (`~/dev/dev-common/pugl`), because PMU's
+macOS patches are in pugl (decisions.md, "DPF fork"). Its `README.fork.md`
+lists the base (upstream DPF `4238e1c7`, pugl `5e2621d`, exactly what
+StageHand's vendored copy was apart from its patches) and each local patch,
+one commit each. The vsync patch is opt-in: a consumer defines
+`DGL_SWAP_INTERVAL=0` on `dgl-opengl`, and Umpire will (milestone 4). Checked
+on Linux: DPF's examples build, and a DGL window's swap interval is 1 without
+the define and 0 with it. On macOS pugl ignores the hint.
 
 Make the private DPF fork in `~/dev/dev-common`: upstream DPF plus
 StageHand's vendored patches (PMU's and StageHand's). Add the vsync patch
@@ -191,7 +201,10 @@ These are separate work in other repos, and can be done whenever:
   `main` on 2026-10-08 (`afb60f2`), still pinned to uw-core `a200ba4`. CI checks out the private uw-core with a
   `SUBMODULES_TOKEN` secret: a read-only token for uw-core and StageHand,
   expiring 2026-12-31.
-- **StageHand switches to the DPF fork** (StageHand), after milestone 3.
+- **StageHand switches to the DPF fork** (StageHand), after milestone 3:
+  replace `external/dpf` (vendored) with the fork as a submodule there, and
+  drop `README.StageHand.md` (the fork's `README.fork.md` has its patches).
+  Whether StageHand defines `DGL_SWAP_INTERVAL=0` is its choice.
 - **Plugins move onto the DPF fork, then use `uw::ump`** (the plugin
   roadmap, `plugins-roadmap.md`): diff each plugin's `dpf` against upstream,
   merge the changes into the fork, and give each plugin its own
