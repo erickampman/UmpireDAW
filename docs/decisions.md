@@ -165,8 +165,10 @@ Umpire stays MIDI-first, but it needs audio for these (naming.md already
 allowed for it, as with MOTU's Digital Performer):
 
 - **Print a MIDI track to an audio file**, the track's instrument rendered.
-- **Show the printed audio over the MIDI track view**: its waveform drawn in
-  time with the notes it came from.
+- **Two views of a printed track, stacked**: a MIDI view and an audio view
+  (the waveform) of the same track, in time with each other. Either can be on
+  top and visible; the one underneath shows as a slight overlap (offset like
+  stacked cards), so it's clear there's another view.
 - **Mix to a file** (a mixdown of the tracks).
 - **Play audio files in the app**: printed tracks and the mix.
 
@@ -185,10 +187,11 @@ Decided:
   master bus. The mixdown renders through it.
 
 Open (decide in the milestones):
-- Where printed audio lives. Leaning: a lane of its MIDI track, which matches
-  "over the MIDI track view", with a switch to play the audio instead of the
-  instrument (as freezing does, freeing the plugin). The alternative is
-  separate audio tracks.
+- Printed audio belongs to its track, as the track's audio view, not to a
+  separate audio track. Still open: the switch for what plays, the audio or
+  the instrument (as freezing does, freeing the plugin), and whether it
+  follows the view on top or is set separately. Also, how the stacked views
+  look and swap (a click on the edge that shows, a key).
 - Knowing when a print is out of date (the MIDI or the plugin's state changed
   since): a hash of what made it, stored with it.
 - The file format and library: WAV at the session's sample rate, as 32-bit

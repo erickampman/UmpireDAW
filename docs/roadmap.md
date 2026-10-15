@@ -147,12 +147,13 @@ Plugin tracks come first; hardware comes last.
   view can show when the print is out of date.
 - Choose the WAV library (decisions.md, "Audio", open questions).
 
-### 15. The audio overlay (Umpire)
+### 15. The track's audio view (Umpire)
 
-- Draw a printed track's waveform over its MIDI track and in the piano roll,
-  in time with the notes, from a peak cache so long files draw fast.
-- Decide where printed audio lives (a lane of the MIDI track, or separate
-  audio tracks).
+- A printed track has two views, MIDI and audio (its waveform, from a peak
+  cache so long files draw fast), stacked and in time with each other.
+  Either can be on top; the one underneath shows as a slight overlap.
+- Swapping them: a click on the edge that shows, and a key.
+- Decide whether what plays (audio or instrument) follows the view on top.
 
 ### 16. Audio playback and the mixdown (Umpire)
 
