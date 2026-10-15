@@ -183,6 +183,12 @@ Decided:
   hardware or KeyEDO track comes later. It needs audio inputs in `uw::audio`
   (JACK capture, CoreAudio input; StageHand has outputs only), real-time
   recording, and latency compensation.
+- **Printing happens only when the user asks** (a command on a track, or
+  the mixdown), never automatically or in the background. Editing the MIDI
+  would make a background render wasted work. A print may render offline,
+  faster than real time, once asked for. When its MIDI or the plugin's state
+  changes, the print is marked out of date and kept as it is, until the user
+  prints again.
 - **A mixer is part of it:** per-track gain, pan, mute and solo, and a
   master bus. The mixdown renders through it.
 

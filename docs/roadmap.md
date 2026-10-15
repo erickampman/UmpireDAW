@@ -143,8 +143,11 @@ Plugin tracks come first; hardware comes last.
 
 - Render a CLAP instrument track to an audio file (WAV, 32-bit float, the
   session's rate) in the session's folder, linked to its track.
+- Only on the user's command (decisions.md, "Audio"): no automatic or
+  background printing.
 - Record what made it (a hash of the clips and the plugin's state), so the
-  view can show when the print is out of date.
+  view can show when the print is out of date. An out-of-date print stays as
+  it is until the user prints again.
 - Choose the WAV library (decisions.md, "Audio", open questions).
 
 ### 15. The track's audio view (Umpire)
