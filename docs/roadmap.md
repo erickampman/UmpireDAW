@@ -71,6 +71,18 @@ submodules, replacing `UMPIRE_DPF_DIR`. It has:
 The spike (`spike/`) is retired here or kept as a test bench. Decide at the
 start of the milestone.
 
+**The house look and feel, from the start** (asked for 2026-10-18):
+everything should look like the plugins and KeyboardEDO where it can. That's
+PlainOldSynth's glowing knobs, group boxes, captioned dropdowns and value
+boxes, a linear slider in the same style, and DejaVu Sans, in Umpire's own
+colours (KeyboardEDO's `docs/decisions.md`, "Look and feel"). Umpire's
+panels are ImGui, as KeyboardEDO's are, so they can start from KeyboardEDO's
+`src/app/Widgets.{h,cpp}` (`kedo::app::ui`: knob, slider, value box, section,
+theme). The NanoVG canvas can use the plugins' NanoVG widgets
+(`src/UI/Knob.hpp` and the rest). uw-core has no UI code, so whether the
+widgets are copied or shared some other way is decided here. Plugin editors
+keep their own look.
+
 ## 5. MIDI in and the clip model (Umpire, maybe uw-core)
 
 - A clip model: UMP messages with timestamps in ticks, with room for

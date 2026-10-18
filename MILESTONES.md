@@ -10,6 +10,7 @@
 
 ## M2: MIDI DAW core
 - [ ] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule
+- [ ] House look and feel from the start: plugins' knobs, group boxes, slider, DejaVu Sans (KeyboardEDO's Widgets)
 - [ ] MIDI in: ALSA sequencer UMP, clip model (UMP ticks, per-note data), live record to grid
 - [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs
 - [ ] Piano roll: select, move, resize, delete, velocity, undo; Pitch 7.9 on EDO grid
