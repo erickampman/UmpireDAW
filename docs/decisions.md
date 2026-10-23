@@ -223,6 +223,17 @@ Open (decide in the milestones):
   namespace and colours. uw-core stays free of UI code. A shared UI library
   can come later if the copies drift apart in ways that hurt.
 
+Done 2026-10-23 (skeleton.md), on the Mac. Also decided there:
+- **StageHand's `MainLoop` is copied into Umpire** (`src/App`), as the
+  widgets are. It may move into uw-core with the plugin editor windows
+  (milestone 10), which it serves in StageHand.
+- **The view-model rule is kept by the build:** only `umpire-ui` has DGL's
+  and ImGui's headers on its include path.
+- **Umpire's colours are provisional** (graphite, an amber accent, a teal
+  for notes) until the author settles them.
+- **The plugins' NanoVG widgets are copied when the canvas needs one**, not
+  before.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
@@ -254,8 +265,8 @@ The first milestone, and the check on the UI decision.
 
 **Status: done 2026-10-07.** It works, and the UI decision stands. The
 findings and proposals are in [ui-spike.md](ui-spike.md), with a list of
-checks for the author to make by hand. The spike is `spike/`
-(`umpire-ui-spike`). Set up during the milestone:
+checks for the author to make by hand. The spike was `spike/`
+(`umpire-ui-spike`), deleted in milestone 4. Set up during the milestone:
 - DPF-Widgets is a git submodule (`external/DPF-Widgets`, pinned).
 - DGL comes from a StageHand checkout (`UMPIRE_DPF_DIR`) until the shared
   library has a home.

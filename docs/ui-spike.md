@@ -4,6 +4,11 @@ Milestone 1 (decisions.md) checked the UI decision: one DGL window on Linux
 with a NanoVG canvas and a Dear ImGui panel, working together. Done
 2026-10-07.
 
+**The spike is gone** (milestone 4, 2026-10-23): `umpire-daw` does what it
+did, with its own ImGui widget built from these findings
+([skeleton.md](skeleton.md)). Git history before then has `spike/`. The
+commands below are the spike's.
+
 **Result: it works.** DPF-Widgets' ImGui widget builds unpatched against
 StageHand's DGL, both layers draw in one window without interfering, and
 input can be routed correctly between them. The decision stands, and Qt isn't

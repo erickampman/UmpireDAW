@@ -1,7 +1,8 @@
 # Umpire milestones
 
 ## Tests
-- spike: ninja -C build
+- ninja -C build && ctest --test-dir build
+- window: build/umpire-daw --self-test DIR (opens a window; silent)
 
 ## M1: Infrastructure
 - [x] DGL + Dear ImGui spike: on-demand redraw, vsync, rescale, NanoVG canvas
@@ -9,8 +10,8 @@
 - [x] DPF fork (erickampman/DPF + pugl): upstream patches, vsync opt-in, per-patch README
 
 ## M2: MIDI DAW core
-- [ ] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule
-- [ ] House look and feel from the start: plugins' knobs, group boxes, slider, DejaVu Sans (KeyboardEDO's Widgets)
+- [x] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule (Mac 2026-10-23; Linux build pending)
+- [x] House look and feel from the start: KeyboardEDO's Widgets in Umpire, DejaVu Sans (colours provisional)
 - [ ] MIDI in: ALSA sequencer UMP, clip model (UMP ticks, per-note data), live record to grid
 - [ ] Clip model holds per-key Pitch 7.25 with no note; keep Per-Note Management Reset when recording
 - [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs

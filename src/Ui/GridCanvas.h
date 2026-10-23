@@ -1,0 +1,69 @@
+#pragma once
+
+// The NanoVG canvas: the window's top-level widget, drawing a note grid (rows
+// are pitches, columns sixteenths) as StageHand's windows draw (UiWidget). The
+// ImGui panels are its only subwidget, covering the window, so they draw over
+// the canvas and see input first; the canvas handles what they pass on
+// (ImGuiWidget.h has the rules).
+//
+// Coordinates are logical pixels; the window's scale factor is applied when
+// drawing (StageHand's convention). ImGui works in window pixels.
+
+#include <memory>
+
+#include "NanoVG.hpp"
+#include "Window.hpp"
+
+#include "App/ViewModel.h"
+#include "Ui/Probe.h"
+
+namespace umpire::ui {
+
+class Panels;
+
+class GridCanvas final : public DGL_NAMESPACE::NanoTopLevelWidget {
+public:
+    GridCanvas(DGL_NAMESPACE::Window& window, ViewModel& model, Probe& probe);
+    ~GridCanvas() override;
+
+    Panels& panels() noexcept { return *imgui; }
+    bool    dragging() const noexcept { return drag != Drag::None; }
+    int     hoverPitch() const noexcept { return hoverRow; }
+
+protected:
+    void onNanoDisplay() override;
+    bool onMouse(const MouseEvent& ev) override;
+    bool onMotion(const MotionEvent& ev) override;
+    bool onScroll(const ScrollEvent& ev) override;
+    bool onKeyboard(const KeyboardEvent& ev) override;
+    void onResize(const ResizeEvent& ev) override;
+
+private:
+    friend struct SelfTest;
+
+    float sf();
+    // The grid's area (logical): below ImGui's menu bar, left of its panel.
+    float gridX() { return kKeysW; }
+    float gridY();
+    float gridW();
+    float gridH();
+    bool  inGrid(float x, float y);
+    int   pitchAt(float y);
+    int   stepAt(float x);
+    float rowY(int pitch);
+    void  changed();   // the model changed here: redraw, and the panels too
+
+    static constexpr float kKeysW = 44, kRowH = 14, kStepW = 22;
+
+    enum class Drag { None, Move };
+
+    ViewModel&              model;
+    Probe&                  probe;
+    std::unique_ptr<Panels> imgui;
+    float                   scrollY  = 0;   // logical pixels from pitch 127's row
+    int                     hoverRow = -1;
+    Drag                    drag     = Drag::None;
+    int                     grabStep = 0, grabPitch = 0;   // where in the note the drag took it
+};
+
+} // namespace umpire::ui
