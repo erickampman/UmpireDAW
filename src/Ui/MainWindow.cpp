@@ -259,6 +259,7 @@ int MainWindow::selfTest(const std::string& dir) {
             std::this_thread::sleep_for(std::chrono::milliseconds(5));
         }
     };
+    grid.model.select(1);   // the inspector shows what was sent
     settle(300);   // a new window's first frames are ImGui laying out
     grid.canvas->panels().captureNextFrame(dir + "/g00-31edo.ppm");
     grid.canvas->panels().wake(1);

@@ -87,11 +87,17 @@ int main() {
         check("at 31-EDO each step has its row, an octave 31 rows up",
               m.rows() == 330 && m.notes[0].pitch == ref && m.notes[1].pitch == ref + 1 && m.notes[2].pitch == ref + 2 &&
                   m.notes[3].pitch == ref + 31 && std::abs(m.rowSemitones(ref + 31) - 72) < 1e-9);
+        check("each note keeps what was sent: note number, 7.9 pitch, attribute",
+              m.notes[1].fromClip && m.notes[1].pitchFrom == PitchFrom::Attribute && m.notes[1].pitch79 == step31(1) &&
+                  m.notes[1].sentNote == (step31(1) >> 9) && m.notes[1].clipRow == m.notes[1].pitch);
         m.select(1);
         m.transposeSelected(1);
         m.setTuning(12, 60);
         check("edited, a new tuning keeps each note's pitch on the nearest row",
               m.notes[1].pitch == 61 && m.notes[0].pitch == 60 && m.notes[3].pitch == 72);
+        check("and where it came from: the moved note's clip row is its sent pitch's",
+              m.notes[1].clipRow == 60 && m.notes[1].pitch != m.notes[1].clipRow && m.notes[0].clipRow == m.notes[0].pitch);
+        check("pitch names", pitchName(60) == "C4" && pitchName(33.42) == "A1 +42 cents" && pitchName(33.58) == "A#1 -42 cents" && pitchName(59.7) == "C4 -30 cents");
         m.setTuning(1000, 200);
         check("the tuning stays in range", m.edo == Scale::kMaxEdo && m.referenceNote == 127);
     }
@@ -109,6 +115,9 @@ int main() {
         check("pitch from Pitch 7.25, from the 7.9 attribute, and back to the note number after a reset",
               notes.size() == 3 && notes[0].pitch79 == 61 * 512 + 128 && notes[1].pitch79 == 62 * 512 + 100 &&
                   notes[2].pitch79 == 61 * 512);
+        check("and says where each came from", notes[0].from == PitchFrom::Pitch725 &&
+                                                   notes[1].from == PitchFrom::Attribute &&
+                                                   notes[2].from == PitchFrom::NoteNumber);
     }
 
     std::printf("%s: %d failure%s\n", failures == 0 ? "OK" : "FAILED", failures, failures == 1 ? "" : "s");

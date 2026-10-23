@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <optional>
+#include <string>
 
 namespace umpire {
 
@@ -31,6 +32,16 @@ std::optional<int> reference(std::uint16_t pitch, int edo) {
 }
 
 } // namespace
+
+std::string pitchName(double semitones) {
+    static const char* const names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    const int    nearest = static_cast<int>(std::lround(semitones));
+    const int    cents   = static_cast<int>(std::lround((semitones - nearest) * 100));
+    std::string  name    = names[((nearest % 12) + 12) % 12] +
+                       std::to_string(static_cast<int>(std::floor(nearest / 12.0)) - 1);
+    if (cents != 0) name += (cents > 0 ? " +" : " ") + std::to_string(cents) + " cents";
+    return name;
+}
 
 ScaleGuess workOutScale(const std::vector<std::uint16_t>& pitches79) {
     std::vector<std::uint16_t> pitches = pitches79;

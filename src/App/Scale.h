@@ -6,6 +6,7 @@
 // StageHand's sequences and KeyboardEDO's tunings. No toolkit types.
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace umpire {
@@ -36,6 +37,11 @@ struct ScaleGuess {
 
     bool operator==(const ScaleGuess&) const = default;
 };
+
+// A pitch as KeyboardEDO labels one: the nearest 12-EDO note and how far from
+// it, within 50 cents: "A1 +42 cents" ("C4" when on it). Semitones above
+// MIDI note 0.
+std::string pitchName(double semitones);
 
 // The scale a set of note pitches (in 7.9, as NoteSpan::pitch79) sit on. An
 // EDO fits when every pitch is a whole number of its steps from the others

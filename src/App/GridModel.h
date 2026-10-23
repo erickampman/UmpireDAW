@@ -24,6 +24,15 @@ struct GridNote {
     int start    = 0;     // in steps (sixteenths)
     int length   = 2;     // in steps
     int velocity = 100;   // 1..127
+
+    // A note from the clip: what was sent, so the inspector can say (the
+    // grid's rows and 7-bit velocity are only its view of it).
+    bool          fromClip   = false;
+    int           sentNote   = 60;        // its note number
+    std::uint16_t pitch79    = 60 << 9;   // its pitch, as NoteSpan
+    PitchFrom     pitchFrom  = PitchFrom::NoteNumber;
+    std::uint16_t velocity16 = 0;
+    int           clipRow    = 60;        // the row it was shown on: moved when pitch differs
 };
 
 class GridModel {

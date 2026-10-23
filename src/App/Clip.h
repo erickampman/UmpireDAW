@@ -56,12 +56,20 @@ void workOutScale(Clip& clip);
 // A note as the lanes and the grid draw it: from its note-on to its note-off,
 // at the pitch it sounds. No tuning is assumed (decisions.md, "Pitch"): the
 // pitch is absolute, in 7.9 (512 to a 12-TET semitone, as Pitch 7.9).
+// Where a note's pitch came from.
+enum class PitchFrom {
+    NoteNumber,   // nothing else: the note number, in 12-EDO
+    Attribute,    // the note-on's Pitch 7.9 attribute
+    Pitch725,     // a Pitch 7.25 (registered per-note controller 3) sent for its key before
+};
+
 struct NoteSpan {
     Tick          start  = 0;
     Tick          length = 0;
     int           note   = 60;    // the note number, which names the note, not its pitch
     std::uint16_t pitch79  = 60 << 9;
     std::uint16_t velocity = 0;   // 16-bit
+    PitchFrom     from     = PitchFrom::NoteNumber;
 
     bool operator==(const NoteSpan&) const = default;
 };

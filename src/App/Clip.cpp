@@ -31,7 +31,8 @@ std::vector<NoteSpan> notesOf(const std::vector<ClipEvent>& events, Tick end) {
             const bool attribute = midi2 && static_cast<ump::NoteAttribute>(m.words[0] & 0xFF) == ump::NoteAttribute::Pitch7_9;
             const auto t         = tuned.find(key);
             const auto pitch     = attribute || t == tuned.end() ? ump::notePitch79(m) : t->second;
-            notes.push_back(NoteSpan{e.tick, 0, ump::noteNumber(m), pitch, ump::velocity16(m)});
+            const auto from      = attribute ? PitchFrom::Attribute : t != tuned.end() ? PitchFrom::Pitch725 : PitchFrom::NoteNumber;
+            notes.push_back(NoteSpan{e.tick, 0, ump::noteNumber(m), pitch, ump::velocity16(m), from});
         } else if (ump::isNoteOff(m)) {
             close(key, e.tick);
         } else if (midi2 && ump::status(m) == ump::Status::RegisteredPerNoteController && (m.words[0] & 0xFF) == 3) {

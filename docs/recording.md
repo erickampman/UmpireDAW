@@ -152,6 +152,16 @@ window: milestone 10 makes it edit the clip. What changed is pitch:
   and the open grid follows either way. A retune keeps the pitch that was in
   the middle of the view there.
 
+- **The selected note says what was sent** (the author, after a 31-EDO take:
+  "more info about the note if it came in as 7.9"). The grid's rows and its
+  1-127 velocity are only its view, so the Note section shows: the note's
+  step in the EDO; how its pitch came (a Pitch 7.9 attribute on note n, a
+  Pitch 7.25 for key n, or a note number alone) and the 7.9 value; the pitch
+  in semitones with KeyboardEDO's label (the nearest 12-EDO note and cents,
+  "A1 +42 cents") and in Hz; how far it is from its row, or, when moved on
+  the grid, how far the row is from it; and its 16-bit velocity. `NoteSpan`
+  and `GridNote` carry what was sent (`PitchFrom`).
+
 ### Working out a clip's scale
 
 `workOutScale` (ideas.md, "Working out a clip's scale"), built the same day

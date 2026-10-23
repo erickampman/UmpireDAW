@@ -41,6 +41,7 @@ protected:
 private:
     void menuBar();
     void inspector(float width, float height);
+    void notePitch(const GridNote& note);
 
     GridModel& model;
     Probe&     probe;

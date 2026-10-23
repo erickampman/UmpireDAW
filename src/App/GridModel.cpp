@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "uw/ump/Ump.h"
+
 namespace umpire {
 
 GridNote* GridModel::selectedNote() noexcept {
@@ -79,7 +81,8 @@ void GridModel::setSelectedVelocity(int velocity) {
     if (n == nullptr) return;
     const int v = std::clamp(velocity, kMinVelocity, kMaxVelocity);
     if (v == n->velocity) return;
-    n->velocity = v;
+    n->velocity   = v;
+    n->velocity16 = static_cast<std::uint16_t>(uw::ump::scaleUp(static_cast<std::uint32_t>(v), 7, 16));
     edited();
 }
 
@@ -101,7 +104,10 @@ void GridModel::setTuning(int e, int reference) {
         layOut();
         return;
     }
-    for (GridNote& n : notes) n.pitch = rowFor(static_cast<std::uint16_t>(std::lround(pitches[static_cast<std::size_t>(n.pitch)] * 512)));
+    for (GridNote& n : notes) {
+        n.pitch = rowFor(static_cast<std::uint16_t>(std::lround(pitches[static_cast<std::size_t>(n.pitch)] * 512)));
+        if (n.fromClip) n.clipRow = rowFor(n.pitch79);
+    }
     touch();
 }
 
@@ -128,6 +134,12 @@ void GridModel::layOut() {
         g.start    = std::min(steps16(n.start), steps - 1);
         g.length   = std::clamp(steps16(n.start + n.length) - g.start, 1, steps - g.start);
         g.velocity = std::clamp(n.velocity >> 9, kMinVelocity, kMaxVelocity);
+        g.fromClip   = true;
+        g.sentNote   = n.note;
+        g.pitch79    = n.pitch79;
+        g.pitchFrom  = n.from;
+        g.velocity16 = n.velocity;
+        g.clipRow    = g.pitch;
         notes.push_back(g);
     }
     selected = -1;

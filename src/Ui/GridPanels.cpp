@@ -79,6 +79,39 @@ void GridPanels::menuBar() {
     ImGui::EndMainMenuBar();
 }
 
+// What the note is: its row's step and pitch, and for a note from the clip,
+// what was sent (the rows and the 7-bit velocity are only the grid's view).
+void GridPanels::notePitch(const GridNote& n) {
+    const auto hz = [](double semitones) { return 440.0 * std::pow(2.0, (semitones - 69) / 12); };
+    const double row = model.rowSemitones(n.pitch);
+    ImGui::Spacing();
+    ImGui::TextDisabled("Step %d of %d-EDO from %s", n.pitch - model.referenceRow(), model.edo,
+                        pitchName(model.referenceNote).c_str());
+    if (!n.fromClip) {
+        ImGui::TextDisabled("%.3f semitones: %s, %.1f Hz", row, pitchName(row).c_str(), hz(row));
+        return;
+    }
+    const double sent = n.pitch79 / 512.0;
+    switch (n.pitchFrom) {
+    case PitchFrom::Attribute:
+        ImGui::Text("Pitch 7.9 attribute on note %d", n.sentNote);
+        ImGui::TextDisabled("7.9 value 0x%04X", n.pitch79);
+        break;
+    case PitchFrom::Pitch725:
+        ImGui::Text("Pitch 7.25 for key %d", n.sentNote);
+        ImGui::TextDisabled("as 7.9: 0x%04X", n.pitch79);
+        break;
+    case PitchFrom::NoteNumber: ImGui::Text("Note %d, no pitch sent (12-EDO)", n.sentNote); break;
+    }
+    ImGui::Text("%.3f semitones: %s", sent, pitchName(sent).c_str());
+    ImGui::TextDisabled("%.2f Hz", hz(sent));
+    if (const double off = (row - sent) * 100; n.pitch != n.clipRow)
+        ImGui::TextColored(colour::kAccent, "Moved: the row is %+.0f cents from it", off);
+    else if (std::abs(off) >= 1)
+        ImGui::TextColored(colour::kAccent, "%+.0f cents from its row", -off);
+    ImGui::TextDisabled("Velocity 0x%04X of 0xFFFF (16-bit)", n.velocity16);
+}
+
 void GridPanels::inspector(float W, float H) {
     ImGui::SetNextWindowPos(ImVec2(W - panelW, menuH));
     ImGui::SetNextWindowSize(ImVec2(panelW, H - menuH));
@@ -128,8 +161,6 @@ void GridPanels::inspector(float W, float H) {
         }
         case ScaleFit::Default: break;
         }
-        if (const GridNote* n = model.selectedNote())
-            ImGui::TextDisabled("Step %d: %.2f semitones", n->pitch - model.referenceRow(), model.rowSemitones(n->pitch));
     }
     endSection();
 
@@ -157,6 +188,7 @@ void GridPanels::inspector(float W, float H) {
         if (sliderRow("Start", start, 0, model.steps - n->length, colour::kNote)) model.moveSelected(start, n->pitch);
         if (sliderRow("Length", length, 1, model.steps - n->start, colour::kNote)) model.setSelectedLength(length);
         ImGui::PopItemWidth();
+        notePitch(*model.selectedNote());
         if (ImGui::Button("Delete note")) model.deleteSelected();
     } else {
         ImGui::TextDisabled("No note selected.");
