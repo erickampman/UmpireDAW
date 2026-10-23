@@ -169,6 +169,36 @@ that declare `CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES`. The host can't
 choose a plugin's voice slot; voice allocation stays the plugin's. The synth
 side is in plugins-roadmap.md (Tier 3).
 
+## Working out a clip's scale
+
+Added 2026-10-23. The clip holds its scale, and Umpire should work it out
+from the notes rather than have it set by hand (decisions.md, "Time, clips
+and pitch"). A take's pitches are exact, in 7.9 (KeyboardEDO rounds each to
+1/512 of a semitone), so an EDO shows as a lattice every note sits on.
+- **Find the EDO and the reference.** For each EDO from 5 to 72, check that
+  every pitch's distance from the first is a whole number of steps, within a
+  couple of 1/512ths. Take the smallest EDO that fits, except prefer 12 when
+  12 fits (a whole-tone tune fits 6). The reference is a MIDI note on the
+  lattice, near the middle: KeyboardEDO's origin is an A by default, so in
+  31-EDO that's an A, not 60.
+- **Too few notes is ambiguous.** Three pitches fit many EDOs. Below some
+  number of distinct pitches, or when no EDO fits, say so and leave the
+  choice to the user rather than guess (ui-direction.md, "Nothing changes on
+  a guess"): a working-out the user can see and change, not a silent one.
+- **Not every scale is an EDO.** Just intonation, a Scala scale, or a
+  KeyboardEDO custom layout over a subset of steps: the fallback is the
+  pitch classes the clip actually uses, repeated each octave, as the grid's
+  rows. A subset of an EDO still finds the EDO.
+- **When:** as a take becomes a clip, and again for an edited clip. Pitch
+  bend and per-note pitch bend don't count (they move from the note's pitch);
+  only note pitches (7.9, or a Pitch 7.25 before the note-on).
+- **From the controller, when it can say.** A controller that announces its
+  tuning (MIDI-CI Property Exchange, or a convention of KeyboardEDO's) gives
+  the scale exactly, the reference and a non-EDO scale's degrees included.
+  Strong, but only for controllers that do it; the working-out above works
+  with any. When both exist, the announced one wins, and a disagreement
+  with the notes is worth showing.
+
 ## Quantize as a plugin
 
 Added 2026-10-23 (the author): quantize will probably be a plugin, a MIDI

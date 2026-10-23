@@ -323,9 +323,21 @@ than 12-EDO.
 - **The grid uses StageHand's tuning model** (its docs/sequences.md, "EDO
   pitch"): an EDO and the note step 0 sounds; one row per step; rows dark
   where the pitch rounds to a 12-TET black key. A clip's notes land on the
-  nearest row. **Open:** where a clip's tuning is kept (the clip, its track,
-  or the session); for now it's the grid window's, 12-EDO from 60. StageHand's
-  docs suggest reusing KeyEDO's tuning model so the two agree.
+  nearest row.
+- **The clip holds its scale** (the author, 2026-10-23, after a 31-EDO take
+  from KeyboardEDO showed on 12-EDO rows): not the track or the session. As
+  built in milestone 6 it's still the grid window's, 12-EDO from 60, set by
+  hand.
+- **Umpire should work the scale out from the notes** (the author:
+  "ideally"), since a take's pitches are exact (7.9) and an EDO is a lattice
+  they all sit on. It must find the reference too, not only the EDO:
+  KeyboardEDO anchors its EDO at its origin, an A by default, and in 31-EDO
+  middle C isn't on that lattice (C is 7.75 steps above A), so a grid with
+  step 0 at 60 is a quarter step off. How: ideas.md, "Working out a clip's
+  scale".
+- **A controller announcing its tuning** (MIDI-CI, Property Exchange) is a
+  strong idea but depends on the controller; working it out from the notes
+  is the fallback that works with any of them (ideas.md, same section).
 
 ## Deferred
 

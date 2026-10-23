@@ -140,8 +140,9 @@ window: milestone 10 makes it edit the clip. What changed is pitch:
 - Rows are dark where their pitch rounds to a 12-TET black key (StageHand's
   rule: in 31-EDO the 2+3 pattern shows as bands). Each octave from the
   reference is labelled with its note name.
-- Where a clip's tuning is kept (the clip, its track, the session) is open:
-  for now it's the window's, 12-EDO from 60.
+- For now the tuning is the window's, 12-EDO from 60, set by hand. Decided
+  since: the clip holds it, and Umpire works it out from the notes
+  (decisions.md, "Time, clips and pitch").
 
 ## Checked
 
@@ -173,12 +174,14 @@ On the Linux PC (GCC 15.2, X11), 2026-10-23:
 ## Still to do, by the author
 
 - **Build and run on the Mac.**
-- Record by hand: a keyboard (MIDI 1.0) and KeyEDO into "MIDI 2.0 In",
-  punching in and out, and a KeyEDO take in 31-EDO opened in the grid at
-  31-EDO.
+- Record by hand: a keyboard (MIDI 1.0) and KeyboardEDO into "MIDI 2.0 In",
+  punching in and out. (A 31-EDO take from KeyboardEDO, 2026-10-23: the grid
+  opened at 12-EDO, and set to 31 from 60 it's still a quarter step off,
+  because KeyboardEDO's 31-EDO steps are anchored at A. Hence decisions.md,
+  "Time, clips and pitch": the clip holds its scale, worked out from the
+  notes.)
 - Whether the transport, the badges, the status line and the clips look
   right.
-- Decide where a clip's tuning lives (above).
 
 ## Not in it (later)
 
