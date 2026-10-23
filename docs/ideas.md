@@ -179,10 +179,18 @@ halfway there, 0% leaves it alone. Either way the recorded notes stay
 untouched and the strength can be changed later.
 
 **Kept as a maybe (the author): quantize per clip,** idea 9's setting on the
-clip reference, since different clips may want different amounts. Both could
-exist: the plugin does the work, and a clip reference can set its own
-strength (and grid) for it, overriding the track's, the way a reference may
-name its own instrument (ui-direction.md).
+clip reference, since different clips may want different amounts. A clip
+can't override a quantize plugin in its track's chain: the clip's events
+reach that plugin after any per-clip setting, so the two would stack, and
+the track's has the last word. (A clip's own instrument is different: that's
+routing, where the host sends the events, not a change to them.) A per-clip
+amount works only if:
+- quantize happens at the clip, not in the track's chain: the host applies
+  each reference's strength as it reads the clip, which it reads ahead
+  anyway (so no lookahead problem), and a track's setting is only the default
+  for its references; or
+- the track's plugin is told, per event, which clip it came from and that
+  clip's settings, which only Umpire's own plugin could use.
 
 Questions to settle when it's built:
 - **Notes can only move earlier with lookahead.** A plugin that sees events
