@@ -181,7 +181,7 @@ allowed for it, as with MOTU's Digital Performer):
 Decided:
 - **When: right after the first useful version.** v1 stays MIDI-only (Scope,
   above), and the audio work is the next phase (roadmap.md, milestones
-  13-17). But v1 is designed for it:
+  14-18). But v1 is designed for it:
   - the engine can run offline, without the audio device, to render;
   - the session file has room for audio file references.
 - **Printing covers plugin tracks first.** A CLAP instrument track is
@@ -226,13 +226,36 @@ Open (decide in the milestones):
 Done 2026-10-23 (skeleton.md), on the Mac. Also decided there:
 - **StageHand's `MainLoop` is copied into Umpire** (`src/App`), as the
   widgets are. It may move into uw-core with the plugin editor windows
-  (milestone 10), which it serves in StageHand.
+  (milestone 11), which it serves in StageHand.
 - **The view-model rule is kept by the build:** only `umpire-ui` has DGL's
   and ImGui's headers on its include path.
 - **Umpire's colours are provisional** (graphite, an amber accent, a teal
   for notes) until the author settles them.
 - **The plugins' NanoVG widgets are copied when the canvas needs one**, not
   before.
+
+## The track view (decided 2026-10-23)
+
+The author, after seeing milestone 4's grid: the grid won't be the usual way
+MIDI gets in; playing it in will. So:
+- **The main window is a list of track rows**, as StageHand's rack rows. A
+  row says where the track's MIDI comes from (input, channels, groups), is
+  armed to record or plays back, and says what gets its MIDI (a MIDI device
+  or a hosted CLAP plugin). Mute, solo and an activity light, as the rack's.
+- **Each track has a lane** on a timeline beside its row, holding its clips.
+- **Double-clicking a clip opens it in the grid** (the piano roll): the grid
+  is the clip editor, not the main view.
+- The roadmap was reordered for it (roadmap.md, revised 2026-10-23): the
+  track view and MIDI in (5), then transport and recording (6), playback to
+  MIDI outputs (7), CLAP instruments (8), files (9), the piano roll (10).
+
+Open:
+- **Where the grid opens:** its own window, as StageHand's sequence editor
+  does, or a pane under the tracks in the main window (as most DAWs). Ask
+  the author before milestone 6.
+- How much of StageHand's rack-view code (RackViewModel, RackController,
+  the row widgets) carries over, as copies or through uw-core. Decide in
+  milestone 5, after reading it.
 
 ## Deferred
 

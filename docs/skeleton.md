@@ -41,14 +41,16 @@ Dear ImGui's sources only). `UMPIRE_DPF_DIR` is gone. On the Mac,
   on macOS), copied into `src/App`. A 10 ms timer runs the window's
   `idle()` (DGL's events and drawing), as StageHand's rack window runs from
   one. SIGINT and SIGTERM quit. It may move into uw-core with the plugin
-  editor windows (milestone 10), since it serves them in StageHand.
+  editor windows (milestone 11), since it serves them in StageHand.
 - **The view model** (`ViewModel`) is still the spike's note grid: a clip of
   notes in sixteenths, with the edits both layers make (add, select, move,
-  transpose, velocity, length, delete) and a version count. Milestone 5's
+  transpose, velocity, length, delete) and a version count. Milestone 6's
   clip model replaces the notes.
 - **The window** is the spike's, rebuilt: the NanoVG note grid is the
   top-level widget (`GridCanvas`), and the ImGui panels (`Panels`: the menu
-  bar and the inspector) are its one subwidget, covering it.
+  bar and the inspector) are its one subwidget, covering it. It won't stay
+  the main window: that's the track view (decisions.md, "The track view";
+  milestone 5), and the grid becomes the clip editor a clip opens in.
 - **Umpire's own ImGui widget** (`ImGuiWidget`, ui-spike.md proposal 2) is
   adapted from DPF-Widgets' ISC-licensed one, with the spike's fixes built
   in rather than overridden: the routing rules (finding 4), drawing on

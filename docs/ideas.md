@@ -143,7 +143,7 @@ Two ways to carry the voice number in MIDI 2.0:
 
 What it asks of Umpire: the clip model keeps the whole note-on, attribute
 and per-note controllers included, so the controller's choices record and
-play back unchanged (milestone 5's room for per-note data). The piano roll
+play back unchanged (milestone 6's room for per-note data). The piano roll
 shows a note's voice as a property of the note (lanes or colours), so it can
 be seen and edited. For CLAP plugins, uw-core passes UMP through untouched to
 plugins that accept MIDI 2.0. For other CLAP plugins the host could later

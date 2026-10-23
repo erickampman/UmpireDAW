@@ -89,65 +89,94 @@ theme). The NanoVG canvas can use the plugins' NanoVG widgets
 shared (decisions.md, "Milestone 4"). Plugin editors
 keep their own look.
 
-## 5. MIDI in and the clip model (Umpire, maybe uw-core)
+**Revised 2026-10-23, after milestone 4** (decisions.md, "The track
+view"): the main window is the track view, not the grid. Most MIDI arrives
+by playing it in, so track rows (as StageHand's rack rows) come first, and
+the grid becomes the clip editor, opened by double-clicking a clip. Tracks
+moved up from milestone 11, transport and recording from 8, and the files
+and the piano roll moved down.
 
-- A clip model: UMP messages with timestamps in ticks, with room for
-  per-note data (decisions.md, "Deferred"). It has no toolkit types.
-- MIDI input through `uw::midi`: ALSA sequencer UMP. MIDI 1.0 hardware is
-  converted to UMP on the way in.
-- Record into a clip in memory, and show it live in the grid.
+## 5. The track view and MIDI in (Umpire, maybe uw-core)
+
+The main window becomes a list of track rows, as StageHand's rack rows
+(its `docs/rack-view.md`): a view model and a controller with no toolkit
+types, intents from the widgets, the session as the source of truth.
+- A track model: name, input (All, a device; channels and UMP groups, as
+  StageHand's row input side), record arm, mute and solo, and an output
+  that's only a placeholder until milestones 7 and 8.
+- Each row: its name, the input choices, an arm button, mute and solo, the
+  output, and a MIDI activity light. Add, remove and rename tracks.
+- Beside the rows, each track's lane on a timeline (bars and beats), empty
+  until milestone 6.
+- MIDI input through `uw::midi`: ALSA sequencer UMP; MIDI 1.0 hardware is
+  converted to UMP on the way in. Input reaches the tracks whose input
+  matches it.
 - A small MIDI monitor panel (ImGui), to see what arrives from KeyEDO.
+- The milestone 4 grid stays reachable (View menu) until milestone 6 gives
+  it clips to open.
 
-## 6. Files: MIDI Clip Files and the session (Umpire)
+## 6. Transport, the clip model and recording (Umpire)
 
-- Read and write standard MIDI Clip Files (M2-116-U), with tests that
-  round-trip clips, including Pitch 7.9 notes.
-- Umpire's session file (JSON, as StageHand's files are): tracks and clip
-  references. Leave room for audio file references (decisions.md, "Audio";
-  milestones 14-16).
-- Open and Save from the menu, through DPF's file browser or StageHand's
-  zenity/kdialog approach.
+- Umpire's transport: play, stop, record, locate, and a tempo, with a
+  position in ticks. The toolbar shows it.
+- A clip model: UMP messages with timestamps in ticks, with room for
+  per-note data (decisions.md, "Deferred"). No toolkit types.
+- Recording: while recording, each armed track records what its input
+  passes into a new clip on its lane, drawn as it grows.
+- Clips on the lanes: select, move along the lane, delete. Double-clicking a
+  clip opens it in the grid (milestone 4's), showing its notes.
 
-## 7. The piano roll (Umpire)
-
-Bring StageHand's sequence editor drawing to Umpire's canvas, editing the
-clip model: select, move, resize, delete, velocity, undo. Show Pitch 7.9
-notes on an EDO grid, as StageHand does. Include a plan for showing per-note
-pitch bend and controllers later (decisions.md, "Deferred").
-
-## 8. Transport and playback to MIDI outputs (uw-core, then Umpire)
+## 7. Playback to MIDI outputs (uw-core, then Umpire)
 
 - ALSA sequencer UMP **output** in `uw::midi` (StageHand only has input).
-- Umpire's transport: play, stop, locate, loop, and a tempo. A scheduler
-  that sends a clip's UMP to an output on time, on its own thread.
+- A track's output can be a MIDI device. A scheduler, on its own thread,
+  sends the tracks' clips to their outputs on time; loop and locate.
 - Play to hardware and to KeyEDO's synths. The author tests anything
   audible.
 
-## 9. Hosting CLAP instruments (Umpire)
+## 8. Hosting CLAP instruments (Umpire)
 
-- JACK audio through `uw::audio`, and one CLAP instrument per track through
-  `uw::clap-host`. The transport feeds the plugin's events, with
+- JACK audio through `uw::audio`, and a track's output can be a CLAP
+  instrument through `uw::clap-host`, chosen from the scanned plugins in its
+  row. The transport and the live input feed the plugin's events, with
   sample-accurate timing, as StageHand's engine does.
 - Translate MIDI 2.0 to MIDI 1.0 only for plugins that need it (`uw::ump`).
 - Design the engine so it can also run offline, driven by a render loop
-  instead of the audio device. Milestone 13 builds on that, for printing and
+  instead of the audio device. Milestone 14 builds on that, for printing and
   the mixdown (decisions.md, "Audio").
 
-## 10. Plugin editor windows (uw-core, then Umpire)
+## 9. Files: MIDI Clip Files and the session (Umpire)
+
+- Read and write standard MIDI Clip Files (M2-116-U), with tests that
+  round-trip clips, including Pitch 7.9 notes.
+- Umpire's session file (JSON, as StageHand's files are): tracks, their
+  inputs and outputs, and clip references. Leave room for audio file
+  references (decisions.md, "Audio"; milestones 15-17).
+- Open and Save from the menu, through DPF's file browser or StageHand's
+  zenity/kdialog approach.
+
+## 10. The clip editor: the piano roll (Umpire)
+
+Bring StageHand's sequence editor drawing to the grid that a clip opens in,
+editing the clip model: select, move, resize, delete, velocity, undo. Show
+Pitch 7.9 notes on an EDO grid, as StageHand does. Include a plan for showing
+per-note pitch bend and controllers later (decisions.md, "Deferred").
+
+## 11. Plugin editor windows (uw-core, then Umpire)
 
 Move StageHand's plugin editor window (X11 embedding; `EditorWindowMac` for
-later) into uw-core, and open editors from Umpire's track list. Plugin
-state is saved in the session file.
+later) into uw-core, and open editors from a track's row. Plugin state is
+saved in the session file.
 
-## 11. Tracks, UMP groups and the arrangement (Umpire)
+## 12. UMP groups and the arrangement (Umpire)
 
 - A track is a view over a range of UMP groups (decisions.md, idea 5), with
-  routing from inputs and to outputs by group.
-- The arrangement: a linear timeline of clip references, with transforms on
-  the reference (idea 9): offset, transpose, loop.
-- An arrangement view on the canvas, above or beside the piano roll.
+  routing from inputs and to outputs by group: milestone 5's input choices,
+  carried through to the outputs.
+- The arrangement: the lanes' clips become clip references, with transforms
+  on the reference (idea 9): offset, transpose, loop.
 
-## 12. First useful version (Umpire)
+## 13. First useful version (Umpire)
 
 The decisions.md scope from end to end with KeyEDO: record, edit, play to a
 plugin and to hardware, save, reopen. Fix what that turns up. Next comes the
@@ -158,7 +187,7 @@ audio phase (below). Where the macOS port fits is decided then.
 Decided 2026-10-14 (decisions.md, "Audio: printing, mixdown, playback").
 Plugin tracks come first; hardware comes last.
 
-### 13. The mixer and offline rendering (Umpire)
+### 14. The mixer and offline rendering (Umpire)
 
 - Per-track gain, pan, mute and solo, and a master bus, in the engine and on
   screen (ImGui).
@@ -167,7 +196,7 @@ Plugin tracks come first; hardware comes last.
   compare offline and real-time renders of the same session, in memory and
   silent.
 
-### 14. Printing a plugin track (Umpire)
+### 15. Printing a plugin track (Umpire)
 
 - Render a CLAP instrument track to an audio file (WAV, 32-bit float, the
   session's rate) in the session's folder, linked to its track.
@@ -178,7 +207,7 @@ Plugin tracks come first; hardware comes last.
   it is until the user prints again.
 - Choose the WAV library (decisions.md, "Audio", open questions).
 
-### 15. The track's audio view (Umpire)
+### 16. The track's audio view (Umpire)
 
 - A printed track has two views, MIDI and audio (its waveform, from a peak
   cache so long files draw fast), stacked and in time with each other.
@@ -186,19 +215,19 @@ Plugin tracks come first; hardware comes last.
 - Swapping them: a click on the edge that shows, and a key.
 - Decide whether what plays (audio or instrument) follows the view on top.
 
-### 16. Audio playback and the mixdown (Umpire)
+### 17. Audio playback and the mixdown (Umpire)
 
 - Play printed audio in the transport, in place of the instrument when
   chosen (freeing the plugin).
 - Mix the session to a file through the mixer (offline), with a choice of
   formats, and play the mix in the app.
 
-### 17. Printing hardware tracks (uw-core, then Umpire)
+### 18. Printing hardware tracks (uw-core, then Umpire)
 
 - Audio inputs in `uw::audio`: JACK capture ports, CoreAudio input.
 - Record a hardware or KeyEDO track's audio in real time while its MIDI
   plays, with latency compensation (measured round trip), into the same kind
-  of print as milestone 14.
+  of print as milestone 15.
 - Audible: the author tests it.
 
 ## Outside Umpire's roadmap

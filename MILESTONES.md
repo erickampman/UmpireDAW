@@ -12,17 +12,18 @@
 ## M2: MIDI DAW core
 - [x] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule (Mac 2026-10-23; Linux build pending)
 - [x] House look and feel from the start: KeyboardEDO's Widgets in Umpire, DejaVu Sans (colours provisional)
-- [ ] MIDI in: ALSA sequencer UMP, clip model (UMP ticks, per-note data), live record to grid
+- [ ] Track view and MIDI in: track rows (input, channels/groups, arm, mute/solo, output, activity), lanes, ALSA UMP input, monitor
+- [ ] Transport and recording: play/stop/record/tempo, clip model (UMP ticks, per-note data), armed tracks record clips on lanes; double-click opens the grid
 - [ ] Clip model holds per-key Pitch 7.25 with no note; keep Per-Note Management Reset when recording
-- [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs
-- [ ] Piano roll: select, move, resize, delete, velocity, undo; Pitch 7.9 on EDO grid
-- [ ] Transport and MIDI out: ALSA UMP output in uw-core, play/stop/loop/tempo, scheduler
+- [ ] Playback to MIDI outputs: ALSA UMP output in uw-core, track output to a device, scheduler, loop/locate
 - [ ] Chase per-key Pitch 7.25 on play, seek and loop wrap (the synths keep it as a tuning table)
 
 ## M3: Plugin hosting and first release
-- [ ] CLAP instruments: JACK audio via uw-core, one plugin per track, sample-accurate timing
-- [ ] Plugin editor windows: move X11 embedding from StageHand into uw-core, open from track list
-- [ ] Tracks and arrangement: UMP groups per track, linear clip timeline, clip transforms
+- [ ] CLAP instruments: track output to a plugin, JACK audio via uw-core, sample-accurate timing, offline-capable engine
+- [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs
+- [ ] Clip editor (piano roll): select, move, resize, delete, velocity, undo; Pitch 7.9 on EDO grid
+- [ ] Plugin editor windows: move X11 embedding from StageHand into uw-core, open from a track's row
+- [ ] UMP groups and arrangement: tracks over group ranges, clip references with transforms
 - [ ] First useful version: record from KeyEDO, edit, play to plugin and hardware, save/reopen
 
 ## M4: Audio
