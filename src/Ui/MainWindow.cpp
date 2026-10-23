@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <thread>
 #include <utility>
 
 #include "Application.hpp"
@@ -75,11 +76,14 @@ void place(dgl::Window& window, const char* title, double w, double h) {
 
 } // namespace
 
-// A clip's grid window: milestone 4's grid, showing the clip's notes. Edits
-// stay in the window until milestone 10 makes the grid edit the clip.
+// A clip's grid window: milestone 4's grid, showing the clip's notes in its
+// scale. Edits stay in the window until milestone 10 makes the grid edit the
+// clip; the scale is the clip's, changed through the controller.
 struct GridWindow {
-    GridWindow(dgl::Application& app, const std::shared_ptr<const Clip>& clip) : window(app) {
+    GridWindow(dgl::Application& app, TrackController& controller, ClipRefId r, const std::shared_ptr<const Clip>& clip)
+        : ref(r), seen(clip), window(app) {
         model.showClip(clip);
+        model.chooseScale = [&controller, r](int edo, int reference) { controller.setClipScale(r, Scale{edo, reference}); };
         {
             const dgl::Window::ScopedGraphicsContext context(window);
             canvas = std::make_unique<GridCanvas>(window, model, probe);
@@ -94,6 +98,25 @@ struct GridWindow {
     }
     bool closing() const { return window.closedByUser || canvas->panels().closeRequested; }
 
+    // The clip as the controller has it now: a new scale (or an undo) makes a
+    // new clip, which the window follows.
+    void follow(const std::shared_ptr<const Clip>& clip) {
+        if (!clip || clip == seen) return;
+        seen = clip;
+        if (model.showingClip()) {
+            model.showClip(clip);
+        } else {   // edited: the notes keep their pitch in the new scale
+            model.setTuning(clip->scale.edo, clip->scale.referenceNote);
+            model.scaleFit        = clip->scaleFit;
+            model.scaleCandidates = clip->scaleCandidates;
+            model.touch();
+        }
+        canvas->panels().wake();
+        canvas->repaint();
+    }
+
+    ClipRefId                   ref;
+    std::shared_ptr<const Clip> seen;
     GridModel                   model;
     Probe                       probe;
     Window                      window;
@@ -161,10 +184,11 @@ void MainWindow::idle() {
     if (const ClipRefId ref = std::exchange(m.canvas->openRequested, 0); ref != 0) {
         if (const auto clip = m.controller.clip(ref)) {
             auto& grid = m.grids[clip->id];
-            if (!grid) grid = std::make_unique<GridWindow>(m.app, clip);
+            if (!grid) grid = std::make_unique<GridWindow>(m.app, m.controller, ref, clip);
             else grid->window.focus();
         }
     }
+    for (auto& [id, grid] : m.grids) grid->follow(m.controller.clip(grid->ref));
     for (auto it = m.grids.begin(); it != m.grids.end();) {
         if (it->second->canvas->panels().quitRequested) m.quit = true;
         if (it->second->closing()) it = m.grids.erase(it);
@@ -217,6 +241,35 @@ int MainWindow::selfTest(const std::string& dir) {
                        grid.model.notes.size() == notesOf(clip->events, clip->length).size();
     std::printf("%s  the clip's grid shows its notes: %zu\n", shows ? "PASS" : "FAIL", grid.model.notes.size());
     if (!shows) status = 1;
+    const auto check = [&status](const char* what, bool ok) {
+        std::printf("%s  %s\n", ok ? "PASS" : "FAIL", what);
+        if (!ok) status = 1;
+    };
+    check("it opens in the clip's scale, worked out",
+          grid.model.edo == clip->scale.edo && grid.model.referenceNote == clip->scale.referenceNote &&
+              grid.model.scaleFit == ScaleFit::WorkedOut);
+    grid.model.chooseScale(31, 57);   // as the panel does when a slider is let go
+    for (int i = 0; i < 5; ++i) pump();
+    check("a scale chosen in the grid is the clip's, and the grid follows it",
+          m.controller.clip(ref)->scale == (Scale{31, 57}) && grid.model.edo == 31 && grid.model.referenceNote == 57 &&
+              grid.model.scaleFit == ScaleFit::Chosen && m.controller.view().undoLabel == "Set scale");
+    const auto settle = [&](int ms) {   // time for the window to draw
+        for (int i = 0; i < ms / 5; ++i) {
+            pump();
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        }
+    };
+    settle(300);   // a new window's first frames are ImGui laying out
+    grid.canvas->panels().captureNextFrame(dir + "/g00-31edo.ppm");
+    grid.canvas->panels().wake(1);
+    for (int i = 0; i < 40; ++i) {
+        pump();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::printf("      screenshot %s/g00-31edo.ppm\n", dir.c_str());
+    m.controller.undo();
+    for (int i = 0; i < 5; ++i) pump();
+    check("undo, and the grid follows back", grid.model.edo == clip->scale.edo && grid.model.scaleFit == ScaleFit::WorkedOut);
     // The grid's own checks start from an empty grid: they're about input, not the clip.
     grid.model.clear();
     grid.model.clipName = "Untitled clip";

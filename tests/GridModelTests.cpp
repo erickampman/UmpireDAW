@@ -93,7 +93,7 @@ int main() {
         check("edited, a new tuning keeps each note's pitch on the nearest row",
               m.notes[1].pitch == 61 && m.notes[0].pitch == 60 && m.notes[3].pitch == 72);
         m.setTuning(1000, 200);
-        check("the tuning stays in range", m.edo == GridModel::kMaxEdo && m.referenceNote == 127);
+        check("the tuning stays in range", m.edo == Scale::kMaxEdo && m.referenceNote == 127);
     }
     {
         // A note's pitch: its 7.9 attribute; else the key's Pitch 7.25, until a reset; else its number.

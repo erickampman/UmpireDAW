@@ -135,6 +135,7 @@ void TrackController::finishTakes(Tick at) {
         for (const auto& [key, on] : take.held)
             clip->events.push_back(
                 ClipEvent{clip->length, ump::midi2NoteOff(ump::group(on), ump::channel(on), ump::noteNumber(on), 0)});
+        workOutScale(*clip);
         made.emplace_back(take.track, ClipRef{nextRef++, std::move(clip), take.start});
     }
     takes.clear();
@@ -331,6 +332,23 @@ void TrackController::moveClip(ClipRefId ref, Tick start) {
         for (Track& t : s.tracks)
             for (ClipRef& r : t.clips)
                 if (r.id == ref) r.start = std::max<Tick>(0, start);
+    });
+}
+
+// A clip never changes once made: the new scale is a copy (with the same id,
+// so its grid window stays its own), and every reference to the old one moves
+// to it.
+void TrackController::setClipScale(ClipRefId ref, const Scale& scale) {
+    const auto old = clip(ref);
+    if (!old || (old->scale == scale && old->scaleFit == ScaleFit::Chosen)) return;
+    auto copy      = std::make_shared<Clip>(*old);
+    copy->scale    = Scale{std::clamp(scale.edo, Scale::kMinEdo, Scale::kMaxEdo), std::clamp(scale.referenceNote, 0, 127)};
+    copy->scaleFit = ScaleFit::Chosen;
+    const std::shared_ptr<const Clip> made = std::move(copy);
+    command("Set scale", [&](Session& s) {
+        for (Track& t : s.tracks)
+            for (ClipRef& r : t.clips)
+                if (r.clip == old) r.clip = made;
     });
 }
 

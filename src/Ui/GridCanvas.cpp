@@ -34,7 +34,15 @@ GridCanvas::GridCanvas(dgl::Window& window, GridModel& m, Probe& p) : NanoTopLev
     loadSharedResources();   // DGL's built-in font (DejaVu Sans)
     imgui = std::make_unique<GridPanels>(this, model, probe);
     imgui->setSize(getWidth(), getHeight());
-    scrollY = rowY(model.rowFor(72 << 9)) - 40;   // C5 near the top
+    // A clip's notes in the middle; an empty grid with C5 near the top.
+    if (model.notes.empty()) {
+        scrollY = rowY(model.rowFor(72 << 9)) - 40;
+    } else {
+        double sum = 0;
+        for (const GridNote& n : model.notes) sum += n.pitch;
+        centreOn(static_cast<int>(std::lround(sum / static_cast<double>(model.notes.size()))));
+    }
+    tunedEdo = model.edo, tunedReference = model.referenceNote;
 }
 
 GridCanvas::~GridCanvas() = default;
@@ -64,6 +72,10 @@ int GridCanvas::stepAt(float x) {
     return static_cast<int>(std::floor((x - gridX()) / kStepW));
 }
 
+void GridCanvas::centreOn(int row) {
+    scrollY = rowY(row) + kRowH / 2 - gridH() / 2;
+}
+
 void GridCanvas::changed() {
     imgui->wake();   // the inspector shows the selection
     repaint();
@@ -76,8 +88,14 @@ void GridCanvas::onNanoDisplay() {
     scale(s, s);
     const float W = static_cast<float>(getWidth()) / s, H = static_cast<float>(getHeight()) / s;
     const float gx = gridX(), gy = gridY(), gw = gridW(), gh = gridH();
-    // A new tuning (the panel's) changes the rows: keep the scroll inside them.
-    scrollY = std::clamp(scrollY, 0.0f, std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gh));
+    // A new tuning changes the rows: keep the pitch that was in the middle
+    // there, and the scroll inside them.
+    if (model.edo != tunedEdo || model.referenceNote != tunedReference) {
+        centreOn(model.rowFor(static_cast<std::uint16_t>(std::lround(std::clamp(centrePitch, 0.0, 127.99) * 512))));
+        tunedEdo = model.edo, tunedReference = model.referenceNote;
+    }
+    scrollY     = std::clamp(scrollY, 0.0f, std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gh));
+    centrePitch = model.rowSemitones(std::clamp(pitchAt(gy + gh / 2), 0, model.rows() - 1));
 
     beginPath();
     rect(0, 0, W, H);

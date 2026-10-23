@@ -89,7 +89,7 @@ int GridModel::rowFor(std::uint16_t pitch79) const noexcept {
 }
 
 void GridModel::setTuning(int e, int reference) {
-    e         = std::clamp(e, kMinEdo, kMaxEdo);
+    e         = std::clamp(e, Scale::kMinEdo, Scale::kMaxEdo);
     reference = std::clamp(reference, 0, 127);
     if (e == edo && reference == referenceNote) return;
     // Edited notes keep their pitch, on the new tuning's nearest row.
@@ -97,8 +97,8 @@ void GridModel::setTuning(int e, int reference) {
     for (int r = 0; r < rows(); ++r) pitches[static_cast<std::size_t>(r)] = rowSemitones(r);
     edo           = e;
     referenceNote = reference;
-    if (shown) {   // still the clip, unedited: shown again
-        showClip(shown);
+    if (shown) {   // still the clip, unedited: laid out again
+        layOut();
         return;
     }
     for (GridNote& n : notes) n.pitch = rowFor(static_cast<std::uint16_t>(std::lround(pitches[static_cast<std::size_t>(n.pitch)] * 512)));
@@ -107,8 +107,16 @@ void GridModel::setTuning(int e, int reference) {
 
 void GridModel::showClip(std::shared_ptr<const Clip> source) {
     if (!source) return;
-    shown             = std::move(source);
-    const Clip& clip  = *shown;
+    shown           = std::move(source);
+    edo             = shown->scale.edo;
+    referenceNote   = shown->scale.referenceNote;
+    scaleFit        = shown->scaleFit;
+    scaleCandidates = shown->scaleCandidates;
+    layOut();
+}
+
+void GridModel::layOut() {
+    const Clip&    clip = *shown;
     constexpr Tick step = kTicksPerQuarter / 4;
     const auto     steps16 = [](Tick t) { return static_cast<int>((t + step / 2) / step); };
     clipName = clip.name;

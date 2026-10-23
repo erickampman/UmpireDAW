@@ -51,6 +51,7 @@ private:
     int   pitchAt(float y);
     int   stepAt(float x);
     float rowY(int pitch);
+    void  centreOn(int row);   // scrolls so `row` is in the middle
     void  changed();   // the model changed here: redraw, and the panels too
 
     static constexpr float kKeysW = 44, kRowH = 14, kStepW = 22;
@@ -62,6 +63,9 @@ private:
     std::unique_ptr<GridPanels> imgui;
     float                   scrollY  = 0;   // logical pixels from the top row
     int                     hoverRow = -1;
+    // The tuning last drawn, and the pitch in the middle of the view then.
+    int                     tunedEdo = 12, tunedReference = 60;
+    double                  centrePitch = 60;
     Drag                    drag     = Drag::None;
     int                     grabStep = 0, grabPitch = 0;   // where in the note the drag took it
 };

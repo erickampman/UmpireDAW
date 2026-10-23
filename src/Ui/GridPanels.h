@@ -47,6 +47,7 @@ private:
     float      menuH  = 0;
     float      panelW = 0;
     char       nameBuf[128] = {};
+    bool       tuningPending = false;   // a tuning dragged, for the clip when let go
 };
 
 } // namespace umpire::ui

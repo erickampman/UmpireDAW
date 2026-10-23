@@ -21,6 +21,7 @@ build/umpire-daw --self-test /tmp/shots    # both windows, scripted (silent; don
 | Piece | Where | Toolkit |
 |---|---|---|
 | `Clip`, `ClipEvent`, `ClipRef`, `NoteSpan`, `notesOf`, ticks | `src/App/Clip.*` | no |
+| `Scale`, `workOutScale`: a clip's scale from its notes | `src/App/Scale.*` | no |
 | `Session`, `Track` | `src/App/Session.h` (was `Track.h`) | no |
 | `History`: undo and redo | `src/App/History.h` | no |
 | `Transport`: play, stop, record, locate, tempo | `src/App/Transport.h` | no |
@@ -140,10 +141,37 @@ window: milestone 10 makes it edit the clip. What changed is pitch:
 - Rows are dark where their pitch rounds to a 12-TET black key (StageHand's
   rule: in 31-EDO the 2+3 pattern shows as bands). Each octave from the
   reference is labelled with its note name.
-- For now the tuning is the window's, 12-EDO from 60, set by hand. Decided
-  since: the clip holds it, and Umpire works it out from the notes
-  (decisions.md, "Time, clips and pitch").
+- **The clip holds its scale** (decisions.md, "Time, clips and pitch"),
+  worked out from its notes as a take becomes a clip (below), and the grid
+  opens in it, centred on the clip's notes. The Tuning section says how it
+  came about: worked out, set by hand, "Not sure: 23, 31, ... fit" (too few
+  notes), or "No EDO fits" (notes on the nearest rows of 12-EDO).
+- **Changing it in the grid changes the clip's.** A slider previews as it's
+  dragged; letting go makes one "Set scale" command, a new clip (same id,
+  shared by every reference to the old one). Undo puts the old scale back,
+  and the open grid follows either way. A retune keeps the pitch that was in
+  the middle of the view there.
 
+### Working out a clip's scale
+
+`workOutScale` (ideas.md, "Working out a clip's scale"), built the same day
+after the author's 31-EDO take from KeyboardEDO:
+- Every EDO from 5 to 72 is tried: it fits when every note's pitch is a whole
+  number of its steps from the others, and its lattice meets a whole MIDI
+  note (KeyboardEDO anchors at a 12-EDO pitch), within 1.5/512 of a semitone
+  (7.9's rounding, with room for a sender that truncates).
+- 12-EDO wins whenever it fits (a whole-tone tune fits 6 too). Otherwise the
+  EDOs that fit, leaving out multiples of a smaller one, are the candidates:
+  one is worked out; several is "unsure", the smallest chosen for the user to
+  confirm; none is "no fit", 12-EDO from 60.
+- The reference is the MIDI note on the lattice nearest 60: 57 for 31-EDO
+  from A (KeyboardEDO's default), 64 from E; for an EDO sharing a factor with
+  12 (24), 60 itself.
+- How sure, measured over random phrases in every EDO from 5 to 72 (except
+  12's divisors and multiples), 50 each: two notes right 92%, unsure 6%;
+  three, right 99%; four, 99.7%; six or more, every time. The misses are
+  phrases whose notes are all 12-EDO pitches, where 12-EDO is a fair answer.
+- Every scale is an EDO for now (decisions.md); pitch bends don't count.
 ## Checked
 
 On the Linux PC (GCC 15.2, X11), 2026-10-23:
@@ -152,14 +180,18 @@ On the Linux PC (GCC 15.2, X11), 2026-10-23:
   commands and undo, recording, upconversion, Pitch 7.25 and Per-Note
   Management kept, held notes ended, punching in and out, recording with
   nothing armed, moving and deleting clips, tempo, removing and restoring
-  tracks) and `test-grid-model` (with 31-EDO clips, retuning, and pitch from
-  7.9, 7.25 and a reset) pass;
+  tracks, then a 31-EDO take's scale worked out and set by hand: 49 checks
+  now), `test-grid-model` (with 31-EDO clips, retuning, and pitch from 7.9,
+  7.25 and a reset) and `test-scale` (12, whole-tone, 31 from A and from E,
+  19, 24, 53, octaves only, one note, no fit, truncated pitches) pass;
 - `--self-test` at scale factors 1, 1.5 and 2: the track view's checks (the
   empty prompt, playing to make a track, the touched row's controls and the
   untouched row's lack of them, undo and redo keys, the Edit menu, recording
   three notes with the record key and the take growing, frames while
   playing, Space and Home, selecting, dragging, undoing, deleting and
-  restoring a clip, a ruler click), then a recorded clip's grid window
+  restoring a clip, a ruler click), then a recorded clip's grid window,
+  opening in its worked-out scale, following a scale chosen in it and an
+  undo of that (screenshot `g00-31edo.ppm`: the clip at 31-EDO from A),
   showing its notes and milestone 4's grid checks. All pass.
 - The screenshots looked right: the prompt, the sparse rows with an M badge,
   the red take, a selected clip.

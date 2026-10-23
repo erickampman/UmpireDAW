@@ -171,7 +171,9 @@ side is in plugins-roadmap.md (Tier 3).
 
 ## Working out a clip's scale
 
-Added 2026-10-23. The clip holds its scale, and Umpire should work it out
+Added 2026-10-23, and built the same day for EDOs (recording.md, "Working out
+a clip's scale", with how sure it is); a controller announcing its tuning is
+not built. The clip holds its scale, and Umpire should work it out
 from the notes rather than have it set by hand (decisions.md, "Time, clips
 and pitch"). A take's pitches are exact, in 7.9 (KeyboardEDO rounds each to
 1/512 of a semitone), so an EDO shows as a lattice every note sits on.

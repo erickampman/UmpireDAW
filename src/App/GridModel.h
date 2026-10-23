@@ -11,6 +11,7 @@
 // here.
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,6 @@ struct GridNote {
 class GridModel {
 public:
     static constexpr int kMinVelocity = 1, kMaxVelocity = 127;
-    static constexpr int kMinEdo = 5, kMaxEdo = 72;
 
     std::string           clipName = "Untitled clip";
     // The grid's tuning, as StageHand's sequences (its docs/sequences.md, "EDO
@@ -37,6 +37,12 @@ public:
     // so at 12-EDO row n is note n.
     int edo           = 12;
     int referenceNote = 60;
+    // How the shown clip's scale came about (Clip::scaleFit), for the panel.
+    ScaleFit         scaleFit = ScaleFit::Default;
+    std::vector<int> scaleCandidates;
+    // Set: the panel's tuning is the clip's to change (a command), and this
+    // is called with it when the user lets go. Unset: the window's own.
+    std::function<void(int edo, int referenceNote)> chooseScale;
     std::vector<GridNote> notes;
     int                   selected = -1;   // index into notes, or -1
     int                   steps    = 64;   // four bars of sixteenths
@@ -50,8 +56,11 @@ public:
     double rowSemitones(int row) const noexcept { return referenceNote + (row - referenceRow()) * 12.0 / edo; }
     // The row nearest a pitch in 7.9.
     int    rowFor(std::uint16_t pitch79) const noexcept;
-    // A new tuning: the clip shown (if any) is shown again in it.
+    // A new tuning: the clip shown (if any, unedited) is laid out again in it;
+    // edited notes keep their pitch on the nearest row.
     void   setTuning(int edo, int referenceNote);
+    // Whether the notes are still the shown clip's, unedited.
+    bool   showingClip() const noexcept { return shown != nullptr; }
 
     GridNote*       selectedNote() noexcept;
     const GridNote* selectedNote() const noexcept;
@@ -66,9 +75,10 @@ public:
     void deleteSelected();
     void clear();
     void newClip();
-    // The clip's notes, each to the nearest sixteenth and the nearest row (its
-    // pitch is its 7.9: notesOf()), and its name; the grid as long as the
-    // clip, in whole bars. Edits after are the window's, not the clip's.
+    // The clip's notes in its scale, each to the nearest sixteenth and the
+    // nearest row (its pitch is its 7.9: notesOf()), and its name; the grid as
+    // long as the clip, in whole bars. Edits after are the window's, not the
+    // clip's.
     void showClip(std::shared_ptr<const Clip> clip);
 
     // The selected note, kept inside the grid. Each does nothing without one.
@@ -78,6 +88,7 @@ public:
     void setSelectedLength(int length);
 
 private:
+    void layOut();   // the shown clip's notes, in the current tuning
     void edited() {
         shown.reset();
         touch();

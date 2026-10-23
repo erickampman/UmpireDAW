@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "App/Scale.h"
 #include "uw/ump/MidiMessage.h"
 
 namespace umpire {
@@ -42,7 +43,15 @@ struct Clip {
     std::string            name;
     Tick                   length = 0;
     std::vector<ClipEvent> events;   // in time order
+    // Its scale (decisions.md, "Time, clips and pitch"): worked out from its
+    // notes when it's made (workOutScale), or set by the user.
+    Scale                  scale;
+    ScaleFit               scaleFit = ScaleFit::Default;
+    std::vector<int>       scaleCandidates;   // the EDOs that fit (workOutScale)
 };
+
+// The scale `clip`'s notes sit on, into its scale fields.
+void workOutScale(Clip& clip);
 
 // A note as the lanes and the grid draw it: from its note-on to its note-off,
 // at the pitch it sounds. No tuning is assumed (decisions.md, "Pitch"): the

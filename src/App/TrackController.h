@@ -57,6 +57,8 @@ public:
     void    setSoloed(TrackId id, bool soloed);
     void    setTempo(double bpm);
     void    moveClip(ClipRefId ref, Tick start);
+    // A new scale for the clip `ref` places, for every reference to it.
+    void    setClipScale(ClipRefId ref, const Scale& scale);
     void    deleteClip(ClipRefId ref);
     void    undo();
     void    redo();

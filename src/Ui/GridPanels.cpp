@@ -103,9 +103,31 @@ void GridPanels::inspector(float W, float H) {
         const float em = ImGui::GetFontSize();
         ImGui::PushItemWidth(-4.5f * em);
         int edo = model.edo, reference = model.referenceNote;
-        if (sliderRow("EDO", edo, GridModel::kMinEdo, GridModel::kMaxEdo, colour::kNote)) model.setTuning(edo, reference);
-        if (sliderRow("Step 0 at", reference, 0, 127, colour::kNote)) model.setTuning(model.edo, reference);
+        bool moved = sliderRow("EDO", edo, Scale::kMinEdo, Scale::kMaxEdo, colour::kNote);
+        moved |= sliderRow("Step 0 at", reference, 0, 127, colour::kNote);
         ImGui::PopItemWidth();
+        // A drag shows here as it goes; letting go makes it the clip's, once.
+        if (moved) {
+            model.setTuning(edo, reference);
+            tuningPending = model.chooseScale != nullptr;
+        }
+        if (tuningPending && !ImGui::IsAnyItemActive()) {
+            tuningPending = false;
+            model.chooseScale(model.edo, model.referenceNote);
+        }
+        switch (model.scaleFit) {
+        case ScaleFit::WorkedOut: ImGui::TextDisabled("Worked out from the notes"); break;
+        case ScaleFit::Chosen: ImGui::TextDisabled("Set by hand"); break;
+        case ScaleFit::NoFit: ImGui::TextColored(colour::kAccent, "No EDO fits: notes on the nearest rows"); break;
+        case ScaleFit::Unsure: {
+            std::string fits;
+            for (int c : model.scaleCandidates) fits += (fits.empty() ? "" : ", ") + std::to_string(c);
+            ImGui::TextColored(colour::kAccent, "Not sure: %s fit", fits.c_str());
+            ImGui::TextDisabled("Too few notes to tell. Set the EDO.");
+            break;
+        }
+        case ScaleFit::Default: break;
+        }
         if (const GridNote* n = model.selectedNote())
             ImGui::TextDisabled("Step %d: %.2f semitones", n->pitch - model.referenceRow(), model.rowSemitones(n->pitch));
     }

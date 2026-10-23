@@ -45,4 +45,13 @@ std::vector<NoteSpan> notesOf(const std::vector<ClipEvent>& events, Tick end) {
     return notes;
 }
 
+void workOutScale(Clip& clip) {
+    std::vector<std::uint16_t> pitches;
+    for (const NoteSpan& n : notesOf(clip.events, clip.length)) pitches.push_back(n.pitch79);
+    const ScaleGuess guess = workOutScale(pitches);
+    clip.scale           = guess.scale;
+    clip.scaleFit        = guess.fit;
+    clip.scaleCandidates = guess.candidates;
+}
+
 } // namespace umpire

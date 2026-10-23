@@ -81,6 +81,7 @@ add_library(umpire-app STATIC
     src/App/GridModel.cpp
     src/App/MidiDescribe.cpp
     src/App/MidiInputs.cpp
+    src/App/Scale.cpp
     src/App/TrackController.cpp)
 if(APPLE)
     target_sources(umpire-app PRIVATE src/App/MainLoopMac.mm)
@@ -125,3 +126,4 @@ function(umpire_add_test NAME SOURCE)
 endfunction()
 umpire_add_test(test-grid-model       tests/GridModelTests.cpp)
 umpire_add_test(test-track-controller tests/TrackControllerTests.cpp)
+umpire_add_test(test-scale            tests/ScaleTests.cpp)

@@ -3,6 +3,7 @@
 // transport, recording takes into clips, moving and deleting clips, the
 // activity lights and the monitor. Silent, no window, no MIDI hardware.
 
+#include <cmath>
 #include <cstdio>
 #include <string>
 
@@ -205,6 +206,37 @@ int main() {
           c.view().transport.playing && !c.view().transport.recording && c.tracks()[0].clips.size() == 2 &&
               c.tracks()[0].clips[1].start == kTicksPerQuarter * 8);
     c.stop();
+
+    // A 31-EDO take, as KeyboardEDO sends it from its default anchor (A): the
+    // step as the note number, the pitch as a Pitch 7.9 attribute.
+    {
+        c.locate(kTicksPerQuarter * 16);
+        c.record();
+        for (int step : {0, 3, 5, 8, 10, 13, 18}) {
+            const auto pitch = static_cast<std::uint16_t>(std::lround((57 + step * 12.0 / 31) * 512));
+            c.receive(fake.opened[MidiInputs::kVirtualMidi2],
+                      ump::midi2NoteOn(0, 0, static_cast<std::uint8_t>(step + 40), 0x8000, pitch));
+            clock += kBeat / 4;
+            c.receive(fake.opened[MidiInputs::kVirtualMidi2], ump::midi2NoteOff(0, 0, static_cast<std::uint8_t>(step + 40)));
+        }
+        c.tick();
+        c.stop();
+        const ClipRef& take = c.tracks()[0].clips.back();
+        check("a 31-EDO take's scale is worked out as it becomes a clip: 31-EDO, from an A",
+              take.clip->scale == (Scale{31, 57}) && take.clip->scaleFit == ScaleFit::WorkedOut,
+              std::to_string(take.clip->scale.edo) + " from " + std::to_string(take.clip->scale.referenceNote));
+        check("the 12-EDO take's is 12-EDO", c.tracks()[0].clips[0].clip->scale == (Scale{12, 60}));
+        const ClipRefId r       = take.id;
+        const auto      before  = take.clip;
+        c.setClipScale(r, Scale{19, 60});
+        check("setting a clip's scale makes a new clip, set by hand, as one command",
+              c.clip(r) != before && c.clip(r)->scale == (Scale{19, 60}) && c.clip(r)->scaleFit == ScaleFit::Chosen &&
+                  c.clip(r)->id == before->id && c.clip(r)->events.size() == before->events.size() &&
+                  c.view().undoLabel == "Set scale");
+        c.undo();
+        check("undo puts the worked-out scale back", c.clip(r) == before);
+        c.deleteClip(r);
+    }
 
     c.setArmed(t1, false);
     c.record();

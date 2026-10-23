@@ -325,9 +325,10 @@ than 12-EDO.
   where the pitch rounds to a 12-TET black key. A clip's notes land on the
   nearest row.
 - **The clip holds its scale** (the author, 2026-10-23, after a 31-EDO take
-  from KeyboardEDO showed on 12-EDO rows): not the track or the session. As
-  built in milestone 6 it's still the grid window's, 12-EDO from 60, set by
-  hand.
+  from KeyboardEDO showed on 12-EDO rows): not the track or the session.
+  Built the same day (recording.md, "Working out a clip's scale"): worked out
+  as a take becomes a clip; the grid opens in it, and a change there is a
+  "Set scale" command on the clip.
 - **Umpire should work the scale out from the notes** (the author:
   "ideally"), since a take's pitches are exact (7.9) and an EDO is a lattice
   they all sit on. It must find the reference too, not only the EDO:
