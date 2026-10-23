@@ -1,19 +1,19 @@
-#include "App/ViewModel.h"
+#include "App/GridModel.h"
 
 #include <algorithm>
 
 namespace umpire {
 
-GridNote* ViewModel::selectedNote() noexcept {
+GridNote* GridModel::selectedNote() noexcept {
     return selected >= 0 && selected < static_cast<int>(notes.size()) ? &notes[static_cast<std::size_t>(selected)]
                                                                        : nullptr;
 }
 
-const GridNote* ViewModel::selectedNote() const noexcept {
-    return const_cast<ViewModel*>(this)->selectedNote();
+const GridNote* GridModel::selectedNote() const noexcept {
+    return const_cast<GridModel*>(this)->selectedNote();
 }
 
-int ViewModel::noteAt(int pitch, int step) const noexcept {
+int GridModel::noteAt(int pitch, int step) const noexcept {
     for (int i = static_cast<int>(notes.size()) - 1; i >= 0; --i) {
         const GridNote& n = notes[static_cast<std::size_t>(i)];
         if (n.pitch == pitch && step >= n.start && step < n.start + n.length) return i;
@@ -21,7 +21,7 @@ int ViewModel::noteAt(int pitch, int step) const noexcept {
     return -1;
 }
 
-int ViewModel::addNote(int pitch, int step, int length, int velocity) {
+int GridModel::addNote(int pitch, int step, int length, int velocity) {
     if (step < 0 || step >= steps) return -1;
     GridNote n;
     n.length   = std::clamp(length, 1, steps);
@@ -34,32 +34,32 @@ int ViewModel::addNote(int pitch, int step, int length, int velocity) {
     return selected;
 }
 
-void ViewModel::select(int index) noexcept {
+void GridModel::select(int index) noexcept {
     const int next = index >= 0 && index < static_cast<int>(notes.size()) ? index : -1;
     if (next == selected) return;
     selected = next;
     touch();
 }
 
-void ViewModel::deleteSelected() {
+void GridModel::deleteSelected() {
     if (selectedNote() == nullptr) return;
     notes.erase(notes.begin() + selected);
     selected = -1;
     touch();
 }
 
-void ViewModel::clear() {
+void GridModel::clear() {
     notes.clear();
     selected = -1;
     touch();
 }
 
-void ViewModel::newClip() {
+void GridModel::newClip() {
     clear();
     clipName = "Untitled clip";
 }
 
-void ViewModel::moveSelected(int start, int pitch) {
+void GridModel::moveSelected(int start, int pitch) {
     GridNote* n = selectedNote();
     if (n == nullptr) return;
     const int s = std::clamp(start, 0, steps - n->length), p = std::clamp(pitch, 0, kPitches - 1);
@@ -69,11 +69,11 @@ void ViewModel::moveSelected(int start, int pitch) {
     touch();
 }
 
-void ViewModel::transposeSelected(int by) {
+void GridModel::transposeSelected(int by) {
     if (const GridNote* n = selectedNote()) moveSelected(n->start, n->pitch + by);
 }
 
-void ViewModel::setSelectedVelocity(int velocity) {
+void GridModel::setSelectedVelocity(int velocity) {
     GridNote* n = selectedNote();
     if (n == nullptr) return;
     const int v = std::clamp(velocity, kMinVelocity, kMaxVelocity);
@@ -82,7 +82,7 @@ void ViewModel::setSelectedVelocity(int velocity) {
     touch();
 }
 
-void ViewModel::setSelectedLength(int length) {
+void GridModel::setSelectedLength(int length) {
     GridNote* n = selectedNote();
     if (n == nullptr) return;
     const int l = std::clamp(length, 1, steps - n->start);

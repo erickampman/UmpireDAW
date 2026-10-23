@@ -8,6 +8,9 @@ there.
 
 ## Building and running
 
+[building.md](building.md) has the dependencies and steps for both
+platforms; the commands as of milestone 4:
+
 ```bash
 git submodule update --init --recursive
 cmake -S . -B build -G Ninja && ninja -C build
@@ -50,7 +53,8 @@ Dear ImGui's sources only). `UMPIRE_DPF_DIR` is gone. On the Mac,
   top-level widget (`GridCanvas`), and the ImGui panels (`Panels`: the menu
   bar and the inspector) are its one subwidget, covering it. It won't stay
   the main window: that's the track view (decisions.md, "The track view";
-  milestone 5), and the grid becomes the clip editor a clip opens in.
+  milestone 5), and the grid becomes the clip editor a clip opens in. Done
+  in milestone 5 (track-view.md): this window is now the test grid window.
 - **Umpire's own ImGui widget** (`ImGuiWidget`, ui-spike.md proposal 2) is
   adapted from DPF-Widgets' ISC-licensed one, with the spike's fixes built
   in rather than overridden: the routing rules (finding 4), drawing on

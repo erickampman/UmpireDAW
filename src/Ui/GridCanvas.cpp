@@ -4,7 +4,7 @@
 #include <cmath>
 #include <string>
 
-#include "Ui/Panels.h"
+#include "Ui/GridPanels.h"
 
 namespace umpire::ui {
 
@@ -22,9 +22,9 @@ dgl::Color rgb(int r, int g, int b) { return dgl::Color(r, g, b); }
 
 } // namespace
 
-GridCanvas::GridCanvas(dgl::Window& window, ViewModel& m, Probe& p) : NanoTopLevelWidget(window), model(m), probe(p) {
+GridCanvas::GridCanvas(dgl::Window& window, GridModel& m, Probe& p) : NanoTopLevelWidget(window), model(m), probe(p) {
     loadSharedResources();   // DGL's built-in font (DejaVu Sans)
-    imgui = std::make_unique<Panels>(this, model, probe);
+    imgui = std::make_unique<GridPanels>(this, model, probe);
     imgui->setSize(getWidth(), getHeight());
     scrollY = rowY(72) - 40;   // C5 near the top
 }
@@ -47,10 +47,10 @@ bool GridCanvas::inGrid(float x, float y) {
     return x >= gridX() && x < gridX() + gridW() && y >= gridY() && y < gridY() + gridH();
 }
 float GridCanvas::rowY(int pitch) {
-    return static_cast<float>(ViewModel::kPitches - 1 - pitch) * kRowH;
+    return static_cast<float>(GridModel::kPitches - 1 - pitch) * kRowH;
 }
 int GridCanvas::pitchAt(float y) {
-    return ViewModel::kPitches - 1 - static_cast<int>(std::floor((y - gridY() + scrollY) / kRowH));
+    return GridModel::kPitches - 1 - static_cast<int>(std::floor((y - gridY() + scrollY) / kRowH));
 }
 int GridCanvas::stepAt(float x) {
     return static_cast<int>(std::floor((x - gridX()) / kStepW));
@@ -81,7 +81,7 @@ void GridCanvas::onNanoDisplay() {
 
     save();
     scissor(0, gy, gx + gw, gh);
-    for (int pitch = ViewModel::kPitches - 1; pitch >= 0; --pitch) {
+    for (int pitch = GridModel::kPitches - 1; pitch >= 0; --pitch) {
         const float y = gy + rowY(pitch) - scrollY;
         if (y + kRowH < gy || y > gy + gh) continue;
         beginPath();
@@ -117,7 +117,7 @@ void GridCanvas::onNanoDisplay() {
         const GridNote& n = model.notes[i];
         const float     x = gx + static_cast<float>(n.start) * kStepW, y = gy + rowY(n.pitch) - scrollY;
         // The notes' teal, brighter when louder.
-        const float t = 0.45f + 0.55f * static_cast<float>(n.velocity) / ViewModel::kMaxVelocity;
+        const float t = 0.45f + 0.55f * static_cast<float>(n.velocity) / GridModel::kMaxVelocity;
         beginPath();
         roundedRect(x + 1, y + 1, static_cast<float>(n.length) * kStepW - 2, kRowH - 2, 3);
         fillColor(rgb(static_cast<int>(72 * t), static_cast<int>(182 * t), static_cast<int>(196 * t)));
@@ -187,7 +187,7 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
 bool GridCanvas::onScroll(const ScrollEvent& ev) {
     if (NanoTopLevelWidget::onScroll(ev)) return true;
     scrollY = std::clamp(scrollY - static_cast<float>(ev.delta.getY()) * kRowH * 3, 0.0f,
-                         std::max(0.0f, ViewModel::kPitches * kRowH - gridH()));
+                         std::max(0.0f, GridModel::kPitches * kRowH - gridH()));
     repaint();
     return true;
 }

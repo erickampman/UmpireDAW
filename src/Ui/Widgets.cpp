@@ -282,4 +282,39 @@ void endSection() {
     ImGui::Dummy({0, ImGui::GetStyle().ItemSpacing.y * 0.5f});
 }
 
+// --- Umpire's own --------------------------------------------------------------
+
+bool toggle(const char* id, const char* text, bool on, const ImVec4& colour, ImVec2 size) {
+    const bool clicked = ImGui::InvisibleButton(id, size);
+    const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+    const float rounding = std::min(size.x, size.y) * 0.25f;
+    ImDrawList* d = ImGui::GetWindowDrawList();
+    const float lit = litFor();
+    if (on) {
+        const float glow = std::max(2.0f, size.y * 0.18f);
+        d->AddRectFilled({min.x - glow, min.y - glow}, {max.x + glow, max.y + glow}, u32(alpha(colour, 0.16f * lit)),
+                         rounding + glow);
+        d->AddRectFilled(min, max, u32(alpha(colour, std::min(1.0f, 0.78f * lit))), rounding);
+    } else {
+        d->AddRectFilled(min, max, u32(colour::kWell), rounding);
+    }
+    d->AddRect(min, max, u32(alpha(on ? lighten(colour, 0.3f) : colour::kSlate, ImGui::IsItemHovered() ? 0.8f : 0.45f)),
+               rounding);
+    const ImVec2 extent = ImGui::CalcTextSize(text);
+    d->AddText({(min.x + max.x - extent.x) / 2, (min.y + max.y - extent.y) / 2},
+               on ? IM_COL32(20, 20, 24, 255) : u32(lighten(colour, 0.35f)), text);
+    return clicked;
+}
+
+void light(bool lit, const ImVec4& colour, float diameter) {
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    ImGui::Dummy({diameter, diameter});
+    ImDrawList* d = ImGui::GetWindowDrawList();
+    const float r = diameter / 2;
+    const ImVec2 c{at.x + r, at.y + r};
+    d->AddCircleFilled(c, r * 0.62f, u32(colour::kWell));
+    d->AddCircle(c, r * 0.62f, u32(alpha(colour::kSlate, 0.5f)), 0, 1.0f);
+    if (lit) sphere(d, c, r, colour, 1.15f);
+}
+
 } // namespace umpire::ui

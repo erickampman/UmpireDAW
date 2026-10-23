@@ -1,19 +1,23 @@
 // umpire-daw: Umpire, a DAW built on MIDI 2.0's Universal MIDI Packet.
-// Milestone 4's skeleton (docs/skeleton.md): one main window, the NanoVG
-// canvas under the ImGui panels, over the view model, driven by the main loop.
+// Milestone 5 (docs/track-view.md): the main window is the track view, fed by
+// the platform's MIDI input, driven by the main loop.
 //
 //   umpire-daw                   the window
 //   umpire-daw --log-frames      ... printing frames drawn per second
 //   umpire-daw --self-test DIR   scripted input, checks, screenshots in DIR
 
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include "App/MainLoop.h"
-#include "App/ViewModel.h"
+#include "App/MidiInputs.h"
+#include "App/TrackController.h"
 #include "Ui/MainWindow.h"
+#include "uw/midi/PlatformMidiInput.h"
 
 namespace {
 
@@ -39,8 +43,14 @@ int main(int argc, char** argv) {
         }
     }
 
-    umpire::ViewModel model;
-    auto              window = umpire::ui::MainWindow::open(model, options);
+    // MIDI input: ALSA sequencer UMP (Linux) or CoreMIDI (macOS). Without it,
+    // the track view still opens; nothing arrives.
+    std::unique_ptr<uw::PlatformMidiInput> platform = uw::PlatformMidiInput::create("Umpire");
+    umpire::MidiInputs                     inputs(platform.get());
+    inputs.openAll();
+    umpire::TrackController controller(inputs);
+
+    auto window = umpire::ui::MainWindow::open(controller, options);
     if (!window) return 1;
     if (testDir != nullptr) return window->selfTest(testDir);
 
@@ -48,8 +58,11 @@ int main(int argc, char** argv) {
     signalLoop = &loop;
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
-    // The window's events and drawing, as StageHand drives its rack window.
+    // The controller's tick, then the windows' events and drawing, as StageHand
+    // drives its rack window.
+    const auto start = std::chrono::steady_clock::now();
     loop.addTimer(10, [&] {
+        controller.tick(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
         window->idle();
         if (window->closed()) loop.requestQuit();
     });

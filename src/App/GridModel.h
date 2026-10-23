@@ -1,13 +1,13 @@
 #pragma once
 
-// What the main window shows and edits: the canvas and the ImGui panels both
+// What the grid window shows and edits: its canvas and ImGui panels both
 // read and change it, and neither keeps its own copy. No DGL or ImGui types
 // here (decisions.md, "UI": only the drawing layer depends on the toolkit;
 // CMake keeps their headers off umpire-app's include path).
 //
-// For now it is the spike's note grid: one clip of notes in sixteenths.
-// Milestone 5's clip model (UMP in ticks, with room for per-note data)
-// replaces the notes; the window's layout and selection stay here.
+// For now it is the spike's note grid: one clip of notes in sixteenths, in
+// the test grid window. Milestone 6's clip model (UMP in ticks, with room for
+// per-note data) replaces the notes; the selection stays here.
 
 #include <cstdint>
 #include <string>
@@ -22,7 +22,7 @@ struct GridNote {
     int velocity = 100;   // 1..127
 };
 
-class ViewModel {
+class GridModel {
 public:
     static constexpr int kPitches = 128;
     static constexpr int kMinVelocity = 1, kMaxVelocity = 127;

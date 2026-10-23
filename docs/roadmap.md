@@ -96,7 +96,13 @@ the grid becomes the clip editor, opened by double-clicking a clip. Tracks
 moved up from milestone 11, transport and recording from 8, and the files
 and the piano roll moved down.
 
-## 5. The track view and MIDI in (Umpire, maybe uw-core)
+## 5. The track view and MIDI in (Umpire): done on the Mac 2026-10-23
+
+[track-view.md](track-view.md). Track rows (light, name, arm, mute, solo,
+input, channel, group, output placeholder) beside lanes under a bar ruler,
+MIDI in through uw-core (CoreMIDI checked; ALSA not yet built), routing to
+tracks, the MIDI monitor, and the grid in its own test window. No uw-core
+changes were needed. Linux, and playing real MIDI into it, are the author's.
 
 The main window becomes a list of track rows, as StageHand's rack rows
 (its `docs/rack-view.md`): a view model and a controller with no toolkit

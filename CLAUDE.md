@@ -1,18 +1,20 @@
 # Umpire
 
 A DAW built on MIDI 2.0's Universal MIDI Packet (UMP) from the ground up.
-MIDI-only to start, Linux first. Milestone 4's skeleton (`umpire-daw`) is
-built; see [docs/skeleton.md](docs/skeleton.md).
+MIDI-only to start, Linux first. Milestones 4 and 5 are built: `umpire-daw`
+is the track view; see [docs/track-view.md](docs/track-view.md).
 
 ## Read first
 
 1. [docs/decisions.md](docs/decisions.md): what has been decided and the
    working method; [docs/roadmap.md](docs/roadmap.md): the milestones.
 2. [docs/naming.md](docs/naming.md): product name, binary, IDs, namespace.
-3. As needed: [docs/ideas.md](docs/ideas.md) (candidate ideas, MIDI 2.0
+3. To build: [docs/building.md](docs/building.md) (Linux and macOS).
+4. As needed: [docs/ideas.md](docs/ideas.md) (candidate ideas, MIDI 2.0
    features, design principles), [docs/plugins-roadmap.md](docs/plugins-roadmap.md),
    [docs/ui-spike.md](docs/ui-spike.md) (milestone 1: DGL plus Dear ImGui),
-   [docs/skeleton.md](docs/skeleton.md) (milestone 4: how `umpire-daw` is built).
+   [docs/skeleton.md](docs/skeleton.md) (milestone 4: how `umpire-daw` is built),
+   [docs/track-view.md](docs/track-view.md) (milestone 5: tracks and MIDI in).
 
 Umpire shares code with StageHand (`~/Dev-MIDI/StageHand` on the Mac,
 `~/dev/dev-midi/StageHand` on the Linux PC), a live-performance CLAP host.

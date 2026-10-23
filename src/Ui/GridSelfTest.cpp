@@ -1,4 +1,4 @@
-#include "Ui/SelfTest.h"
+#include "Ui/GridSelfTest.h"
 
 #include <algorithm>
 #include <chrono>
@@ -9,7 +9,7 @@
 #include "imgui.h"
 
 #include "Ui/GridCanvas.h"
-#include "Ui/Panels.h"
+#include "Ui/GridPanels.h"
 
 namespace umpire::ui {
 
@@ -19,12 +19,12 @@ using Clock = std::chrono::steady_clock;
 // The spike's self-test (docs/ui-spike.md), over Umpire's own widget. Don't
 // touch the window while it runs: real pointer motion or exposes add frames
 // and events.
-struct SelfTest {
+struct GridSelfTest {
     dgl::Application& app;
     dgl::Window&      window;
     GridCanvas&       canvas;
-    Panels&           panels;
-    ViewModel&        model;
+    GridPanels&           panels;
+    GridModel&        model;
     Probe&            probe;
     std::string       dir;
     int               failures      = 0;
@@ -222,7 +222,7 @@ struct SelfTest {
             pump(150);
             check("a knob drag over the canvas stays ImGui's",
                   probe.canvasMotions == motions && probe.canvasPresses == presses && hoverDuring == -1 &&
-                      model.notes.size() == 1 && model.notes[0].velocity == ViewModel::kMinVelocity,
+                      model.notes.size() == 1 && model.notes[0].velocity == GridModel::kMinVelocity,
                   "velocity " + std::to_string(model.notes[0].velocity));
             screenshot("04-knob.ppm");
         }
@@ -267,9 +267,9 @@ struct SelfTest {
     }
 };
 
-int runSelfTest(dgl::Application& app, dgl::Window& window, GridCanvas& canvas, ViewModel& model, Probe& probe,
+int runGridSelfTest(dgl::Application& app, dgl::Window& window, GridCanvas& canvas, GridModel& model, Probe& probe,
                 const std::string& dir) {
-    SelfTest t{app, window, canvas, canvas.panels(), model, probe, dir};
+    GridSelfTest t{app, window, canvas, canvas.panels(), model, probe, dir};
     t.run();
     return t.failures == 0 ? 0 : 1;
 }

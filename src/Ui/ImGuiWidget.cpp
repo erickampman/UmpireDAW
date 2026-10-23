@@ -325,6 +325,9 @@ bool ImGuiWidget::onKeyboard(const KeyboardEvent& ev) {
     ImGui::SetCurrentContext(context);
     modifiers(ev.mod);
     if (const ImGuiKey key = imguiKey(ev.key); key != ImGuiKey_None) ImGui::GetIO().AddKeyEvent(key, ev.press);
+    // Escape closes menus and dropdowns. ImGui does that through keyboard
+    // navigation, which is off here.
+    if (ev.press && ev.key == dgl::kKeyEscape && popupOpen() && !textActive()) ImGui::ClosePopupToLevel(0, true);
     if (ev.press) routed(Input::Key, toImGui);
     if (!toImGui) return false;
     wake();

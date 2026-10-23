@@ -14,19 +14,19 @@
 #include "NanoVG.hpp"
 #include "Window.hpp"
 
-#include "App/ViewModel.h"
+#include "App/GridModel.h"
 #include "Ui/Probe.h"
 
 namespace umpire::ui {
 
-class Panels;
+class GridPanels;
 
 class GridCanvas final : public DGL_NAMESPACE::NanoTopLevelWidget {
 public:
-    GridCanvas(DGL_NAMESPACE::Window& window, ViewModel& model, Probe& probe);
+    GridCanvas(DGL_NAMESPACE::Window& window, GridModel& model, Probe& probe);
     ~GridCanvas() override;
 
-    Panels& panels() noexcept { return *imgui; }
+    GridPanels& panels() noexcept { return *imgui; }
     bool    dragging() const noexcept { return drag != Drag::None; }
     int     hoverPitch() const noexcept { return hoverRow; }
 
@@ -39,7 +39,7 @@ protected:
     void onResize(const ResizeEvent& ev) override;
 
 private:
-    friend struct SelfTest;
+    friend struct GridSelfTest;
 
     float sf();
     // The grid's area (logical): below ImGui's menu bar, left of its panel.
@@ -57,9 +57,9 @@ private:
 
     enum class Drag { None, Move };
 
-    ViewModel&              model;
+    GridModel&              model;
     Probe&                  probe;
-    std::unique_ptr<Panels> imgui;
+    std::unique_ptr<GridPanels> imgui;
     float                   scrollY  = 0;   // logical pixels from pitch 127's row
     int                     hoverRow = -1;
     Drag                    drag     = Drag::None;

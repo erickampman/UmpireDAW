@@ -17,8 +17,9 @@ endif()
 find_package(Threads REQUIRED)
 
 # --- uw-core (git submodule, external/uw-core): the code Umpire shares with StageHand.
-# The backends (JACK and ALSA, CoreAudio and CoreMIDI) come with milestone 5.
-set(UW_CORE_BACKENDS OFF CACHE BOOL "" FORCE)
+# Its backends: MIDI input since milestone 5 (ALSA sequencer UMP on Linux,
+# CoreMIDI on macOS); audio (JACK, CoreAudio) is built with them, used from 8.
+set(UW_CORE_BACKENDS ON CACHE BOOL "" FORCE)
 set(UW_CORE_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory(external/uw-core)
 
@@ -71,9 +72,15 @@ endif()
 add_library(umpire-warnings INTERFACE)
 target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 
-# --- umpire-app: the view model and the main loop. No DGL or ImGui: their headers
-# aren't on its include path (decisions.md: only the drawing layer sees the toolkit).
-add_library(umpire-app STATIC src/App/ViewModel.cpp)
+# --- umpire-app: the tracks, their controller and view models, MIDI input, and
+# the main loop. No DGL or ImGui: their headers aren't on its include path
+# (decisions.md: only the drawing layer sees the toolkit). It sees uw-core's
+# MidiInput seam, not a platform's: main.cpp makes that.
+add_library(umpire-app STATIC
+    src/App/GridModel.cpp
+    src/App/MidiDescribe.cpp
+    src/App/MidiInputs.cpp
+    src/App/TrackController.cpp)
 if(APPLE)
     target_sources(umpire-app PRIVATE src/App/MainLoopMac.mm)
     set_source_files_properties(src/App/MainLoopMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
@@ -87,10 +94,13 @@ target_link_libraries(umpire-app PUBLIC uw::base uw::plugin PRIVATE umpire-warni
 # --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library sees the toolkit.
 add_library(umpire-ui STATIC
     src/Ui/GridCanvas.cpp
+    src/Ui/GridPanels.cpp
+    src/Ui/GridSelfTest.cpp
     src/Ui/ImGuiWidget.cpp
     src/Ui/MainWindow.cpp
-    src/Ui/Panels.cpp
-    src/Ui/SelfTest.cpp
+    src/Ui/TrackCanvas.cpp
+    src/Ui/TrackPanels.cpp
+    src/Ui/TrackSelfTest.cpp
     src/Ui/Widgets.cpp)
 target_link_libraries(umpire-ui
     PUBLIC  umpire-app
@@ -101,12 +111,16 @@ endif()
 
 # --- umpire-daw: the app ---------------------------------------------------
 add_executable(umpire-daw src/App/main.cpp)
-target_link_libraries(umpire-daw PRIVATE umpire-ui umpire-app umpire-warnings)
+target_link_libraries(umpire-daw PRIVATE umpire-ui umpire-app uw::midi umpire-warnings)
 
 # --- Tests (silent; one executable per suite) ---------------------------------
 # The window's own check, `umpire-daw --self-test DIR`, opens a window, so it
 # isn't one of these (docs/skeleton.md).
 enable_testing()
-add_executable(test-view-model tests/ViewModelTests.cpp)
-target_link_libraries(test-view-model PRIVATE umpire-app umpire-warnings)
-add_test(NAME test-view-model COMMAND test-view-model)
+function(umpire_add_test NAME SOURCE)
+    add_executable(${NAME} ${SOURCE})
+    target_link_libraries(${NAME} PRIVATE umpire-app umpire-warnings)
+    add_test(NAME ${NAME} COMMAND ${NAME})
+endfunction()
+umpire_add_test(test-grid-model       tests/GridModelTests.cpp)
+umpire_add_test(test-track-controller tests/TrackControllerTests.cpp)

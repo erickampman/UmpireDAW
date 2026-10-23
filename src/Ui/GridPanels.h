@@ -1,25 +1,26 @@
 #pragma once
 
-// The ImGui panels over the canvas: the menu bar and the inspector at the
-// right, in the house widgets (Widgets.h). Umpire's ImGuiWidget does the
+// The grid window's ImGui panels, over its canvas: the menu bar and the
+// inspector at the right, in the house widgets (Widgets.h). Umpire's ImGuiWidget does the
 // routing and the drawing on demand.
 
-#include "App/ViewModel.h"
+#include "App/GridModel.h"
 #include "Ui/ImGuiWidget.h"
 #include "Ui/Probe.h"
 
 namespace umpire::ui {
 
-class Panels final : public ImGuiWidget {
+class GridPanels final : public ImGuiWidget {
 public:
-    Panels(DGL_NAMESPACE::Widget* parent, ViewModel& model, Probe& probe);
+    GridPanels(DGL_NAMESPACE::Widget* parent, GridModel& model, Probe& probe);
 
     // The area the canvas may draw in (window pixels): below the menu bar and
     // left of the inspector. Known after the first frame.
     float menuBarHeight() const noexcept { return menuH; }
     float panelWidth() const noexcept { return panelW; }
 
-    bool quitRequested = false;
+    bool quitRequested  = false;
+    bool closeRequested = false;   // File > Close window
     bool showDemo      = false;
     bool showDiagnostics = false;
 
@@ -41,7 +42,7 @@ private:
     void menuBar();
     void inspector(float width, float height);
 
-    ViewModel& model;
+    GridModel& model;
     Probe&     probe;
     float      menuH  = 0;
     float      panelW = 0;

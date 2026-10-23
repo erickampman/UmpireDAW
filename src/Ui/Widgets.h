@@ -21,6 +21,7 @@ inline const ImVec4 kWell{17 / 255.f, 18 / 255.f, 22 / 255.f, 1};        // valu
 inline const ImVec4 kSlate{104 / 255.f, 110 / 255.f, 124 / 255.f, 1};    // borders, faint text
 inline const ImVec4 kAccent{240 / 255.f, 170 / 255.f, 50 / 255.f, 1};    // amber: on, active, selected
 inline const ImVec4 kNote{72 / 255.f, 182 / 255.f, 196 / 255.f, 1};      // teal: notes and their controls
+inline const ImVec4 kRecord{232 / 255.f, 72 / 255.f, 72 / 255.f, 1};     // red: armed to record
 } // namespace colour
 
 // The panels' ImGui style: the graphite for backgrounds and frames, the accent
@@ -58,5 +59,16 @@ bool valueBox(const char* id, const std::string& text, float width);
 // whatever it returns.
 bool beginSection(const char* title, const ImVec4& accent, bool collapsible);
 void endSection();
+
+// --- Umpire's own, in the same look (not in KeyboardEDO) ---
+
+// A button that's on or off (a track's arm, mute and solo): a dark well when
+// off, lit in `colour` with a soft glow when on, `text` centred. Returns true
+// when clicked.
+bool toggle(const char* id, const char* text, bool on, const ImVec4& colour, ImVec2 size);
+
+// An activity light, `diameter` across at the cursor: the knob's glow in
+// `colour` when lit, a dark well when not. Takes no input.
+void light(bool lit, const ImVec4& colour, float diameter);
 
 } // namespace umpire::ui

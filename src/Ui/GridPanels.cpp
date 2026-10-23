@@ -1,4 +1,4 @@
-#include "Ui/Panels.h"
+#include "Ui/GridPanels.h"
 
 #include <cmath>
 #include <cstdio>
@@ -13,22 +13,22 @@ namespace umpire::ui {
 
 namespace {
 
-Panels::Rect lastItem() {
+GridPanels::Rect lastItem() {
     return {ImGui::GetItemRectMin().x, ImGui::GetItemRectMin().y, ImGui::GetItemRectMax().x,
             ImGui::GetItemRectMax().y};
 }
 
 } // namespace
 
-Panels::Panels(DGL_NAMESPACE::Widget* parent, ViewModel& m, Probe& p) : ImGuiWidget(parent), model(m), probe(p) {
+GridPanels::GridPanels(DGL_NAMESPACE::Widget* parent, GridModel& m, Probe& p) : ImGuiWidget(parent), model(m), probe(p) {
     rescale();   // onStyle() is ours only now that the object is whole
 }
 
-void Panels::onStyle(ImGuiStyle& style) {
+void GridPanels::onStyle(ImGuiStyle& style) {
     applyTheme(style);
 }
 
-void Panels::routed(Input input, bool toImGui) {
+void GridPanels::routed(Input input, bool toImGui) {
     switch (input) {
     case Input::Press: ++(toImGui ? probe.imguiPresses : probe.canvasPresses); break;
     case Input::Key: ++(toImGui ? probe.imguiKeys : probe.canvasKeys); break;
@@ -36,7 +36,7 @@ void Panels::routed(Input input, bool toImGui) {
     }
 }
 
-void Panels::onImGuiDisplay() {
+void GridPanels::onImGuiDisplay() {
     menuBar();
     const float sf = static_cast<float>(getWindow().getScaleFactor());
     panelW         = std::round(280.0f * sf);
@@ -44,7 +44,7 @@ void Panels::onImGuiDisplay() {
     if (showDemo) ImGui::ShowDemoWindow(&showDemo);
 }
 
-void Panels::menuBar() {
+void GridPanels::menuBar() {
     if (!ImGui::BeginMainMenuBar()) return;
 #ifdef __APPLE__
     const char* quitKey = "Cmd+Q";
@@ -54,6 +54,7 @@ void Panels::menuBar() {
     if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("New clip")) model.newClip();
         ImGui::Separator();
+        if (ImGui::MenuItem("Close window")) closeRequested = true;
         if (ImGui::MenuItem("Quit", quitKey)) quitRequested = true;
         ImGui::EndMenu();
     }
@@ -78,7 +79,7 @@ void Panels::menuBar() {
     ImGui::EndMainMenuBar();
 }
 
-void Panels::inspector(float W, float H) {
+void GridPanels::inspector(float W, float H) {
     ImGui::SetNextWindowPos(ImVec2(W - panelW, menuH));
     ImGui::SetNextWindowSize(ImVec2(panelW, H - menuH));
     ImGui::Begin("Inspector", nullptr,
@@ -104,18 +105,18 @@ void Panels::inspector(float W, float H) {
         const float x     = ImGui::GetCursorPosX();
         caption("Velocity", col, colour::kNote);
         ImGui::SetCursorPosX(x + (col - knobD) / 2);
-        float v = static_cast<float>(n->velocity - ViewModel::kMinVelocity) /
-                  (ViewModel::kMaxVelocity - ViewModel::kMinVelocity);
+        float v = static_cast<float>(n->velocity - GridModel::kMinVelocity) /
+                  (GridModel::kMaxVelocity - GridModel::kMinVelocity);
         if (knob("##velocity", v, 99.0f / 126, knobD, colour::kNote))
-            model.setSelectedVelocity(ViewModel::kMinVelocity +
-                                      static_cast<int>(std::lround(v * (ViewModel::kMaxVelocity - ViewModel::kMinVelocity))));
+            model.setSelectedVelocity(GridModel::kMinVelocity +
+                                      static_cast<int>(std::lround(v * (GridModel::kMaxVelocity - GridModel::kMinVelocity))));
         velocityRect = lastItem();
         ImGui::SetCursorPosX(x);
         valueBox("##velocityValue", std::to_string(model.selectedNote()->velocity), col);
 
         ImGui::PushItemWidth(-4.5f * em);
         int pitch = n->pitch, start = n->start, length = n->length;
-        if (sliderRow("Pitch", pitch, 0, ViewModel::kPitches - 1, colour::kNote)) model.moveSelected(n->start, pitch);
+        if (sliderRow("Pitch", pitch, 0, GridModel::kPitches - 1, colour::kNote)) model.moveSelected(n->start, pitch);
         if (sliderRow("Start", start, 0, model.steps - n->length, colour::kNote)) model.moveSelected(start, n->pitch);
         if (sliderRow("Length", length, 1, model.steps - n->start, colour::kNote)) model.setSelectedLength(length);
         ImGui::PopItemWidth();

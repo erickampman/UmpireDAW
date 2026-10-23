@@ -1,8 +1,8 @@
-// The view model's edits (src/App/ViewModel.h): silent, no window.
+// The view model's edits (src/App/GridModel.h): silent, no window.
 
 #include <cstdio>
 
-#include "App/ViewModel.h"
+#include "App/GridModel.h"
 
 namespace {
 
@@ -16,10 +16,10 @@ void check(const char* what, bool ok) {
 } // namespace
 
 int main() {
-    using umpire::ViewModel;
+    using umpire::GridModel;
 
     {
-        ViewModel m;
+        GridModel m;
         const auto v0 = m.version();
         const int  i  = m.addNote(67, 4);
         check("adding a note selects it", i == 0 && m.selected == 0 && m.version() > v0);
@@ -30,7 +30,7 @@ int main() {
         check("the topmost note wins", (m.addNote(67, 4), m.noteAt(67, 4) == 2));
     }
     {
-        ViewModel m;
+        GridModel m;
         m.addNote(60, 0);
         m.moveSelected(-5, 200);
         check("moving keeps the note inside the grid", m.notes[0].start == 0 && m.notes[0].pitch == 127);
@@ -45,7 +45,7 @@ int main() {
         check("length stops at the clip's end", m.notes[0].length == m.steps);
     }
     {
-        ViewModel m;
+        GridModel m;
         m.addNote(60, 0);
         m.select(5);
         check("selecting nothing that's there clears the selection", m.selected == -1 && m.selectedNote() == nullptr);

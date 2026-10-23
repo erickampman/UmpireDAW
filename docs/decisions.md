@@ -253,10 +253,13 @@ MIDI gets in; playing it in will. So:
   track view and MIDI in (5), then transport and recording (6), playback to
   MIDI outputs (7), CLAP instruments (8), files (9), the piano roll (10).
 
-Open:
-- How much of StageHand's rack-view code (RackViewModel, RackController,
-  the row widgets) carries over, as copies or through uw-core. Decide in
-  milestone 5, after reading it.
+- **StageHand's rack-view pattern, not its code** (milestone 5, 2026-10-23;
+  track-view.md): its rack code is bound to its engine and session, so
+  Umpire has its own view model, controller and rows in the same shape, and
+  copies only `MidiSourceRef`, the group and channel masks, the rule for
+  which inputs to open, and the monitor's `describeUmp`.
+- **The track headers are ImGui, the lanes NanoVG**, lined up row for row
+  from one scroll position the canvas keeps.
 
 ## Deferred
 
