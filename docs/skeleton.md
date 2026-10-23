@@ -2,9 +2,9 @@
 
 The first `umpire-daw`: Umpire's own CMake project over uw-core and the DPF
 fork, one main window, and the view-model rule kept by the build. Built and
-checked on the Mac on 2026-10-23. **Not yet built on Linux**, where
-development happens (decisions.md, "Platform"): that's the first thing to do
-there.
+checked on the Mac on 2026-10-23, and on the Linux PC the same day (GCC
+15.2, CMake 4.2, alsa-lib 1.2.15, X11): no warnings, `ctest` and
+`--self-test` at 1, 1.5 and 2 all pass.
 
 ## Building and running
 
@@ -22,7 +22,7 @@ DPF_SCALE_FACTOR=2 build/umpire-daw --self-test /tmp/shots   # HiDPI (Linux)
 ```
 
 Submodules: `external/uw-core` (uw-core, `a7a80ee`), `external/dpf` (the DPF
-fork, `88683252`, which pins the pugl fork), `external/DPF-Widgets` (for
+fork, `10c859cf`, which pins the pugl fork), `external/DPF-Widgets` (for
 Dear ImGui's sources only). `UMPIRE_DPF_DIR` is gone. On the Mac,
 `push.recurseSubmodules` was already `check` in this clone.
 
@@ -108,8 +108,6 @@ On the Mac (macOS 26, Apple silicon, scale factor 2), 2026-10-23:
   after; SIGINT quits cleanly.
 
 Still to do, by the author:
-- **Build and run on Linux** (X11/XWayland): `--self-test`, at 1, 1.5 and 2
-  (`DPF_SCALE_FACTOR`), and fix what the Mac didn't show.
 - By hand, on both: ui-spike.md's "Checked by hand" list against
   `umpire-daw` (typing with shifted characters, key repeat and Ctrl/Cmd-A,
   C, V, X; menus with the mouse and Escape; drags; resizing; a second

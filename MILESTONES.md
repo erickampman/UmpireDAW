@@ -10,9 +10,9 @@
 - [x] DPF fork (erickampman/DPF + pugl): upstream patches, vsync opt-in, per-patch README
 
 ## M2: MIDI DAW core
-- [x] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule (Mac 2026-10-23; Linux build pending)
+- [x] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule (Mac and Linux 2026-10-23)
 - [x] House look and feel from the start: KeyboardEDO's Widgets in Umpire, DejaVu Sans (colours provisional)
-- [x] Track view and MIDI in (Mac 2026-10-23; Linux build pending): track rows (input, channels/groups, arm, mute/solo, output, activity), lanes, ALSA UMP input, monitor
+- [x] Track view and MIDI in (Mac and Linux 2026-10-23): track rows (input, channels/groups, arm, mute/solo, output, activity), lanes, ALSA UMP input, monitor
 - [ ] Transport and recording: play/stop/record/tempo, clip model (UMP ticks, per-note data), armed tracks record clips on lanes; double-click opens the grid
 - [ ] Clip model holds per-key Pitch 7.25 with no note; keep Per-Note Management Reset when recording
 - [ ] Playback to MIDI outputs: ALSA UMP output in uw-core, track output to a device, scheduler, loop/locate

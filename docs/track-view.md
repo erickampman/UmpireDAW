@@ -4,8 +4,9 @@ The main window is now the track view (decisions.md, "The track view"): one
 row per track, where its MIDI comes from and where it goes, beside its lane
 on a timeline, with a MIDI monitor along the bottom. MIDI arrives through
 uw-core's input seam and reaches the tracks whose input takes it. Built and
-checked on the Mac on 2026-10-23 (CoreMIDI). **Not yet built on Linux** (the
-ALSA sequencer path), like milestone 4.
+checked on the Mac on 2026-10-23 (CoreMIDI), and built on the Linux PC the
+same day (the ALSA sequencer path): `--self-test` passes at 1, 1.5 and 2, and
+the input choice listed the ALSA ports (Midi Through and Umpire's own two).
 
 The UI direction decided afterwards ([ui-direction.md](ui-direction.md))
 changes the rows: milestone 6 moves input to the session, drops the per-track
@@ -101,11 +102,10 @@ On the Mac (macOS 26, scale factor 2, CoreMIDI), 2026-10-23:
   quits.
 
 Not checked: **real MIDI arriving** (nothing was played: that's the
-author's, with KeyEDO or a keyboard), and Linux.
+author's, with KeyEDO or a keyboard), on either platform.
 
 ## Still to do, by the author
 
-- Build on Linux; `--self-test` there.
 - Play into it: a hardware keyboard (MIDI 1.0), KeyEDO into "MIDI 2.0 In",
   and see the lights and the monitor; a track on one device, another on a
   channel; unplug and replug a device.

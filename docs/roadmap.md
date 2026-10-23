@@ -63,8 +63,8 @@ example on Linux. The plugins' own changes come later, in the plugin roadmap.
 [skeleton.md](skeleton.md). `umpire-daw` builds over the uw-core and DPF
 fork submodules, with Umpire's own ImGui widget, KeyboardEDO's house widgets
 (in provisional Umpire colours) and StageHand's main loop; the spike is
-deleted. Built and self-tested on the Mac only: building on Linux, the hand
-checks and the colours are the author's (skeleton.md, "Still to do").
+deleted. Built and self-tested on the Mac, then on Linux (2026-10-23); the
+hand checks and the colours are the author's (skeleton.md, "Still to do").
 
 Umpire's own CMake project builds against uw-core and the DPF fork as
 submodules, replacing `UMPIRE_DPF_DIR`. It has:
@@ -100,9 +100,9 @@ and the piano roll moved down.
 
 [track-view.md](track-view.md). Track rows (light, name, arm, mute, solo,
 input, channel, group, output placeholder) beside lanes under a bar ruler,
-MIDI in through uw-core (CoreMIDI checked; ALSA not yet built), routing to
+MIDI in through uw-core (CoreMIDI checked; ALSA built and self-tested), routing to
 tracks, the MIDI monitor, and the grid in its own test window. No uw-core
-changes were needed. Linux, and playing real MIDI into it, are the author's.
+changes were needed. Playing real MIDI into it is the author's.
 
 The main window becomes a list of track rows, as StageHand's rack rows
 (its `docs/rack-view.md`): a view model and a controller with no toolkit
