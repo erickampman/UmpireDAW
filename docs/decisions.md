@@ -331,9 +331,11 @@ than 12-EDO.
 - **Umpire should work the scale out from the notes** (the author:
   "ideally"), since a take's pitches are exact (7.9) and an EDO is a lattice
   they all sit on. It must find the reference too, not only the EDO:
-  KeyboardEDO anchors its EDO at its origin, an A by default, and in 31-EDO
-  middle C isn't on that lattice (C is 7.75 steps above A), so a grid with
-  step 0 at 60 is a quarter step off. How: ideas.md, "Working out a clip's
+  KeyboardEDO anchors its EDO at any 12-EDO pitch (A by default), and in
+  31-EDO from A middle C isn't on the lattice (C is 7.75 steps above A), so a
+  grid with step 0 at 60 is a quarter step off. The notes give the anchor
+  away: it's where the lattice meets a whole MIDI note. Every scale is an EDO
+  for now; others are long-term. How: ideas.md, "Working out a clip's
   scale".
 - **A controller announcing its tuning** (MIDI-CI, Property Exchange) is a
   strong idea but depends on the controller; working it out from the notes

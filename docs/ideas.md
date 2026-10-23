@@ -179,16 +179,21 @@ and pitch"). A take's pitches are exact, in 7.9 (KeyboardEDO rounds each to
   every pitch's distance from the first is a whole number of steps, within a
   couple of 1/512ths. Take the smallest EDO that fits, except prefer 12 when
   12 fits (a whole-tone tune fits 6). The reference is a MIDI note on the
-  lattice, near the middle: KeyboardEDO's origin is an A by default, so in
-  31-EDO that's an A, not 60.
+  lattice, near the middle. KeyboardEDO anchors its EDO at any 12-EDO pitch
+  (A by default), and the notes give it away: once the EDO is known, the
+  lattice is fixed, and the anchor is where it meets a whole MIDI note. In an
+  EDO sharing no factor with 12 (19, 31) that's one pitch class an octave, so
+  in 31-EDO from A, the As; where it shares one (15, 24), several whole notes
+  are on the lattice, and any of them gives the same rows.
 - **Too few notes is ambiguous.** Three pitches fit many EDOs. Below some
   number of distinct pitches, or when no EDO fits, say so and leave the
   choice to the user rather than guess (ui-direction.md, "Nothing changes on
   a guess"): a working-out the user can see and change, not a silent one.
-- **Not every scale is an EDO.** Just intonation, a Scala scale, or a
-  KeyboardEDO custom layout over a subset of steps: the fallback is the
-  pitch classes the clip actually uses, repeated each octave, as the grid's
-  rows. A subset of an EDO still finds the EDO.
+- **Every scale is an EDO, for now** (the author): KeyboardEDO's tunings,
+  custom layouts included, are all EDOs, and a subset of an EDO's steps still
+  finds the EDO. Other scales (just intonation, Scala) are long-term, if
+  ever; then the fallback would be the pitch classes the clip uses, repeated
+  each octave, as the grid's rows.
 - **When:** as a take becomes a clip, and again for an edited clip. Pitch
   bend and per-note pitch bend don't count (they move from the note's pitch);
   only note pitches (7.9, or a Pitch 7.25 before the note-on).
