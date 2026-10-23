@@ -34,5 +34,5 @@
 
 ## Outside Umpire (related)
 - [x] StageHand switches to uw-core (merged 2026-10-08)
-- [ ] StageHand switches to DPF fork (after M1 above)
+- [x] StageHand switches to DPF fork (2026-10-22, StageHand b65ba55)
 - [ ] Plugins move onto DPF fork and use uw::ump (plugins-roadmap.md)
