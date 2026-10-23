@@ -175,9 +175,14 @@ Added 2026-10-23 (the author): quantize will probably be a plugin, a MIDI
 processor in the session's graph (ui-direction.md, "The model behind it":
 splits, filters, transforms), not code built into the editor. Its strength
 must be adjustable as a percentage: 100% moves each note onto the grid, 50%
-halfway there, 0% leaves it alone. This leans away from idea 9's quantize as
-a setting on the clip reference, though either way the recorded notes stay
+halfway there, 0% leaves it alone. Either way the recorded notes stay
 untouched and the strength can be changed later.
+
+**Kept as a maybe (the author): quantize per clip,** idea 9's setting on the
+clip reference, since different clips may want different amounts. Both could
+exist: the plugin does the work, and a clip reference can set its own
+strength (and grid) for it, overriding the track's, the way a reference may
+name its own instrument (ui-direction.md).
 
 Questions to settle when it's built:
 - **Notes can only move earlier with lookahead.** A plugin that sees events
