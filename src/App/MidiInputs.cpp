@@ -25,7 +25,7 @@ void MidiInputs::openAll() {
         if (handle != uw::kInvalidMidiSource) open[handle] = Open{{MidiSourceRef::Kind::Virtual, name}, name, true};
     }
     // Every hardware input, as a live host should (StageHand's rule); an app's
-    // own source (KeyEDO's) is chosen by its row, or connects to a virtual input.
+    // own source (KeyEDO's) connects to a virtual input, or is opened by ensureOpen().
     for (const uw::MidiSourceInfo& info : input->enumerate()) {
         if (!info.isHardware) continue;
         const uw::MidiSourceHandle handle = input->open(info.id);
@@ -104,6 +104,15 @@ bool MidiInputs::matches(const MidiSourceRef& ref, uw::MidiSourceHandle source) 
 std::string MidiInputs::sourceName(uw::MidiSourceHandle source) const {
     const auto it = open.find(source);
     return it != open.end() ? it->second.name : "?";
+}
+
+std::vector<std::string> MidiInputs::listening() const {
+    std::vector<std::string> names;
+    for (const bool device : {true, false})
+        for (const auto& [handle, source] : open)
+            if (source.connected && (source.ref.kind == MidiSourceRef::Kind::Device) == device)
+                names.push_back(source.name);
+    return names;
 }
 
 std::string MidiInputs::label(const MidiSourceRef& ref, bool* connected) const {

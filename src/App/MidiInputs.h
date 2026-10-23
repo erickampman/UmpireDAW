@@ -15,11 +15,26 @@
 #include <string>
 #include <vector>
 
-#include "App/Track.h"
 #include "uw/base/SpscQueue.h"
 #include "uw/midi/MidiInput.h"
 
 namespace umpire {
+
+// An input, as the session would save a choice of one (a filter asked for
+// through the palette, later: ui-direction.md). Copied from StageHand's
+// Core/MidiSourceRef.h without its sequence kind.
+struct MidiSourceRef {
+    enum class Kind {
+        All,       // every open input
+        Device,    // one device, by its MidiSourceInfo id
+        Virtual,   // one of Umpire's virtual inputs, by name
+        None,      // no live input
+    };
+    Kind        kind = Kind::All;
+    std::string name;   // Device: "KeyLab 88:KeyLab 88 MIDI 1"; Virtual: "MIDI 2.0 In"
+
+    bool operator==(const MidiSourceRef&) const = default;
+};
 
 class MidiInputs final : public uw::MidiSink {
 public:
@@ -32,7 +47,7 @@ public:
         uw::TimedMidiMessage message;
     };
 
-    // One choice for a track's input.
+    // One choice of input.
     struct Choice {
         std::string   label;
         MidiSourceRef ref;
@@ -50,8 +65,8 @@ public:
     // is opened. Returns true if anything changed (the choices, say).
     bool syncDevices();
 
-    // Opens a device a track chose that isn't open yet (an app's own source,
-    // such as KeyEDO's, isn't opened by openAll()).
+    // Opens a device that isn't open yet (an app's own source, such as
+    // KeyEDO's, isn't opened by openAll()).
     void ensureOpen(const MidiSourceRef& ref);
 
     // The main thread: everything queued since the last call, in order.
@@ -66,8 +81,11 @@ public:
     uw::MidiSourceHandle handleFor(const MidiSourceRef& ref) const;
     // A short name for a handle ("KeyLab 88", "MIDI 2.0 In"), for the monitor.
     std::string sourceName(uw::MidiSourceHandle source) const;
-    // How a track's input reads in its row; `connected` false if it's absent now.
+    // How an input reads; `connected` false if it's absent now.
     std::string label(const MidiSourceRef& ref, bool* connected = nullptr) const;
+    // The names of the open inputs that are connected, hardware first, for the
+    // status line ("KeyLab 88, MIDI 2.0 In, MIDI 1.0 In").
+    std::vector<std::string> listening() const;
 
     const std::vector<Choice>& choices() const noexcept { return choiceList; }
     const char*   backendName() const noexcept { return input != nullptr ? input->name() : "no MIDI"; }

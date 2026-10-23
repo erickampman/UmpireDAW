@@ -295,6 +295,38 @@ see." The details and the mockups are in [ui-direction.md](ui-direction.md).
   candidate ideas (ideas.md, "From the dynamic UI spec"); its AI layer is
   not planned.
 
+## Time, clips and pitch (milestone 6, 2026-10-23)
+
+Made while building milestone 6 on the Linux PC (recording.md); the last two
+points after the author asked how StageHand's sequences handle tunings other
+than 12-EDO.
+- **Ticks: 40320 to a quarter note** (8!), in 64-bit integers. It divides by
+  1 to 10, 12, 14, 15 and 16, so triplets, quintuplets and septuplets are
+  exact, and it fits a MIDI Clip File's 16-bit ticks per quarter (DCTPQ).
+  Ticks are canonical; seconds come from the tempo (ideas.md, "Timebase").
+- **A take is stored as MIDI 2.0.** MIDI 1.0 input is upconverted as it's
+  recorded (uw-core's `upconvert`, one per input), as the MPE decision
+  assumed ("a take is stored as MIDI 2.0 like any other"). Everything else a
+  channel sends is kept as it came, Pitch 7.25 with no note and Per-Note
+  Management included (MILESTONES.md).
+- **Clips never change once made.** References and undo share them; an edit
+  (milestone 10) makes a new clip.
+- **Undo is snapshots of the session** before each command. Since clips are
+  shared, a snapshot copies tracks and clip references, not music. IDs and
+  track numbers live outside the snapshots, so none is reused.
+- **A new session is empty**, showing only "Play something to start"; the
+  first note played makes the first track.
+- **No tuning is assumed in the clip model or the lanes.** A note's pitch is
+  absolute, in 7.9: its Pitch 7.9 attribute, else the Pitch 7.25 last sent
+  for its key (until a Per-Note Management reset), else its note number. The
+  lanes draw notes at that pitch.
+- **The grid uses StageHand's tuning model** (its docs/sequences.md, "EDO
+  pitch"): an EDO and the note step 0 sounds; one row per step; rows dark
+  where the pitch rounds to a 12-TET black key. A clip's notes land on the
+  nearest row. **Open:** where a clip's tuning is kept (the clip, its track,
+  or the session); for now it's the grid window's, 12-EDO from 60. StageHand's
+  docs suggest reusing KeyEDO's tuning model so the two agree.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

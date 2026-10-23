@@ -9,8 +9,10 @@ same day (the ALSA sequencer path): `--self-test` passes at 1, 1.5 and 2, and
 the input choice listed the ALSA ports (Midi Through and Umpire's own two).
 
 The UI direction decided afterwards ([ui-direction.md](ui-direction.md))
-changes the rows: milestone 6 moves input to the session, drops the per-track
-input, channel and group choices, and shows only what isn't the default.
+changed the rows: milestone 6 ([recording.md](recording.md)) moved input to
+the session, dropped the per-track input, channel and group choices, made a
+new session empty, and shows only what isn't the default. What follows is
+milestone 5 as it was built.
 
 ## Building and running
 

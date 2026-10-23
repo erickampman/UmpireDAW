@@ -141,3 +141,5 @@ editable data, everything undoable) match Umpire's. Its features:
   instruments (milestone 14).
 - Whether StageHand-style input filtering is needed at all once splits and
   layers exist.
+- Where a clip's tuning (EDO and reference) is kept, for the grid and for
+  zooming into a lane (decisions.md, "Time, clips and pitch").

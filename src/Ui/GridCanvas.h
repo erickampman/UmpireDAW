@@ -60,7 +60,7 @@ private:
     GridModel&              model;
     Probe&                  probe;
     std::unique_ptr<GridPanels> imgui;
-    float                   scrollY  = 0;   // logical pixels from pitch 127's row
+    float                   scrollY  = 0;   // logical pixels from the top row
     int                     hoverRow = -1;
     Drag                    drag     = Drag::None;
     int                     grabStep = 0, grabPitch = 0;   // where in the note the drag took it

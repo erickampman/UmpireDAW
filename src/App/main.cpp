@@ -1,12 +1,11 @@
 // umpire-daw: Umpire, a DAW built on MIDI 2.0's Universal MIDI Packet.
-// Milestone 5 (docs/track-view.md): the main window is the track view, fed by
-// the platform's MIDI input, driven by the main loop.
+// Milestone 6 (docs/recording.md): the track view, fed by the platform's MIDI
+// input, with a transport that records it into clips; driven by the main loop.
 //
 //   umpire-daw                   the window
 //   umpire-daw --log-frames      ... printing frames drawn per second
 //   umpire-daw --self-test DIR   scripted input, checks, screenshots in DIR
 
-#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
@@ -60,9 +59,8 @@ int main(int argc, char** argv) {
     std::signal(SIGTERM, onSignal);
     // The controller's tick, then the windows' events and drawing, as StageHand
     // drives its rack window.
-    const auto start = std::chrono::steady_clock::now();
     loop.addTimer(10, [&] {
-        controller.tick(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+        controller.tick();
         window->idle();
         if (window->closed()) loop.requestQuit();
     });

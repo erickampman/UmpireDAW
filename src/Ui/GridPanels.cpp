@@ -96,6 +96,21 @@ void GridPanels::inspector(float W, float H) {
     nameFieldRect = lastItem();
     endSection();
 
+    // The tuning, as StageHand's sequence editor: the EDO and the note its
+    // step 0 sounds. Where a clip's tuning is kept is open (docs/recording.md).
+    beginSection("Tuning", colour::kNote, false);
+    {
+        const float em = ImGui::GetFontSize();
+        ImGui::PushItemWidth(-4.5f * em);
+        int edo = model.edo, reference = model.referenceNote;
+        if (sliderRow("EDO", edo, GridModel::kMinEdo, GridModel::kMaxEdo, colour::kNote)) model.setTuning(edo, reference);
+        if (sliderRow("Step 0 at", reference, 0, 127, colour::kNote)) model.setTuning(model.edo, reference);
+        ImGui::PopItemWidth();
+        if (const GridNote* n = model.selectedNote())
+            ImGui::TextDisabled("Step %d: %.2f semitones", n->pitch - model.referenceRow(), model.rowSemitones(n->pitch));
+    }
+    endSection();
+
     beginSection("Note", colour::kNote, false);
     if (GridNote* n = model.selectedNote()) {
         // Velocity is a knob, the plugins' way: caption above, value below.
@@ -116,7 +131,7 @@ void GridPanels::inspector(float W, float H) {
 
         ImGui::PushItemWidth(-4.5f * em);
         int pitch = n->pitch, start = n->start, length = n->length;
-        if (sliderRow("Pitch", pitch, 0, GridModel::kPitches - 1, colour::kNote)) model.moveSelected(n->start, pitch);
+        if (sliderRow("Pitch", pitch, 0, model.rows() - 1, colour::kNote)) model.moveSelected(n->start, pitch);
         if (sliderRow("Start", start, 0, model.steps - n->length, colour::kNote)) model.moveSelected(start, n->pitch);
         if (sliderRow("Length", length, 1, model.steps - n->start, colour::kNote)) model.setSelectedLength(length);
         ImGui::PopItemWidth();

@@ -12,9 +12,17 @@ namespace dgl = DGL_NAMESPACE;
 
 namespace {
 
-bool blackKey(int pitch) {
-    const int pc = ((pitch % 12) + 12) % 12;
+// A row is dark when its pitch rounds to a 12-TET black key, as StageHand's
+// sequence editor draws them: in 31-EDO the familiar 2+3 pattern shows as bands.
+bool blackKey(double semitones) {
+    const int pc = ((static_cast<int>(std::lround(semitones)) % 12) + 12) % 12;
     return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10;
+}
+
+std::string noteName(double semitones) {
+    static const char* const names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    const int n = static_cast<int>(std::lround(semitones));
+    return names[((n % 12) + 12) % 12] + std::to_string(n / 12 - 1);
 }
 
 // The palette's colours (Widgets.h), as NanoVG's.
@@ -26,7 +34,7 @@ GridCanvas::GridCanvas(dgl::Window& window, GridModel& m, Probe& p) : NanoTopLev
     loadSharedResources();   // DGL's built-in font (DejaVu Sans)
     imgui = std::make_unique<GridPanels>(this, model, probe);
     imgui->setSize(getWidth(), getHeight());
-    scrollY = rowY(72) - 40;   // C5 near the top
+    scrollY = rowY(model.rowFor(72 << 9)) - 40;   // C5 near the top
 }
 
 GridCanvas::~GridCanvas() = default;
@@ -47,10 +55,10 @@ bool GridCanvas::inGrid(float x, float y) {
     return x >= gridX() && x < gridX() + gridW() && y >= gridY() && y < gridY() + gridH();
 }
 float GridCanvas::rowY(int pitch) {
-    return static_cast<float>(GridModel::kPitches - 1 - pitch) * kRowH;
+    return static_cast<float>(model.rows() - 1 - pitch) * kRowH;
 }
 int GridCanvas::pitchAt(float y) {
-    return GridModel::kPitches - 1 - static_cast<int>(std::floor((y - gridY() + scrollY) / kRowH));
+    return model.rows() - 1 - static_cast<int>(std::floor((y - gridY() + scrollY) / kRowH));
 }
 int GridCanvas::stepAt(float x) {
     return static_cast<int>(std::floor((x - gridX()) / kStepW));
@@ -68,6 +76,8 @@ void GridCanvas::onNanoDisplay() {
     scale(s, s);
     const float W = static_cast<float>(getWidth()) / s, H = static_cast<float>(getHeight()) / s;
     const float gx = gridX(), gy = gridY(), gw = gridW(), gh = gridH();
+    // A new tuning (the panel's) changes the rows: keep the scroll inside them.
+    scrollY = std::clamp(scrollY, 0.0f, std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gh));
 
     beginPath();
     rect(0, 0, W, H);
@@ -81,24 +91,26 @@ void GridCanvas::onNanoDisplay() {
 
     save();
     scissor(0, gy, gx + gw, gh);
-    for (int pitch = GridModel::kPitches - 1; pitch >= 0; --pitch) {
+    // One row per EDO step; the octaves are labelled from the reference note.
+    for (int pitch = model.rows() - 1; pitch >= 0; --pitch) {
         const float y = gy + rowY(pitch) - scrollY;
         if (y + kRowH < gy || y > gy + gh) continue;
+        const double semitones = model.rowSemitones(pitch);
         beginPath();
         rect(gx, y, gw, kRowH);
         if (pitch == hoverRow) fillColor(rgb(48, 52, 62));
-        else if (blackKey(pitch)) fillColor(rgb(24, 26, 31));
+        else if (blackKey(semitones)) fillColor(rgb(24, 26, 31));
         else fillColor(rgb(31, 33, 39));
         fill();
         beginPath();   // the keyboard
         rect(0, y, gx - 1, kRowH - 1);
-        if (blackKey(pitch)) fillColor(rgb(40, 42, 48));
+        if (blackKey(semitones)) fillColor(rgb(40, 42, 48));
         else fillColor(rgb(200, 202, 208));
         fill();
-        if (pitch % 12 == 0) {
+        if ((pitch - model.referenceRow()) % model.edo == 0) {
             fillColor(rgb(20, 20, 24));
             fontSize(10);
-            text(3, y + kRowH / 2, ("C" + std::to_string(pitch / 12 - 1)).c_str(), nullptr);
+            text(3, y + kRowH / 2, noteName(semitones).c_str(), nullptr);
         }
     }
     for (int step = 0; step <= model.steps; ++step) {
@@ -187,7 +199,7 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
 bool GridCanvas::onScroll(const ScrollEvent& ev) {
     if (NanoTopLevelWidget::onScroll(ev)) return true;
     scrollY = std::clamp(scrollY - static_cast<float>(ev.delta.getY()) * kRowH * 3, 0.0f,
-                         std::max(0.0f, GridModel::kPitches * kRowH - gridH()));
+                         std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gridH()));
     repaint();
     return true;
 }

@@ -2,7 +2,7 @@
 
 ## Tests
 - ninja -C build && ctest --test-dir build
-- windows: build/umpire-daw --self-test DIR (opens two windows; silent)
+- windows: build/umpire-daw --self-test DIR (opens two windows; silent; don't type into them)
 
 ## M1: Infrastructure
 - [x] DGL + Dear ImGui spike: on-demand redraw, vsync, rescale, NanoVG canvas
@@ -13,8 +13,8 @@
 - [x] Umpire skeleton: CMake against uw-core and DPF fork, main window, view-model rule (Mac and Linux 2026-10-23)
 - [x] House look and feel from the start: KeyboardEDO's Widgets in Umpire, DejaVu Sans (colours provisional)
 - [x] Track view and MIDI in (Mac and Linux 2026-10-23): track rows (input, channels/groups, arm, mute/solo, output, activity), lanes, ALSA UMP input, monitor
-- [ ] Transport and recording: play/stop/record/tempo, clip model (UMP ticks, per-note data), armed tracks record clips on lanes; double-click opens the grid
-- [ ] Clip model holds per-key Pitch 7.25 with no note; keep Per-Note Management Reset when recording
+- [x] Transport and recording (Linux 2026-10-23): play/stop/record/tempo, clip model (UMP ticks, per-note data), undo, session input, sparse rows, armed tracks record clips on lanes; double-click opens the grid (EDO rows)
+- [x] Clip model holds per-key Pitch 7.25 with no note; keep Per-Note Management Reset when recording
 - [ ] Playback to MIDI outputs: ALSA UMP output in uw-core, track output to a device, scheduler, loop/locate
 - [ ] Chase per-key Pitch 7.25 on play, seek and loop wrap (the synths keep it as a tuning table)
 

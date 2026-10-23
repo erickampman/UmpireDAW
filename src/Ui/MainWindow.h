@@ -1,8 +1,9 @@
 #pragma once
 
 // Umpire's windows: the main window (the track view: TrackCanvas with
-// TrackPanels over it) and, for now, a test grid window (milestone 4's grid,
-// in its own window as a clip's will open: decisions.md, "The track view").
+// TrackPanels over it) and a grid window for each clip opened from it
+// (decisions.md, "The track view": one window per clip, as StageHand's
+// sequence editor).
 // This header has no DGL or ImGui types, so the app's code (main.cpp) doesn't
 // see the toolkit, as StageHand's RackUi.h keeps it.
 
@@ -31,7 +32,7 @@ public:
     bool closed() const;
 
     // Scripted input through the windows' own handlers: the track view, then
-    // the test grid window. Checks where each event went and how many frames
+    // a recorded clip's grid window. Checks where each event went and how many frames
     // were drawn, with screenshots (PPM) in `dir`. Runs its own loop, ticking
     // the controller itself. Returns the exit status: 0 if every check passed.
     int selfTest(const std::string& dir);

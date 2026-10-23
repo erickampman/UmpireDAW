@@ -5,18 +5,21 @@
 // here (decisions.md, "UI": only the drawing layer depends on the toolkit;
 // CMake keeps their headers off umpire-app's include path).
 //
-// For now it is the spike's note grid: one clip of notes in sixteenths, in
-// the test grid window. Milestone 6's clip model (UMP in ticks, with room for
-// per-note data) replaces the notes; the selection stays here.
+// For now it is the spike's note grid, in sixteenths: a clip's window shows
+// the clip's notes in it (showClip), and edits stay in the window. Milestone
+// 10 makes the grid edit the clip itself (UMP in ticks); the selection stays
+// here.
 
 #include <cstdint>
 #include <string>
 #include <vector>
 
+#include "App/Clip.h"
+
 namespace umpire {
 
 struct GridNote {
-    int pitch    = 60;    // a row of the grid (an EDO step)
+    int pitch    = 60;    // a row of the grid: an EDO step (rowSemitones())
     int start    = 0;     // in steps (sixteenths)
     int length   = 2;     // in steps
     int velocity = 100;   // 1..127
@@ -24,10 +27,16 @@ struct GridNote {
 
 class GridModel {
 public:
-    static constexpr int kPitches = 128;
     static constexpr int kMinVelocity = 1, kMaxVelocity = 127;
+    static constexpr int kMinEdo = 5, kMaxEdo = 72;
 
     std::string           clipName = "Untitled clip";
+    // The grid's tuning, as StageHand's sequences (its docs/sequences.md, "EDO
+    // pitch"): each row is a step of `edo` equal divisions of the octave, and
+    // the reference row sounds `referenceNote`. The rows cover the MIDI range,
+    // so at 12-EDO row n is note n.
+    int edo           = 12;
+    int referenceNote = 60;
     std::vector<GridNote> notes;
     int                   selected = -1;   // index into notes, or -1
     int                   steps    = 64;   // four bars of sixteenths
@@ -35,6 +44,14 @@ public:
     // Changes since the start: a view that drew `version()` needn't draw again.
     std::uint64_t version() const noexcept { return changes; }
     void          touch() noexcept { ++changes; }
+
+    int    rows() const noexcept { return 128 * edo / 12; }
+    int    referenceRow() const noexcept { return referenceNote * edo / 12; }
+    double rowSemitones(int row) const noexcept { return referenceNote + (row - referenceRow()) * 12.0 / edo; }
+    // The row nearest a pitch in 7.9.
+    int    rowFor(std::uint16_t pitch79) const noexcept;
+    // A new tuning: the clip shown (if any) is shown again in it.
+    void   setTuning(int edo, int referenceNote);
 
     GridNote*       selectedNote() noexcept;
     const GridNote* selectedNote() const noexcept;
@@ -49,6 +66,10 @@ public:
     void deleteSelected();
     void clear();
     void newClip();
+    // The clip's notes, each to the nearest sixteenth and the nearest row (its
+    // pitch is its 7.9: notesOf()), and its name; the grid as long as the
+    // clip, in whole bars. Edits after are the window's, not the clip's.
+    void showClip(std::shared_ptr<const Clip> clip);
 
     // The selected note, kept inside the grid. Each does nothing without one.
     void moveSelected(int start, int pitch);
@@ -57,6 +78,12 @@ public:
     void setSelectedLength(int length);
 
 private:
+    void edited() {
+        shown.reset();
+        touch();
+    }
+
+    std::shared_ptr<const Clip> shown;   // the clip, until the notes are edited
     std::uint64_t changes = 0;
 };
 

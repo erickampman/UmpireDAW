@@ -306,6 +306,41 @@ bool toggle(const char* id, const char* text, bool on, const ImVec4& colour, ImV
     return clicked;
 }
 
+bool transportButton(const char* id, Glyph glyph, bool on, const ImVec4& colour, ImVec2 size) {
+    const bool   clicked = toggle(id, "", on, colour, size);
+    const ImVec2 min = ImGui::GetItemRectMin(), max = ImGui::GetItemRectMax();
+    const ImVec2 c{(min.x + max.x) / 2, (min.y + max.y) / 2};
+    const float  r   = std::min(size.x, size.y) * 0.24f;
+    const ImU32  ink = on ? IM_COL32(20, 20, 24, 255) : u32(lighten(colour, 0.35f));
+    ImDrawList*  d   = ImGui::GetWindowDrawList();
+    switch (glyph) {
+    case Glyph::Play:
+        d->AddTriangleFilled({c.x - r * 0.8f, c.y - r}, {c.x - r * 0.8f, c.y + r}, {c.x + r, c.y}, ink);
+        break;
+    case Glyph::Stop: d->AddRectFilled({c.x - r * 0.85f, c.y - r * 0.85f}, {c.x + r * 0.85f, c.y + r * 0.85f}, ink); break;
+    case Glyph::Record: d->AddCircleFilled(c, r * 0.9f, on ? ink : u32(colour)); break;
+    case Glyph::ToStart:
+        d->AddRectFilled({c.x - r, c.y - r}, {c.x - r * 0.6f, c.y + r}, ink);
+        d->AddTriangleFilled({c.x + r, c.y - r}, {c.x + r, c.y + r}, {c.x - r * 0.55f, c.y}, ink);
+        break;
+    }
+    return clicked;
+}
+
+float badge(const char* text, const ImVec4& colour) {
+    const ImVec2 at     = ImGui::GetCursorScreenPos();
+    const ImVec2 extent = ImGui::CalcTextSize(text);
+    const float  padX = extent.y * 0.35f, h = ImGui::GetFrameHeight() * 0.8f;
+    const ImVec2 size{extent.x + 2 * padX, h};
+    const float  y = at.y + (ImGui::GetFrameHeight() - h) / 2;
+    ImGui::Dummy({size.x, ImGui::GetFrameHeight()});
+    ImDrawList* d = ImGui::GetWindowDrawList();
+    d->AddRectFilled({at.x, y}, {at.x + size.x, y + h}, u32(alpha(colour, 0.22f)), h * 0.3f);
+    d->AddRect({at.x, y}, {at.x + size.x, y + h}, u32(alpha(colour, 0.6f)), h * 0.3f);
+    d->AddText({at.x + padX, y + (h - extent.y) / 2}, u32(lighten(colour, 0.35f)), text);
+    return size.x;
+}
+
 void light(bool lit, const ImVec4& colour, float diameter) {
     const ImVec2 at = ImGui::GetCursorScreenPos();
     ImGui::Dummy({diameter, diameter});

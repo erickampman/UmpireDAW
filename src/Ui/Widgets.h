@@ -71,4 +71,13 @@ bool toggle(const char* id, const char* text, bool on, const ImVec4& colour, ImV
 // `colour` when lit, a dark well when not. Takes no input.
 void light(bool lit, const ImVec4& colour, float diameter);
 
+// A transport button: a toggle (above) with a drawn glyph instead of text.
+enum class Glyph { Play, Stop, Record, ToStart };
+bool transportButton(const char* id, Glyph glyph, bool on, const ImVec4& colour, ImVec2 size);
+
+// A badge at the cursor, for state that isn't the default (ui-direction.md,
+// "Hide controls, never hide state"): `text` in a small pill of `colour`, on
+// the current line. Takes no input; returns its width.
+float badge(const char* text, const ImVec4& colour);
+
 } // namespace umpire::ui

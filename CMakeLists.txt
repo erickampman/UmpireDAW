@@ -77,6 +77,7 @@ target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 # (decisions.md: only the drawing layer sees the toolkit). It sees uw-core's
 # MidiInput seam, not a platform's: main.cpp makes that.
 add_library(umpire-app STATIC
+    src/App/Clip.cpp
     src/App/GridModel.cpp
     src/App/MidiDescribe.cpp
     src/App/MidiInputs.cpp

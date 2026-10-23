@@ -69,10 +69,29 @@ struct TrackSelfTest {
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
         return canvas.onMouse(ev);
     }
+    // Clicks half a second apart, so two aren't a double click.
     void click(double x, double y) {
+        time += 500;
         motion(x, y);
         button(x, y, true);
         button(x, y, false);
+        pump(80);
+    }
+    void doubleClick(double x, double y) {
+        time += 500;
+        motion(x, y);
+        for (int i = 0; i < 2; ++i) {
+            button(x, y, true);
+            button(x, y, false);
+        }
+        pump(80);
+    }
+    void drag(double x0, double y0, double x1, double y1) {
+        time += 500;
+        motion(x0, y0);
+        button(x0, y0, true);
+        for (int i = 1; i <= 4; ++i) motion(x0 + (x1 - x0) * i / 4, y0 + (y1 - y0) * i / 4);
+        button(x1, y1, false);
         pump(80);
     }
     void click(const TrackPanels::Rect& r) { click(r.cx(), r.cy()); }
@@ -102,6 +121,7 @@ struct TrackSelfTest {
         pump(100);
     }
     bool scroll(double x, double y, double dy) {
+        motion(x, y);   // the pointer is there first, as with a real wheel
         dgl::Widget::ScrollEvent ev;
         ev.time = ++time;
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
@@ -121,15 +141,34 @@ struct TrackSelfTest {
     }
     const TrackViewModel& view() { return controller.view(); }
 
+#ifdef __APPLE__
+    static constexpr std::uint32_t kCommand = dgl::kModifierSuper;
+#else
+    static constexpr std::uint32_t kCommand = dgl::kModifierControl;
+#endif
+
     void run() {
-        pump(600);
+        pump(1000);
         std::printf("      scale factor %.2f, window %ux%u\n", sf(), window.getWidth(), window.getHeight());
-        screenshot("t01-start.ppm");
+        screenshot("t01-empty.ppm");
         {
-            const auto idle = framesDuring(1500);
-            check("no frames while idle (on demand)", idle == 0, std::to_string(idle) + " in 1.5 s");
+            // Real input (MIDI on Umpire's inputs, keys in the window) draws
+            // frames too: the detail says if any arrived.
+            const auto changes = controller.version();
+            const auto midi    = view().monitorCount;
+            const auto idle    = framesDuring(1500);
+            check("no frames while idle (on demand)", idle == 0,
+                  std::to_string(idle) + " in 1.5 s; the view changed " + std::to_string(controller.version() - changes) +
+                      " times, " + std::to_string(view().monitorCount - midi) + " MIDI messages arrived");
         }
-        check("one track to start, its header and lane drawn", view().rows.size() == 1 && panels.rowRects.size() == 1);
+        check("an empty session shows only the prompt",
+              view().rows.empty() && panels.rowRects.empty() && view().status == "Play something to start");
+
+        // --- playing makes the first track
+        controller.receive(1, uw::ump::midi2NoteOn(0, 0, 60, 0x8000));
+        pump(100);
+        check("playing makes the first track, touched, its header and lane drawn",
+              view().rows.size() == 1 && view().rows[0].touched && panels.rowRects.size() == 1);
         if (view().rows.empty() || panels.rowRects.empty()) return;
         const TrackId t1 = view().rows[0].id;
         {
@@ -140,37 +179,34 @@ struct TrackSelfTest {
 
         // --- adding tracks: the +, the Track menu, the key
         click(panels.addTrackRect);
-        check("the + adds a track, selected", view().rows.size() == 2 && view().rows[1].selected);
+        check("the + adds a track, touched", view().rows.size() == 2 && view().rows[1].touched);
         click(panels.trackMenuRect);
         pump(100);
         check("the Track menu opens", panels.popupOpen());
         tap(dgl::kKeyEscape);
         check("Escape closes it", !panels.popupOpen());
-#ifdef __APPLE__
-        tap('t', dgl::kModifierSuper);
-#else
-        tap('t', dgl::kModifierControl);
-#endif
+        tap('t', kCommand);
         check("the add-track key adds one", view().rows.size() == 3);
 
-        // --- selecting: a lane, a header's background, the arrow keys
+        // --- touching: a lane, a header, the arrow keys
         click(laneX(), laneY(0));
-        check("a click on a lane selects its track", controller.selected() == t1 && probe.canvasPresses >= 1);
+        check("a click on a lane touches its track", controller.selected() == t1 && probe.canvasPresses >= 1);
         tap(dgl::kKeyDown);
-        check("Down selects the next track", controller.selected() == view().rows[1].id);
+        check("Down touches the next track", controller.selected() == view().rows[1].id);
         {
             const auto* r = rects(t1);
+            check("an untouched row shows no controls", r->arm.x1 == 0 && r->mute.x1 == 0);
             click(r->row.x0 + 6 * sf(), r->row.y1 - 3 * sf());
-            check("a click on a header's background selects its track", controller.selected() == t1);
+            check("a click on a header touches its track", controller.selected() == t1);
         }
 
-        // --- the header's controls
+        // --- the touched row's controls
         click(rects(t1)->arm);
         check("R arms the track", view().rows[0].armed);
         tap('r');
-        check("the R key disarms the selected track", !view().rows[0].armed);
+        check("the R key disarms the touched track", !view().rows[0].armed);
         click(rects(t1)->mute);
-        check("M mutes it", view().rows[0].muted);
+        check("M mutes it", view().rows[0].muted && view().undoLabel == "Mute track");
         click(rects(t1)->name.x1 - 4 * sf(), rects(t1)->name.cy());
         check("a click on the name edits it", panels.textActive());
         type(" lead");
@@ -178,25 +214,87 @@ struct TrackSelfTest {
         check("typing and Enter rename it", view().rows[0].name == "Track 1 lead", "\"" + view().rows[0].name + "\"");
         tap(dgl::kKeyUp);
         check("keys go back to the canvas after", !panels.textActive() && controller.selected() == t1);
-        click(rects(t1)->input);
+        tap('z', kCommand);
+        check("the undo key takes the name back", view().rows[0].name == "Track 1");
+        tap('z', kCommand | dgl::kModifierShift);
+        check("and the redo key puts it back", view().rows[0].name == "Track 1 lead");
+        click(panels.editMenuRect);
         pump(100);
-        check("the input choice opens", panels.popupOpen());
-        screenshot("t02-input-choice.ppm");
+        check("the Edit menu opens", panels.popupOpen());
         tap(dgl::kKeyEscape);
+        tap(dgl::kKeyDown);
+        screenshot("t02-rows.ppm");   // Track 1 lead untouched, with its M badge
 
-        // --- MIDI arriving: the light, the monitor, then idle again
+        // --- MIDI arriving: the touched track's light, the monitor, then idle again
         {
             const auto before = view().monitorCount;
             controller.receive(1, uw::ump::midi2NoteOn(0, 0, 60, 0x8000));
             pump(40);
-            check("MIDI lights the tracks that take it", view().rows[0].midiActive && view().monitorCount == before + 1,
-                  view().monitor.empty() ? "" : view().monitor.back().tracks);
-            screenshot("t03-midi.ppm");
+            check("MIDI lights the touched track only", view().rows[1].midiActive && !view().rows[0].midiActive &&
+                                                          view().monitorCount == before + 1);
             pump(400);
-            check("the light goes out", !view().rows[0].midiActive);
+            check("the light goes out", !view().rows[1].midiActive);
             const auto idle = framesDuring(800);
             check("and the window is idle again", idle == 0, std::to_string(idle) + " in 0.8 s");
         }
+
+        // --- recording: arm, the record key, notes, the take growing, stop
+        click(laneX(), laneY(0));
+        tap('r');
+        tap('r', kCommand);
+        check("the record key plays and records", view().transport.playing && view().transport.recording &&
+                                                    view().status == "Recording to Track 1 lead");
+        for (int key : {60, 64, 67}) {
+            controller.receive(1, uw::ump::midi2NoteOn(0, 0, static_cast<std::uint8_t>(key), 0x8000));
+            pump(150);
+            controller.receive(1, uw::ump::midi2NoteOff(0, 0, static_cast<std::uint8_t>(key), 0));
+            pump(100);
+        }
+        check("the take grows on the armed lane", !view().rows[0].clips.empty() && view().rows[0].clips[0].recording &&
+                                                     view().rows[0].clips[0].notes->size() == 3);
+        {
+            const auto frames = framesDuring(1000);
+            check("while playing it draws about 30 frames a second", frames >= 15 && frames <= 45,
+                  std::to_string(frames) + " in 1 s");
+        }
+        screenshot("t03-recording.ppm");
+        tap(' ');
+        check("Space stops, and the take is a clip", !view().transport.playing && view().rows[0].clips.size() == 1 &&
+                                                       !view().rows[0].clips[0].recording && view().undoLabel == "Record");
+        tap(dgl::kKeyHome);
+        check("Home goes to the start", view().transport.position == 0);
+
+        // --- the clip: select, drag along the lane, undo, delete, undo
+        {
+            const ClipModel clip = view().rows[0].clips[0];
+            const double    cx = (canvas.tickX(clip.start) + 6) * sf(), cy = laneY(0);
+            click(cx, cy);
+            check("a click selects the clip", controller.selectedClip() == clip.ref && view().rows[0].clips[0].selected);
+            drag(cx, cy, cx + TrackCanvas::kBeatW * 4 * sf(), cy);
+            check("a drag moves it along the lane, to the beat",
+                  view().rows[0].clips[0].start == clip.start + kTicksPerQuarter * 4 && view().undoLabel == "Move clip",
+                  std::to_string(view().rows[0].clips[0].start));
+            screenshot("t04-clip.ppm");
+            tap('z', kCommand);
+            check("undo moves it back", view().rows[0].clips[0].start == clip.start);
+            tap(dgl::kKeyDelete);
+            check("Delete deletes it", view().rows[0].clips.empty() && controller.selectedClip() == 0);
+            tap('z', kCommand);
+            check("undo brings it back", view().rows[0].clips.size() == 1);
+            click(cx, cy);   // selected again: MainWindow's test opens it
+            check("a click selects it again", controller.selectedClip() == clip.ref);
+        }
+
+        // --- the ruler and the transport keys
+        click((canvas.tickX(kTicksPerQuarter * 8) + 3) * sf(), (canvas.rulerY() + TrackCanvas::kRulerH / 2) * sf());
+        check("a click on the ruler moves the playhead, to the beat", view().transport.position == kTicksPerQuarter * 8 &&
+                                                                       view().transport.positionLabel == "3.1.1");
+        tap(' ');
+        pump(300);
+        check("Space plays", view().transport.playing && view().transport.position > kTicksPerQuarter * 8);
+        tap(' ');
+        check("and stops", !view().transport.playing);
+        tap(dgl::kKeyHome);
 
         // --- many tracks: the wheel scrolls headers and lanes together
         while (view().rows.size() < 16) controller.addTrack();
@@ -205,7 +303,7 @@ struct TrackSelfTest {
             const float before = canvas.scroll();
             scroll(laneX(), laneY(1), -2);
             const float afterLanes = canvas.scroll();
-            scroll(TrackCanvas::kHeaderW * sf() / 2, laneY(1), -1);
+            scroll(TrackCanvas::kHeaderW * sf() / 2, (canvas.lanesY() + TrackCanvas::kRowH * 2) * sf(), -1);
             const float afterHeaders = canvas.scroll();
             check("the wheel over the lanes scrolls", afterLanes > before);
             check("the wheel over the headers scrolls the same rows", afterHeaders > afterLanes);
@@ -214,22 +312,22 @@ struct TrackSelfTest {
             for (std::size_t i = 0; i < view().rows.size(); ++i)
                 if (view().rows[i].id == first.id) index = static_cast<int>(i);
             check("scrolled, headers still line up with lanes", std::abs(first.row.y0 - canvas.rowY(index) * sf()) < 1.0);
-            screenshot("t04-scrolled.ppm");
+            screenshot("t05-scrolled.ppm");
         }
 
         // --- the monitor's View toggle, a resize
         panels.showMonitor = false;
         panels.wake();
         pump(100);
-        check("hiding the monitor gives the lanes the room",
-              std::abs(canvas.lanesY() + canvas.lanesH() - window.getHeight() / sf()) < 1.0);
+        check("hiding the monitor gives the lanes the room, above the status line",
+              std::abs(canvas.lanesY() + canvas.lanesH() - (window.getHeight() - panels.statusHeight()) / sf()) < 1.0);
         panels.showMonitor = true;
         window.setSize(static_cast<uint>(std::lround(1000 * sf())), static_cast<uint>(std::lround(600 * sf())));
         pump(400);
         check("after a resize the panels cover the window",
               panels.getWidth() == window.getWidth() && panels.getHeight() == window.getHeight());
 
-        controller.removeTrack(controller.selected());
+        controller.removeTrack(view().rows.back().id);
         pump(100);
         const auto idle = framesDuring(1000);
         check("idle at the end", idle == 0, std::to_string(idle) + " in 1 s");

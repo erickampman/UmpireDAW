@@ -121,7 +121,15 @@ types, intents from the widgets, the session as the source of truth.
 - The milestone 4 grid stays reachable (View menu) until milestone 6 gives
   it clips to open.
 
-## 6. Transport, the clip model and recording (Umpire)
+## 6. Transport, the clip model and recording (Umpire): done on Linux 2026-10-23
+
+[recording.md](recording.md). The transport in the menu bar, clips of UMP in
+ticks (40320 a quarter), takes stored as MIDI 2.0, undo for every command,
+input moved to the session with a status line, sparse rows, takes growing
+on the armed lanes, clips selected, moved, deleted and opened in the grid,
+whose rows are now EDO steps (StageHand's tuning). Built and self-tested on
+Linux only: the Mac build and recording real MIDI by hand are the author's
+(recording.md, "Still to do"). Not split: undo and the rows fit in the day.
 
 Revised 2026-10-23 for the UI direction (decisions.md, "The UI direction";
 [ui-direction.md](ui-direction.md)). If it proves more than a day, split off

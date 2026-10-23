@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
+#include <utility>
 
 #include "Application.hpp"
 #include "Window.hpp"
@@ -73,16 +75,17 @@ void place(dgl::Window& window, const char* title, double w, double h) {
 
 } // namespace
 
-// The test grid window: milestone 4's grid over its own model, until
-// milestone 6 opens a clip's grid this way.
+// A clip's grid window: milestone 4's grid, showing the clip's notes. Edits
+// stay in the window until milestone 10 makes the grid edit the clip.
 struct GridWindow {
-    explicit GridWindow(dgl::Application& app) : window(app) {
+    GridWindow(dgl::Application& app, const std::shared_ptr<const Clip>& clip) : window(app) {
+        model.showClip(clip);
         {
             const dgl::Window::ScopedGraphicsContext context(window);
             canvas = std::make_unique<GridCanvas>(window, model, probe);
         }
         window.panels = &canvas->panels();
-        place(window, "Umpire - test grid", 1000, 640);
+        place(window, ("Umpire - " + clip->name).c_str(), 1000, 640);
         window.show();
     }
     ~GridWindow() {
@@ -106,7 +109,7 @@ struct MainWindow::Impl {
     UmpireApplication            app;
     Window                       window;
     std::unique_ptr<TrackCanvas> canvas;
-    std::unique_ptr<GridWindow>  grid;
+    std::map<ClipId, std::unique_ptr<GridWindow>> grids;   // by clip: one window each
     std::uint64_t                drawnVersion   = ~std::uint64_t{0};
     double                       secondStart    = 0;
     std::uint64_t                framesAtSecond = 0;
@@ -136,7 +139,7 @@ MainWindow::MainWindow(std::unique_ptr<Impl> i) : impl(std::move(i)) {}
 MainWindow::~MainWindow() {
     // DGL's teardown order: other windows first, then the main window's
     // widgets with its GL context current, the window, then the app.
-    impl->grid.reset();
+    impl->grids.clear();
     impl->window.panels = nullptr;
     destroyWith(impl->window, impl->canvas);
     impl->app.quit();
@@ -151,16 +154,22 @@ void MainWindow::idle() {
     }
     m.app.idle();
 
-    // The test grid window: opened from the View menu, torn down here, outside
-    // DGL's event handling (a click in it can close it).
+    // A clip double-clicked opens its grid, or brings it forward. Grid windows
+    // are torn down here, outside DGL's event handling (a click in one can
+    // close it).
     TrackPanels& panels = m.canvas->panels();
-    if (panels.gridRequested) {
-        panels.gridRequested = false;
-        if (!m.grid) m.grid = std::make_unique<GridWindow>(m.app);
-        else m.grid->window.focus();
+    if (const ClipRefId ref = std::exchange(m.canvas->openRequested, 0); ref != 0) {
+        if (const auto clip = m.controller.clip(ref)) {
+            auto& grid = m.grids[clip->id];
+            if (!grid) grid = std::make_unique<GridWindow>(m.app, clip);
+            else grid->window.focus();
+        }
     }
-    if (m.grid && m.grid->canvas->panels().quitRequested) m.quit = true;
-    if (m.grid && m.grid->closing()) m.grid.reset();
+    for (auto it = m.grids.begin(); it != m.grids.end();) {
+        if (it->second->canvas->panels().quitRequested) m.quit = true;
+        if (it->second->closing()) it = m.grids.erase(it);
+        else ++it;
+    }
 
     const double now = m.app.getTime();
     if (now - m.secondStart >= 1.0) {
@@ -181,26 +190,40 @@ bool MainWindow::closed() const {
 
 int MainWindow::selfTest(const std::string& dir) {
     Impl& m = *impl;
-    const auto start = std::chrono::steady_clock::now();
     // The app's loop: the controller's tick, then the windows'.
     const auto pump = [&] {
-        m.controller.tick(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+        m.controller.tick();
         idle();
     };
     int status = runTrackSelfTest(pump, m.window, *m.canvas, m.controller, m.probe, dir);
 
-    std::puts("--- the test grid window");
-    m.canvas->panels().gridRequested = true;
-    for (int i = 0; i < 10; ++i) pump();
-    if (!m.grid) {
-        std::puts("FAIL  View > Test grid window opens it");
+    // The track view's test leaves a recorded clip selected; a double click opens it.
+    std::puts("--- a clip's grid window");
+    const ClipRefId ref = m.controller.selectedClip();
+    const auto      clip = m.controller.clip(ref);
+    if (!clip) {
+        std::puts("FAIL  the track view's test recorded a clip");
         return 1;
     }
-    std::puts("PASS  View > Test grid window opens it");
-    status |= runGridSelfTest(m.app, m.grid->window, *m.grid->canvas, m.grid->model, m.grid->probe, dir);
-    m.grid->canvas->panels().closeRequested = true;
+    m.canvas->openRequested = ref;
+    for (int i = 0; i < 10; ++i) pump();
+    const auto found = m.grids.find(clip->id);
+    if (found == m.grids.end()) {
+        std::puts("FAIL  a double click on a clip opens its grid");
+        return 1;
+    }
+    GridWindow& grid = *found->second;
+    const bool shows = grid.model.clipName == clip->name && !grid.model.notes.empty() &&
+                       grid.model.notes.size() == notesOf(clip->events, clip->length).size();
+    std::printf("%s  the clip's grid shows its notes: %zu\n", shows ? "PASS" : "FAIL", grid.model.notes.size());
+    if (!shows) status = 1;
+    // The grid's own checks start from an empty grid: they're about input, not the clip.
+    grid.model.clear();
+    grid.model.clipName = "Untitled clip";
+    status |= runGridSelfTest(m.app, grid.window, *grid.canvas, grid.model, grid.probe, dir);
+    grid.canvas->panels().closeRequested = true;
     pump();
-    const bool gone = !m.grid;
+    const bool gone = m.grids.empty();
     std::printf("%s  File > Close window closes it\n", gone ? "PASS" : "FAIL");
     return gone ? status : 1;
 }
