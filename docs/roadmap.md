@@ -68,8 +68,8 @@ submodules, replacing `UMPIRE_DPF_DIR`. It has:
   routing, on-demand redraw and rescale;
 - the view-model rule: no DGL or ImGui types below the drawing layer.
 
-The spike (`spike/`) is retired here or kept as a test bench. Decide at the
-start of the milestone.
+The spike (`spike/`) is deleted once `umpire-daw` does what it did
+(decisions.md, "Milestone 4", decided 2026-10-22).
 
 **The house look and feel, from the start** (asked for 2026-10-18):
 everything should look like the plugins and KeyboardEDO where it can. That's
@@ -79,8 +79,8 @@ colours (KeyboardEDO's `docs/decisions.md`, "Look and feel"). Umpire's
 panels are ImGui, as KeyboardEDO's are, so they can start from KeyboardEDO's
 `src/app/Widgets.{h,cpp}` (`kedo::app::ui`: knob, slider, value box, section,
 theme). The NanoVG canvas can use the plugins' NanoVG widgets
-(`src/UI/Knob.hpp` and the rest). uw-core has no UI code, so whether the
-widgets are copied or shared some other way is decided here. Plugin editors
+(`src/UI/Knob.hpp` and the rest). The widgets are copied into Umpire, not
+shared (decisions.md, "Milestone 4"). Plugin editors
 keep their own look.
 
 ## 5. MIDI in and the clip model (Umpire, maybe uw-core)

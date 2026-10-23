@@ -212,6 +212,17 @@ Open (decide in the milestones):
   (LGPL, linked dynamically, which the licence decision allows).
 - Where files go: in the session's folder, beside its MIDI Clip Files.
 
+## Milestone 4: the spike and the widgets (decided 2026-10-22)
+
+- **The spike is deleted** once `umpire-daw` does what it did. Git history
+  keeps it, and ui-spike.md keeps what it taught. It isn't kept as a test
+  bench.
+- **The house widgets are copied into Umpire**, not shared. Umpire starts
+  from copies of KeyboardEDO's `src/app/Widgets.{h,cpp}` (ImGui) and the
+  plugins' NanoVG widgets (`src/UI/Knob.hpp` and the rest), in Umpire's own
+  namespace and colours. uw-core stays free of UI code. A shared UI library
+  can come later if the copies drift apart in ways that hurt.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
