@@ -261,6 +261,40 @@ MIDI gets in; playing it in will. So:
 - **The track headers are ImGui, the lanes NanoVG**, lined up row for row
   from one scroll position the canvas keeps.
 
+The UI direction (below) changes the rows: input moves to the session, and a
+row shows only what isn't the default.
+
+## The UI direction (decided 2026-10-23)
+
+The author, after reading [daw-dynamic-ui-spec.md](daw-dynamic-ui-spec.md)
+and seeing mockups: "the opposite of Bitwig: you see only what you need to
+see." The details and the mockups are in [ui-direction.md](ui-direction.md).
+- **Only what you need.** The timeline is always there; everything else
+  appears because there is content, or because the user touched or asked
+  for it. Details appear in place, zoom replaces opening things, and a
+  command palette summons commands and task surfaces.
+- **Hide controls, never hide state.** Anything that changes what you hear
+  shows at a glance, at least as a badge.
+- **Nothing changes on a guess.** Things appear because content exists or
+  the user asked, and always in the same place.
+- **Both ways to edit notes:** zooming into a clip's lane edits it in place,
+  and double-clicking still opens the grid in its own window (The track
+  view, above).
+- **The model is a graph; rows are its default view.** A track is a node
+  with a lane; inputs and outputs are edges. A touched track shows its path.
+  A full routing view comes later, in 2D first.
+- **Input belongs to the session.** Umpire listens to all inputs; playing
+  goes to the touched track, recording to the armed tracks. Filtering by
+  channel or group is asked for, not shown on every row. This replaces
+  milestone 5's per-track input choices.
+- **An instrument is a plugin or a device**, treated as equals. A clip
+  reference may name its own instrument, overriding the track's.
+- **One undo for everything**, as commands on the session, starting in
+  milestone 6.
+- **The spec is kept as a reference.** Its routing view and XY controller are
+  candidate ideas (ideas.md, "From the dynamic UI spec"); its AI layer is
+  not planned.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

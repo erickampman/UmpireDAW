@@ -71,6 +71,21 @@ Ideas 1, 2 and 5 can only exist in a DAW built on MIDI 2.0, so established
 DAWs can't easily copy them. They are the strongest reason for Umpire to
 exist.
 
+## From the dynamic UI spec
+
+From [daw-dynamic-ui-spec.md](daw-dynamic-ui-spec.md) (2026-10-23), kept as a
+reference; where they would fit is in [ui-direction.md](ui-direction.md).
+
+- **A routing view.** The session's graph drawn by stage, with a trace of
+  what feeds a node and where it goes, and checks for loops and orphans
+  (with a way to mark a loop as intended). 2D first; the spec's 3D depth
+  view is an experiment. Worth building after instruments (milestone 8) and
+  groups (milestone 12).
+- **A word-pair XY controller.** A pad whose axes are word pairs ("Boxy ↔
+  Airy") over an editable mapping to parameters: CLAP parameters, MIDI 2.0
+  controllers on outputs, or what a device names through Property Exchange.
+  MIDI learn on X and Y; the puck can be recorded into clips.
+
 ## Procedural clips
 
 A clip that stores a recipe instead of notes, and produces exactly the same

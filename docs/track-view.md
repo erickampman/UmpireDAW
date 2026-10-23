@@ -7,6 +7,10 @@ uw-core's input seam and reaches the tracks whose input takes it. Built and
 checked on the Mac on 2026-10-23 (CoreMIDI). **Not yet built on Linux** (the
 ALSA sequencer path), like milestone 4.
 
+The UI direction decided afterwards ([ui-direction.md](ui-direction.md))
+changes the rows: milestone 6 moves input to the session, drops the per-track
+input, channel and group choices, and shows only what isn't the default.
+
 ## Building and running
 
 [building.md](building.md) has both platforms. The build now needs uw-core's

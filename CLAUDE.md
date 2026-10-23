@@ -14,7 +14,9 @@ is the track view; see [docs/track-view.md](docs/track-view.md).
    features, design principles), [docs/plugins-roadmap.md](docs/plugins-roadmap.md),
    [docs/ui-spike.md](docs/ui-spike.md) (milestone 1: DGL plus Dear ImGui),
    [docs/skeleton.md](docs/skeleton.md) (milestone 4: how `umpire-daw` is built),
-   [docs/track-view.md](docs/track-view.md) (milestone 5: tracks and MIDI in).
+   [docs/track-view.md](docs/track-view.md) (milestone 5: tracks and MIDI in),
+   [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
+   you need; read before any UI work).
 
 Umpire shares code with StageHand (`~/Dev-MIDI/StageHand` on the Mac,
 `~/dev/dev-midi/StageHand` on the Linux PC), a live-performance CLAP host.

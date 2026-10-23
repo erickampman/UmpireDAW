@@ -123,12 +123,27 @@ types, intents from the widgets, the session as the source of truth.
 
 ## 6. Transport, the clip model and recording (Umpire)
 
+Revised 2026-10-23 for the UI direction (decisions.md, "The UI direction";
+[ui-direction.md](ui-direction.md)). If it proves more than a day, split off
+undo and the rows.
+
 - Umpire's transport: play, stop, record, locate, and a tempo, with a
-  position in ticks. The toolbar shows it.
+  position in ticks. A small toolbar shows it.
 - A clip model: UMP messages with timestamps in ticks, with room for
-  per-note data (decisions.md, "Deferred"). No toolkit types.
-- Recording: while recording, each armed track records what its input
-  passes into a new clip on its lane, drawn as it grows.
+  per-note data (decisions.md, "Deferred"). No toolkit types. Clips sit on
+  lanes through clip references, with room for transforms (idea 9) and for
+  an instrument of the clip's own, empty until milestones 7 and 8.
+- Undo: every change is a command on the session (add, remove and rename
+  tracks, arm, mute and solo, record, move and delete clips).
+- Input moves to the session: Umpire listens to all inputs, playing goes to
+  the touched track and recording to the armed tracks. Tracks get stable
+  IDs. A status line names what's listening. Milestone 5's per-track input,
+  channel and group choices go.
+- Sparse rows: a light, the name, and badges only for what isn't the
+  default. The touched track shows the rest in place. An empty session shows
+  only the prompt.
+- Recording: while recording, each armed track records what you play into a
+  new clip on its lane, drawn as it grows.
 - Clips on the lanes: select, move along the lane, delete. Double-clicking a
   clip opens it in the grid (milestone 4's), in its own window as
   StageHand's sequence editor, showing its notes.
@@ -157,7 +172,7 @@ types, intents from the widgets, the session as the source of truth.
 - Read and write standard MIDI Clip Files (M2-116-U), with tests that
   round-trip clips, including Pitch 7.9 notes.
 - Umpire's session file (JSON, as StageHand's files are): tracks, their
-  inputs and outputs, and clip references. Leave room for audio file
+  instruments, and clip references with their own instruments. Leave room for audio file
   references (decisions.md, "Audio"; milestones 15-17).
 - Open and Save from the menu, through DPF's file browser or StageHand's
   zenity/kdialog approach.
@@ -167,7 +182,9 @@ types, intents from the widgets, the session as the source of truth.
 Bring StageHand's sequence editor drawing to the grid that a clip opens in,
 editing the clip model: select, move, resize, delete, velocity, undo. Show
 Pitch 7.9 notes on an EDO grid, as StageHand does. Include a plan for showing
-per-note pitch bend and controllers later (decisions.md, "Deferred").
+per-note pitch bend and controllers later (decisions.md, "Deferred"). Also
+zooming into a clip's lane to edit its notes in place (ui-direction.md),
+sharing the grid's editing code.
 
 ## 11. Plugin editor windows (uw-core, then Umpire)
 
@@ -178,8 +195,8 @@ saved in the session file.
 ## 12. UMP groups and the arrangement (Umpire)
 
 - A track is a view over a range of UMP groups (decisions.md, idea 5), with
-  routing from inputs and to outputs by group: milestone 5's input choices,
-  carried through to the outputs.
+  routing to outputs by group. Input filtering by group or channel is asked
+  for through the palette, not shown on every row (ui-direction.md).
 - The arrangement: the lanes' clips become clip references, with transforms
   on the reference (idea 9): offset, transpose, loop.
 
