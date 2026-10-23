@@ -169,6 +169,34 @@ that declare `CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES`. The host can't
 choose a plugin's voice slot; voice allocation stays the plugin's. The synth
 side is in plugins-roadmap.md (Tier 3).
 
+## Quantize as a plugin
+
+Added 2026-10-23 (the author): quantize will probably be a plugin, a MIDI
+processor in the session's graph (ui-direction.md, "The model behind it":
+splits, filters, transforms), not code built into the editor. Its strength
+must be adjustable as a percentage: 100% moves each note onto the grid, 50%
+halfway there, 0% leaves it alone. This leans away from idea 9's quantize as
+a setting on the clip reference, though either way the recorded notes stay
+untouched and the strength can be changed later.
+
+Questions to settle when it's built:
+- **Notes can only move earlier with lookahead.** A plugin that sees events
+  as they play can delay a late note but can't play an early one sooner. On
+  a clip it needs the clip's events ahead of time (Umpire's own plugin API,
+  or offline), or the playback runs that far ahead of it. Live input can
+  only be delayed.
+- **Per-note data moves with its note.** Per-note controllers, per-note pitch
+  bend, a Pitch 7.25 sent just before the note-on and Per-Note Management are
+  tied to their note, so they shift by the same amount, and a held key's
+  controllers keep their timing relative to the note-on. Ends: move note-offs
+  too (length kept), or quantize them separately.
+- **The grid:** a note value, triplets and other tuplets (40320 ticks a
+  quarter divides exactly; decisions.md, "Time, clips and pitch"), and swing
+  and groove templates later. Possibly a window (only notes within some
+  distance of a grid line move) as well as the strength.
+- **Applying it:** "Apply" makes a new clip with the notes moved, as an
+  undoable command, the way an edit does (clips never change once made).
+
 ## MIDI 2.0-specific features
 
 Possible features that MIDI 2.0 makes available to Umpire, by layer of the
