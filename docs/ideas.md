@@ -207,8 +207,13 @@ Questions to settle when it's built:
   quarter divides exactly; decisions.md, "Time, clips and pitch"), and swing
   and groove templates later. Possibly a window (only notes within some
   distance of a grid line move) as well as the strength.
-- **Applying it:** "Apply" makes a new clip with the notes moved, as an
-  undoable command, the way an edit does (clips never change once made).
+- **Printing it (possible feature, the author):** besides quantizing on the
+  fly, print the result into the notes, as DAWs generally can. Printing makes
+  a new clip with the notes moved, as an undoable command, the way an edit
+  does (clips never change once made), and the on-the-fly quantize then goes
+  back to 0%. The unquantized clip stays in the undo history, and could stay
+  findable as the print's source, as a printed plugin track keeps its MIDI
+  (decisions.md, "Audio").
 
 ## MIDI 2.0-specific features
 
