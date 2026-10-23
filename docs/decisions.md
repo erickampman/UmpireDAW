@@ -245,14 +245,15 @@ MIDI gets in; playing it in will. So:
 - **Each track has a lane** on a timeline beside its row, holding its clips.
 - **Double-clicking a clip opens it in the grid** (the piano roll): the grid
   is the clip editor, not the main view.
+- **The grid opens in its own window** (the author, 2026-10-23), as
+  StageHand's sequence editor does: one window per clip, its own DGL window
+  with the NanoVG grid and its own ImGui panels. The main window keeps the
+  tracks.
 - The roadmap was reordered for it (roadmap.md, revised 2026-10-23): the
   track view and MIDI in (5), then transport and recording (6), playback to
   MIDI outputs (7), CLAP instruments (8), files (9), the piano roll (10).
 
 Open:
-- **Where the grid opens:** its own window, as StageHand's sequence editor
-  does, or a pane under the tracks in the main window (as most DAWs). Ask
-  the author before milestone 6.
 - How much of StageHand's rack-view code (RackViewModel, RackController,
   the row widgets) carries over, as copies or through uw-core. Decide in
   milestone 5, after reading it.

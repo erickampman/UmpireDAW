@@ -124,7 +124,8 @@ types, intents from the widgets, the session as the source of truth.
 - Recording: while recording, each armed track records what its input
   passes into a new clip on its lane, drawn as it grows.
 - Clips on the lanes: select, move along the lane, delete. Double-clicking a
-  clip opens it in the grid (milestone 4's), showing its notes.
+  clip opens it in the grid (milestone 4's), in its own window as
+  StageHand's sequence editor, showing its notes.
 
 ## 7. Playback to MIDI outputs (uw-core, then Umpire)
 
