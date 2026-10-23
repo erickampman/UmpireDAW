@@ -113,6 +113,47 @@ The hard parts:
 4. **Export.** The standard clip format stores events, so exporting flattens
    the clip, with the recipe kept alongside as extra data.
 
+## Voice assignment by the controller
+
+Added 2026-10-22. The controller (KeyEDO, or another program) decides which
+synth voice each note uses, so that slew between notes can be chosen
+algorithmically: "this note takes over voice 3, which was playing E, and
+glides from there", or "a new voice, no glide". The synth still does the
+glide itself, so it stays smooth and costs one message per note. The
+alternative, the controller holding one note and sending a stream of Pitch
+7.25 or per-note pitch bend, needs no voice concept, but takes many messages
+and is only as smooth as their rate.
+
+Prior art: MPE gives each note its own channel, which a synth can treat as a
+voice, but glide stays the synth's own rule. No standard MIDI 2.0 message
+names a voice that we know of.
+
+Two ways to carry the voice number in MIDI 2.0:
+- **A note attribute.** Type 2 (profile-specific) gets its meaning from a
+  MIDI-CI Profile enabled on the channel, and no published Profile defines
+  voice assignment, so this would mean inventing one and negotiating it.
+  Type 1 (manufacturer-specific) carries the same 16 bits as a private
+  convention, with no negotiation. Either way, a note carries only one
+  attribute, and KeyEDO's notes already use it for Pitch 7.9. Pitch would
+  then come from Pitch 7.25 sent just before the note-on.
+- **An assignable per-note controller**, sent at the same timestamp just
+  before the note-on. Pitch stays in 7.9, the voice number can be 32 bits,
+  and a synth that ignores the controller still plays in tune. **Leaning
+  this way.**
+
+What it asks of Umpire: the clip model keeps the whole note-on, attribute
+and per-note controllers included, so the controller's choices record and
+play back unchanged (milestone 5's room for per-note data). The piano roll
+shows a note's voice as a property of the note (lanes or colours), so it can
+be seen and edited. For CLAP plugins, uw-core passes UMP through untouched to
+plugins that accept MIDI 2.0. For other CLAP plugins the host could later
+turn it into CLAP's own terms: a `note_id` on the note-on, and a per-note
+parameter value (`CLAP_PARAM_IS_MODULATABLE_PER_NOTE_ID`) on that `note_id`.
+CLAP's `note_id` also lets two notes share a key and channel, for plugins
+that declare `CLAP_VOICE_INFO_SUPPORTS_OVERLAPPING_NOTES`. The host can't
+choose a plugin's voice slot; voice allocation stays the plugin's. The synth
+side is in plugins-roadmap.md (Tier 3).
+
 ## MIDI 2.0-specific features
 
 Possible features that MIDI 2.0 makes available to Umpire, by layer of the
@@ -144,6 +185,8 @@ designed around MIDI 1.0 would find hardest to add later.
    profile-specific attributes let each note carry its articulation instead
    of keyswitch notes. The Orchestral Articulation Profile builds on this
    (check how far it has been adopted).
+   A note attribute could also name a synth voice; see
+   [Voice assignment by the controller](#voice-assignment-by-the-controller).
 
 ### UMP stream and structure
 

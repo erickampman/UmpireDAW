@@ -69,6 +69,14 @@ attributes.
   Expose each plugin parameter as a 32-bit assignable controller, so
   hardware MIDI 2.0 controllers reach the synths the same way Umpire does,
   with full resolution and no MIDI learn.
+- **Voice assignment from the controller** (ideas.md, "Voice assignment by
+  the controller"; added 2026-10-22). Read a voice number from each note,
+  most likely an assignable per-note controller sent just before the
+  note-on, and let the voice manager use it: a note naming a sounding voice
+  takes it over and glides from that voice's pitch; a note naming a free
+  voice starts fresh. Decide what a voice number beyond the voice count
+  does. Needs the decoder work (Step 0) and the per-note controller layer
+  (Tier 2) first, and StruckSynth and IFSynth need MIDI 2.0 at all (Step 0).
 
 ## Low priority
 
