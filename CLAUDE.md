@@ -7,9 +7,9 @@ is the track view, which records; see [docs/recording.md](docs/recording.md).
 ## Read first
 
 1. [docs/decisions.md](docs/decisions.md): what has been decided and the
-   working method; [docs/roadmap.md](docs/roadmap.md): the milestones.
+   working method; [MILESTONES.md](MILESTONES.md): the milestones.
 2. [docs/naming.md](docs/naming.md): product name, binary, IDs, namespace.
-3. To build: [docs/building.md](docs/building.md) (Linux and macOS).
+3. To build: [BUILDING.md](BUILDING.md) (Linux and macOS).
 4. As needed: [docs/ideas.md](docs/ideas.md) (candidate ideas, MIDI 2.0
    features, design principles), [docs/plugins-roadmap.md](docs/plugins-roadmap.md),
    [docs/ui-spike.md](docs/ui-spike.md) (milestone 1: DGL plus Dear ImGui),
@@ -37,7 +37,7 @@ The Mac hasn't run the shared code yet. Before Umpire work there:
 2. Follow `~/Dev-Common/uw-core/docs/macos-check.md`: uw-core's tests,
    StageHand's `uw-core-switch` branch over it, and the app checks (the
    audible ones are the author's). Record the results there, and in this
-   repo's `docs/roadmap.md` ("Outside Umpire's roadmap").
+   repo's `MILESTONES.md` ("Outside Umpire (related)").
 3. In each Mac clone with submodules (this one, StageHand, uw-core), once:
    `git config push.recurseSubmodules check`.
 

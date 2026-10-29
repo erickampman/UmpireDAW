@@ -11,17 +11,21 @@ transport, undo and a MIDI monitor; a clip opens in a grid of EDO steps. See
 [docs/recording.md](docs/recording.md) and [docs/skeleton.md](docs/skeleton.md).
 
 ```bash
-git clone --recurse-submodules https://github.com/erickampman/UmpireDAW.git
-cmake -B build -G Ninja && cmake --build build
+git clone https://github.com/erickampman/UmpireDAW.git
+cd UmpireDAW
+tools/fetch_deps.sh
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 build/umpire-daw
 ```
 
-[docs/building.md](docs/building.md) has the dependencies for Linux and macOS,
+[BUILDING.md](BUILDING.md) has the dependencies for Linux and macOS,
 the tests, and running it.
 
 - [Decisions](docs/decisions.md): what's decided, and the current milestone
-- [Roadmap](docs/roadmap.md): the milestones to a first useful version
-- [Building](docs/building.md): Linux and macOS, dependencies, tests
+- [Milestones](MILESTONES.md): the milestones to a first useful version
+- [Building](BUILDING.md): Linux and macOS, dependencies, tests
+- [Contributing](CONTRIBUTING.md): before each commit, submodule push order
 - [Recording](docs/recording.md): milestone 6, transport, clips, undo, tuning
 - [Track view](docs/track-view.md): milestone 5, the main window and MIDI in
 - [Skeleton](docs/skeleton.md): milestone 4, what `umpire-daw` is built from

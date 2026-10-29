@@ -8,7 +8,7 @@ checked on the Mac on 2026-10-23, and on the Linux PC the same day (GCC
 
 ## Building and running
 
-[building.md](building.md) has the dependencies and steps for both
+[BUILDING.md](../BUILDING.md) has the dependencies and steps for both
 platforms; the commands as of milestone 4:
 
 ```bash

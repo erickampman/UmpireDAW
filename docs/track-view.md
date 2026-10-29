@@ -16,7 +16,7 @@ milestone 5 as it was built.
 
 ## Building and running
 
-[building.md](building.md) has both platforms. The build now needs uw-core's
+[BUILDING.md](../BUILDING.md) has both platforms. The build now needs uw-core's
 backends (`UW_CORE_BACKENDS` ON): on Linux that's JACK and alsa-lib 1.2.10 or
 later, as StageHand.
 

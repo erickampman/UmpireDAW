@@ -8,7 +8,7 @@ nothing has been recorded by hand from real MIDI.
 
 ## Building and running
 
-As milestone 5 ([building.md](building.md)):
+As milestone 5 ([BUILDING.md](../BUILDING.md)):
 
 ```bash
 ctest --test-dir build                     # silent: the grid model, the track controller

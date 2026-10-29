@@ -180,7 +180,7 @@ allowed for it, as with MOTU's Digital Performer):
 
 Decided:
 - **When: right after the first useful version.** v1 stays MIDI-only (Scope,
-  above), and the audio work is the next phase (roadmap.md, milestones
+  above), and the audio work is the next phase (MILESTONES.md, milestones
   14-18). But v1 is designed for it:
   - the engine can run offline, without the audio device, to render;
   - the session file has room for audio file references.
@@ -249,9 +249,9 @@ MIDI gets in; playing it in will. So:
   StageHand's sequence editor does: one window per clip, its own DGL window
   with the NanoVG grid and its own ImGui panels. The main window keeps the
   tracks.
-- The roadmap was reordered for it (roadmap.md, revised 2026-10-23): the
-  track view and MIDI in (5), then transport and recording (6), playback to
-  MIDI outputs (7), CLAP instruments (8), files (9), the piano roll (10).
+- The milestones were reordered for it: the track view and MIDI in (5), then
+  transport and recording (6), playback to MIDI outputs (7), CLAP
+  instruments (8), files (9), the piano roll (10) (MILESTONES.md).
 
 - **StageHand's rack-view pattern, not its code** (milestone 5, 2026-10-23;
   track-view.md): its rack code is bound to its engine and session, so
@@ -362,10 +362,11 @@ than 12-EDO.
 
 - **Milestones are about a day each, with a fresh Claude session per
   milestone.** StageHand used too few sessions. Each milestone starts by
-  reading this file, the roadmap, and the docs it names.
-- The roadmap is [roadmap.md](roadmap.md), drafted 2026-10-07 after
-  milestone 1. It adopts ui-spike.md's proposals: Umpire owns its ImGui
-  widget (milestone 4), and the DPF fork turns vsync off (milestone 3).
+  reading this file, the milestones, and the docs it names.
+- The milestones are listed in [MILESTONES.md](../MILESTONES.md), drafted
+  2026-10-07 after milestone 1. It adopts ui-spike.md's proposals: Umpire
+  owns its ImGui widget (milestone 4), and the DPF fork turns vsync off
+  (milestone 3).
 
 ## Milestone 1: DGL plus Dear ImGui spike (Linux)
 
@@ -383,7 +384,7 @@ checks for the author to make by hand. The spike was `spike/`
 The author's hand test passed. StageHand showed no vsync stall (ui-spike.md,
 finding 6).
 
-Next: [roadmap.md](roadmap.md).
+Next: [MILESTONES.md](../MILESTONES.md).
 
 **Goal:** one DGL window on Linux containing:
 - a NanoVG canvas (a simple note grid, or a piece of StageHand's sequence
