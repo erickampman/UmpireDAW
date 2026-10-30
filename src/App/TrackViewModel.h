@@ -39,7 +39,7 @@ struct TrackRowModel {
     bool        armed  = false;
     bool        muted  = false;
     bool        soloed = false;
-    std::string outputLabel = "No output";   // its device's name; a plugin with milestone 8
+    std::string outputLabel = "No output";   // its device's or plugin's name
     bool        outputMissing = false;       // its device isn't connected now
     bool        midiActive  = false;   // MIDI reached the track in the last moment
     bool        touched     = false;   // the selected track: playing goes to it
@@ -71,11 +71,11 @@ struct MonitorLine {
     bool operator==(const MonitorLine&) const = default;
 };
 
-// A device a track can play to.
+// A device or plugin a track can play to.
 struct OutputChoice {
     std::string label;
     std::string device;   // its id, for TrackController::setOutput
-    bool        hardware = false;
+    bool        hardware = false;   // always false for a plugin
 
     bool operator==(const OutputChoice&) const = default;
 };

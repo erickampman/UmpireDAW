@@ -1,10 +1,13 @@
 #pragma once
 
-// Playback to MIDI outputs (milestone 7, docs/playback.md): each track with
-// an output plays its clips there, scheduled a little ahead on uw-core's
-// clock so their timing doesn't hang on the main loop's 10 ms tick; the
-// platform holds them until their time (uw::MidiOutput::sendAt). And what's
-// played live goes through to the touched track's output.
+// Playback to MIDI outputs and plugin instruments (milestones 7 and 8,
+// docs/playback.md, docs/plugins.md): each track with an output plays its
+// clips there, scheduled a little ahead on uw-core's clock so their timing
+// doesn't hang on the main loop's 10 ms tick. A MIDI device holds them until
+// their time (uw::MidiOutput::sendAt); a plugin voice does the same in its
+// own queue, turned into a sample-accurate offset when its block comes
+// (AudioEngine). And what's played live goes through to the touched track's
+// output, whichever kind it is.
 //
 // Per-key Pitch 7.25 is chased: the synths keep it as a tuning table, so on
 // play, a locate and a loop wrap, each key a track's clips tune gets the
@@ -12,8 +15,8 @@
 // none is. Notes sounding are ended on stop, a locate and a wrap; nothing
 // else is chased yet (controllers, programs).
 //
-// Each track has its own stream: a handle to its device (MidiOutputs opens
-// one per stream, so cancelling one leaves the rest), what's been scheduled
+// Each track has its own stream: a handle to its device or its plugin voice
+// (one per stream, so cancelling one leaves the rest), what's been scheduled
 // on it, and the notes sounding. Main thread only; no toolkit types.
 
 #include <cstdint>
@@ -21,6 +24,7 @@
 #include <string>
 #include <vector>
 
+#include "App/AudioEngine.h"
 #include "App/MidiOutputs.h"
 #include "App/Session.h"
 #include "App/Transport.h"
@@ -33,7 +37,7 @@ public:
     // time: covers a slow frame or two of the main loop.
     static constexpr uw::Nanoseconds kLookahead = 100'000'000;
 
-    explicit Player(MidiOutputs& outputs);
+    Player(MidiOutputs& outputs, AudioEngine& engine);
     ~Player();
 
     // Each tick: follow the session (outputs, mute and solo, clips) and the
@@ -64,7 +68,9 @@ private:
 
     struct Stream {
         std::string               device;
-        uw::MidiDestinationHandle handle  = uw::kInvalidMidiDestination;
+        bool                      plugin      = false;   // the device names a plugin (Instruments::isPluginOutput)
+        uw::MidiDestinationHandle midiHandle  = uw::kInvalidMidiDestination;
+        VoiceHandle                pluginVoice = kInvalidVoice;
         bool                      audible = false;   // not muted, and soloed if anything is
         bool                      muted   = false;
         std::vector<ClipRef>      clips;             // what it plays, to see a change
@@ -82,7 +88,18 @@ private:
     void thruOff(TrackId track);
     void send(Stream& s, const uw::MidiMessage* messages, std::size_t count, uw::Nanoseconds when);
 
+    // Dispatch to `outputs` or `engine`, by whether the stream's device names
+    // a plugin (Instruments::isPluginOutput): the only places that know it.
+    void              openStream(Stream& s);
+    void              closeStream(Stream& s);
+    bool              streamOpen(const Stream& s) const;
+    bool              streamSchedules(const Stream& s) const;
+    uw::MidiProtocol  streamProtocol(const Stream& s) const;
+    void              streamSendAt(Stream& s, const uw::MidiMessage* messages, std::size_t count, uw::Nanoseconds when);
+    void              streamCancel(Stream& s);
+
     MidiOutputs&               outputs;
+    AudioEngine&               engine;
     std::map<TrackId, Stream>  streams;
     std::map<int, TrackId>     thruHeld;   // live notes on, by key: the track they went to
     std::uint64_t              seenAnchor     = 0;

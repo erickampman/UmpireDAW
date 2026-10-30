@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "App/AudioEngine.h"
 #include "App/History.h"
 #include "App/MidiInputs.h"
 #include "App/MidiOutputs.h"
@@ -40,7 +41,7 @@ public:
     // The time, on uw-core's clock (the one MIDI capture times use).
     using Clock = std::function<uw::Nanoseconds()>;
 
-    TrackController(MidiInputs& inputs, MidiOutputs& outputs, Clock clock = {});
+    TrackController(MidiInputs& inputs, MidiOutputs& outputs, AudioEngine& engine, Clock clock = {});
 
     // Take what MIDI arrived, route and record it, and rebuild the view.
     void tick();
@@ -120,6 +121,7 @@ private:
 
     MidiInputs&                          inputs;
     MidiOutputs&                         outputs;
+    AudioEngine&                         engine;
     Clock                                clockFn;
     Session                              doc;
     History                              history;

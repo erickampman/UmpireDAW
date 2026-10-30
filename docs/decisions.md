@@ -369,6 +369,63 @@ Made while building milestone 7 on the Linux PC ([playback.md](playback.md)).
 - **Umpire's own inputs aren't offered as outputs**, and Umpire's output is
   its own ALSA client pair, "Umpire Out".
 
+## Hosting CLAP instruments (milestone 8, 2026-10-30)
+
+Made while building milestone 8 on the Mac ([plugins.md](plugins.md)).
+- **CoreAudio on macOS, not JACK**: the Mac build has no JACK dependency at
+  all (BUILDING.md), so `App/PlatformAudioBackend.h` picks
+  `uw::CoreAudioBackend` there and `uw::JackBackend` on Linux, as
+  `uw/midi/PlatformMidiOutput.h` already picks CoreMIDI or ALSA. Neither
+  `AudioEngine` nor `Player` knows which backend is running.
+- **A plugin output is the same opaque id milestone 7 already used**
+  (`Session::Output.device`), not a new field: `Instruments::outputId`
+  encodes the plugin's path and its id within it, and
+  `Instruments::isPluginOutput` tells it apart from a MIDI device id.
+  Everything that already worked by a track's output id (the row, undo,
+  the session) didn't have to change; only `Player` dispatches on it.
+- **A plugin voice is scheduled exactly like a MIDI device**: `AudioEngine`
+  mirrors `MidiOutputs`' shape (`schedules`/`protocol`/`sendAt`/`cancel`),
+  so `Player`'s scheduling, chasing and muting code (milestone 7) is
+  unchanged; only four small dispatch functions decide which of
+  `MidiOutputs` or `AudioEngine` a stream talks to.
+- **Cancelling a lock-free, one-reader queue**: `uw::SpscQueue` has no way
+  to remove an item the consumer hasn't reached yet, so `AudioEngine`
+  doesn't try to: `cancel()` bumps a generation counter and every queued
+  event carries the generation it was sent under, so the audio thread
+  discards a stale one instead of delivering it. Same effect as ALSA's
+  `cancelScheduled`, reached differently because the queue only goes one
+  way.
+- **Removing a voice follows `HostedPlugin`'s own contract** (its header
+  comment): the audio thread must call `stopProcessing()` before the main
+  thread may `deactivate()`. `close()` asks for that (an atomic flag) and
+  waits for the audio thread to retire it -- bounded, since every block
+  services every voice -- or, if the engine was never started, does it
+  directly, since nothing else ever calls `renderBlock()` then.
+- **Offline-capable, by not coupling `process()` to the backend in the
+  first place**: `renderBlock()` is the whole audio-thread path;
+  `uw::AudioProcessor::process()` (the real-time callback) is a one-line
+  forward to it. This is exactly what the audio phase after v1 will need
+  (below, "Audio: printing, mixdown, playback": "the engine can run
+  offline, without the audio device, to render"), and milestone 8 didn't
+  have to add anything for it to be true -- every test in
+  `tests/AudioEngineTests.cpp` and the plugin test in
+  `tests/PlaybackTests.cpp` already drive it this way, by hand, with no
+  backend at all.
+- **Scanning for plugins is a separate, explicit step** (`Instruments`
+  starts empty; `rescan()` does the work), called only where it's safe --
+  `main.cpp` calls it beside `AudioEngine::start()`, both after
+  `--self-test`'s early return -- because it loads every `.clap` it finds
+  to read its descriptors. Found the hard way, building this: scanning
+  loaded two of the author's own in-progress plugins (IFSynth and
+  ModicumFM, `~/Dev-Audio`) into `umpire-daw`'s process just to list them,
+  and they turned out to define the same Objective-C class name
+  (`WebViewDelegate__DISTRHO`), a real collision that disturbed
+  `--self-test`'s idle-frame checks before a human saw it. Worth carrying
+  into the plugin roadmap: every DPF-based plugin needs a build-time-unique
+  identity, the way `DGL_NAMESPACE` already gives each *app* one ("DPF
+  fork", above), not only once two plugins happen to load into the same
+  host at once.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

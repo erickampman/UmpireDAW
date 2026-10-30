@@ -77,8 +77,10 @@ target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 # (decisions.md: only the drawing layer sees the toolkit). It sees uw-core's
 # MidiInput seam, not a platform's: main.cpp makes that.
 add_library(umpire-app STATIC
+    src/App/AudioEngine.cpp
     src/App/Clip.cpp
     src/App/GridModel.cpp
+    src/App/Instruments.cpp
     src/App/MidiDescribe.cpp
     src/App/MidiInputs.cpp
     src/App/MidiOutputs.cpp
@@ -93,7 +95,7 @@ else()
     target_sources(umpire-app PRIVATE src/App/MainLoop.cpp)
 endif()
 target_include_directories(umpire-app PUBLIC src)
-target_link_libraries(umpire-app PUBLIC uw::base uw::plugin PRIVATE umpire-warnings)
+target_link_libraries(umpire-app PUBLIC uw::base uw::plugin uw::clap-host uw::audio PRIVATE umpire-warnings)
 
 # --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library sees the toolkit.
 add_library(umpire-ui STATIC
@@ -130,3 +132,4 @@ umpire_add_test(test-grid-model       tests/GridModelTests.cpp)
 umpire_add_test(test-track-controller tests/TrackControllerTests.cpp)
 umpire_add_test(test-scale            tests/ScaleTests.cpp)
 umpire_add_test(test-playback         tests/PlaybackTests.cpp)
+umpire_add_test(test-audio-engine     tests/AudioEngineTests.cpp)

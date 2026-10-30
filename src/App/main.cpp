@@ -1,7 +1,8 @@
 // umpire-daw: Umpire, a DAW built on MIDI 2.0's Universal MIDI Packet.
-// Milestone 7 (docs/playback.md): the track view, fed by the platform's MIDI
-// input, with a transport that records it into clips and plays them to the
-// platform's MIDI outputs; driven by the main loop.
+// Milestones 7-8 (docs/playback.md, docs/plugins.md): the track view, fed by
+// the platform's MIDI input, with a transport that records it into clips and
+// plays them to the platform's MIDI outputs or to hosted CLAP instruments;
+// driven by the main loop.
 //
 //   umpire-daw                   the window
 //   umpire-daw --log-frames      ... printing frames drawn per second
@@ -13,10 +14,13 @@
 #include <memory>
 #include <string>
 
+#include "App/AudioEngine.h"
 #include "App/MainLoop.h"
 #include "App/MidiInputs.h"
+#include "App/PlatformAudioBackend.h"
 #include "App/TrackController.h"
 #include "Ui/MainWindow.h"
+#include "uw/clap/ClapPluginFactory.h"
 #include "uw/midi/PlatformMidiInput.h"
 #include "uw/midi/PlatformMidiOutput.h"
 
@@ -55,11 +59,25 @@ int main(int argc, char** argv) {
     umpire::MidiOutputs outputs(platformOut.get(), {"Umpire", "Umpire MIDI 2.0",   // ALSA's clients; CoreMIDI's names
                                                     std::string("Umpire ") + umpire::MidiInputs::kVirtualMidi2,
                                                     std::string("Umpire ") + umpire::MidiInputs::kVirtualMidi1});
-    umpire::TrackController controller(inputs, outputs);
+    // CLAP instruments as track outputs (milestone 8): JACK on Linux,
+    // CoreAudio on macOS (App/PlatformAudioBackend.h). Without a backend,
+    // or if it won't open, a track can still be given a plugin output; it
+    // just plays into silence.
+    uw::ClapPluginFactory              pluginFactory;
+    std::unique_ptr<uw::AudioBackend>  audioBackend = umpire::createAudioBackend("Umpire");
+    umpire::AudioEngine                engine(audioBackend.get(), pluginFactory);
+
+    umpire::TrackController controller(inputs, outputs, engine);
 
     auto window = umpire::ui::MainWindow::open(controller, options);
     if (!window) return 1;
-    if (testDir != nullptr) return window->selfTest(testDir);
+    if (testDir != nullptr) return window->selfTest(testDir);   // never touches real audio or plugins
+
+    // Scanning loads every CLAP plugin it finds to read its descriptors
+    // (App/Instruments.h), so it happens here, not during --self-test or a
+    // ctest suite.
+    engine.instruments().rescan();
+    engine.start();   // best-effort: silence, not a hard failure, if it can't
 
     umpire::MainLoop loop;
     signalLoop = &loop;
@@ -74,5 +92,6 @@ int main(int argc, char** argv) {
     });
     loop.run();
     signalLoop = nullptr;
+    engine.stop();
     return 0;
 }

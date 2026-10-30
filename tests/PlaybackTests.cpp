@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "App/AudioEngine.h"
 #include "App/MidiInputs.h"
 #include "App/MidiOutputs.h"
 #include "App/TrackController.h"
@@ -92,6 +93,69 @@ public:
             if (s.device == device && (all || s.when <= fakeNow)) out.push_back(s);
         std::stable_sort(out.begin(), out.end(), [](const Sent& a, const Sent& b) { return a.when < b.when; });
         return out;
+    }
+};
+
+// A plugin that records every note it's given, with the sample offset
+// AudioEngine worked out for it: how the test checks sample-accurate timing
+// (App/AudioEngine.h) without a real CLAP plugin or audio device.
+class FakePlugin final : public uw::HostedPlugin {
+public:
+    struct Received {
+        std::uint32_t   sampleOffset;
+        uw::MidiMessage midi;
+    };
+    std::vector<Received> received;
+    uw::PluginDescriptor   desc;
+    bool                   activated = false;
+
+    explicit FakePlugin(uw::PluginDescriptor d) : desc(std::move(d)) {}
+
+    const uw::PluginDescriptor&    descriptor() const override { return desc; }
+    uw::PortLayout                 portLayout() const override {
+        uw::PortLayout layout;
+        layout.noteInputs.push_back(
+            uw::NotePortInfo{"in", uw::NoteDialect::Midi2 | uw::NoteDialect::Midi, uw::NoteDialect::Midi2});
+        layout.audioOutputs.push_back(uw::AudioPortInfo{"out", 2, true});
+        return layout;
+    }
+    std::vector<uw::ParameterInfo> parameters() const override { return {}; }
+    bool                           activate(double, std::uint32_t) override { return activated = true; }
+    void                           deactivate() override { activated = false; }
+    void process(const uw::ProcessContext& ctx) noexcept override {
+        for (std::uint32_t i = 0; i < ctx.eventsIn.count; ++i) {
+            const uw::Event& e = ctx.eventsIn.events[i];
+            if (e.type == uw::EventType::Midi) received.push_back({e.sampleOffset, e.midi});
+        }
+        for (std::uint32_t c = 0; c < ctx.audioOut.channelCount; ++c)
+            for (std::uint32_t f = 0; f < ctx.frameCount; ++f) ctx.audioOut.channels[c][f] = 0.0f;
+    }
+    void   stopProcessing() noexcept override {}
+    double paramValue(std::uint32_t) const override { return 0.0; }
+    void   flushParams(const uw::EventBlock&, uw::EventSink*) override {}
+    bool   saveState(std::vector<std::byte>&) const override { return true; }
+    bool   loadState(const std::byte*, std::size_t) override { return true; }
+    void   idle() override {}
+};
+
+class FakePluginFactory final : public uw::PluginFactory {
+public:
+    FakePlugin* lastCreated = nullptr;
+
+    uw::PluginFormat                  format() const override { return uw::PluginFormat::Clap; }
+    std::vector<uw::PluginDescriptor> scan() override {
+        uw::PluginDescriptor d;
+        d.format = uw::PluginFormat::Clap;
+        d.id     = "fake-synth";
+        d.path   = "fake://synth";
+        d.name   = "Fake Synth";
+        d.kind   = uw::PluginKind::Instrument;
+        return {d};
+    }
+    std::unique_ptr<uw::HostedPlugin> create(const uw::PluginDescriptor& d, uw::HostServices&) override {
+        auto plugin  = std::make_unique<FakePlugin>(d);
+        lastCreated  = plugin.get();
+        return plugin;
     }
 };
 
@@ -190,9 +254,13 @@ int main() {
     check("the outputs: hardware first, and not Umpire's own input",
           outputs.choices().size() == 2 && outputs.choices()[0].id == "Synth2:in" && outputs.choices()[1].id == "Synth1:in");
 
-    TrackController c(inputs, outputs, [] { return fakeNow; });
+    FakePluginFactory pluginFactory;
+    AudioEngine       engine(nullptr, pluginFactory);   // no backend: driven by hand, offline-style, below
+    engine.instruments().rescan();
+    TrackController   c(inputs, outputs, engine, [] { return fakeNow; });
     const TrackId keys = c.addTrack();
-    check("a track has no output to start with", c.view().rows[0].outputLabel == "No output" && c.view().outputs.size() == 2);
+    check("a track has no output to start with: 2 MIDI devices and the one fake plugin",
+          c.view().rows[0].outputLabel == "No output" && c.view().outputs.size() == 3);
     c.setOutput(keys, "Synth2:in");
     c.tick();
     check("a track's output: an undoable command, shown on its row",
@@ -473,6 +541,58 @@ int main() {
     check("removing a track removes its output", c.session().outputs.empty());
     c.undo();
     check("and undo brings both back", c.session().outputOf(keys) != nullptr);
+
+    // --- a plugin output (milestone 8) ------------------------------------------------------
+    {
+        const std::string pluginId   = Instruments::outputId(pluginFactory.scan()[0]);
+        const TrackId      synthTrack = c.addTrack();
+        c.setOutput(synthTrack, pluginId);
+        c.tick();
+        check("a plugin output: the row shows the plugin's name",
+              c.view().rows.back().outputLabel == "Fake Synth" && !c.view().rows.back().outputMissing);
+
+        c.setArmed(synthTrack, true);
+        c.locate(0);
+        c.record();
+        const uw::Nanoseconds take = fakeNow;
+        c.receive(0, on(60));
+        c.tick();
+        fakeNow = take + kBeat;
+        c.receive(0, off(60));
+        c.tick();
+        fakeNow = take + 2 * kBeat;
+        c.stop();
+        c.setArmed(synthTrack, false);
+
+        c.locate(0);
+        c.play();
+        const uw::Nanoseconds t0 = fakeNow;
+        c.tick();   // schedules the note-on into the voice's own queue, at t0
+
+        // Render a block straddling t0 by hand, offline-style (renderBlock(),
+        // never process(): no backend is open here) -- the whole point of an
+        // offline-capable engine.
+        constexpr double          kSampleRate = 48000.0;
+        constexpr std::uint32_t   kFrames     = 480;        // 10 ms
+        constexpr uw::Nanoseconds kLead       = 5'000'000;   // 5 ms before t0
+        std::vector<float>        left(kFrames, 0.0f), right(kFrames, 0.0f);
+        float*                    channels[2] = {left.data(), right.data()};
+        uw::AudioCallbackContext  ctx;
+        ctx.frameCount      = kFrames;
+        ctx.blockStartTime  = t0 - kLead;
+        ctx.time.sampleRate = kSampleRate;
+        ctx.output          = uw::AudioBuffer{channels, 2, kFrames};
+        engine.renderBlock(ctx);
+
+        const auto&          received = pluginFactory.lastCreated->received;
+        const std::uint32_t  expected = static_cast<std::uint32_t>(kLead * kSampleRate / 1e9 + 0.5);
+        check("a plugin voice gets its note at the exact sample (sample-accurate timing)",
+              received.size() == 1 && ump::isNoteOn(received[0].midi) && ump::noteNumber(received[0].midi) == 60 &&
+                  received[0].sampleOffset == expected);
+
+        c.stop();
+        c.removeTrack(synthTrack);
+    }
 
     std::printf("%s: %d failure%s\n", failures == 0 ? "OK" : "FAILED", failures, failures == 1 ? "" : "s");
     return failures == 0 ? 0 : 1;

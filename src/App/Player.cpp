@@ -50,15 +50,55 @@ uw::MidiMessage reset(int key) {
 
 } // namespace
 
-Player::Player(MidiOutputs& o) : outputs(o) {}
+Player::Player(MidiOutputs& o, AudioEngine& e) : outputs(o), engine(e) {}
 
 Player::~Player() {
     const uw::Nanoseconds now = uw::nowNanoseconds();
     for (auto& [id, s] : streams) {
         silence(s, now);
         thruOff(id);
-        outputs.close(s.handle);
+        closeStream(s);
     }
+}
+
+// --- dispatch: a MIDI device or a plugin voice, by the stream's device id ------------
+
+void Player::openStream(Stream& s) {
+    s.plugin = Instruments::isPluginOutput(s.device);
+    if (s.plugin) s.pluginVoice = engine.open(s.device);
+    else s.midiHandle = outputs.open(s.device);
+}
+
+void Player::closeStream(Stream& s) {
+    if (s.plugin) {
+        if (s.pluginVoice != kInvalidVoice) engine.close(s.pluginVoice);
+        s.pluginVoice = kInvalidVoice;
+    } else {
+        outputs.close(s.midiHandle);
+        s.midiHandle = uw::kInvalidMidiDestination;
+    }
+}
+
+bool Player::streamOpen(const Stream& s) const {
+    return s.plugin ? s.pluginVoice != kInvalidVoice : s.midiHandle != uw::kInvalidMidiDestination;
+}
+
+bool Player::streamSchedules(const Stream& s) const {
+    return s.plugin ? engine.schedules(s.pluginVoice) : outputs.schedules(s.midiHandle);
+}
+
+uw::MidiProtocol Player::streamProtocol(const Stream& s) const {
+    return s.plugin ? engine.protocol(s.pluginVoice) : outputs.protocol(s.midiHandle);
+}
+
+void Player::streamSendAt(Stream& s, const uw::MidiMessage* messages, std::size_t count, uw::Nanoseconds when) {
+    if (s.plugin) engine.sendAt(s.pluginVoice, messages, count, when);
+    else outputs.sendAt(s.midiHandle, messages, count, when);
+}
+
+void Player::streamCancel(Stream& s) {
+    if (s.plugin) engine.cancel(s.pluginVoice);
+    else outputs.cancel(s.midiHandle);
 }
 
 // --- the transport ------------------------------------------------------------------
@@ -78,7 +118,7 @@ void Player::tick(const Session& session, const Transport& transport, uw::Nanose
 
     for (auto& [id, s] : streams) {
         std::erase_if(s.sounding, [now](const Sounding& n) { return n.off <= now; });
-        if (const Track* t = session.track(id); t != nullptr && s.audible && s.handle != uw::kInvalidMidiDestination)
+        if (const Track* t = session.track(id); t != nullptr && s.audible && streamOpen(s))
             schedule(s, *t, transport, now);
     }
 }
@@ -88,7 +128,7 @@ void Player::started(const Session& session, const Transport& transport, uw::Nan
     for (auto& [id, s] : streams) {
         silence(s, now);
         const Track* t = session.track(id);
-        if (t != nullptr && s.audible && s.handle != uw::kInvalidMidiDestination) join(s, *t, transport, now);
+        if (t != nullptr && s.audible && streamOpen(s)) join(s, *t, transport, now);
     }
     seenAnchor = transport.anchor();
     wasPlaying = transport.playing();
@@ -113,7 +153,7 @@ void Player::follow(const Session& session, const Transport& transport, uw::Nano
     const auto drop = [&](std::map<TrackId, Stream>::iterator it) {
         silence(it->second, now);
         thruOff(it->first);
-        outputs.close(it->second.handle);
+        closeStream(it->second);
         return streams.erase(it);
     };
     for (auto it = streams.begin(); it != streams.end();) {
@@ -131,15 +171,14 @@ void Player::follow(const Session& session, const Transport& transport, uw::Nano
         if (s.device != *device) {
             silence(s, now);
             thruOff(t.id);
-            outputs.close(s.handle);
-            s.handle = uw::kInvalidMidiDestination;
+            closeStream(s);
             s.device = *device;
             retry    = true;
         }
         bool fresh = false;
-        if (s.handle == uw::kInvalidMidiDestination && retry) {
-            s.handle = outputs.open(s.device);
-            fresh    = s.handle != uw::kInvalidMidiDestination;
+        if (!streamOpen(s) && retry) {
+            openStream(s);
+            fresh = streamOpen(s);
         }
 
         s.muted            = t.muted;
@@ -149,7 +188,7 @@ void Player::follow(const Session& session, const Transport& transport, uw::Nano
         s.clips   = t.clips;
         if (!transport.playing() || !rejoin) continue;
         silence(s, now);
-        if (audible && s.handle != uw::kInvalidMidiDestination) join(s, t, transport, now);
+        if (audible && streamOpen(s)) join(s, t, transport, now);
     }
 }
 
@@ -163,7 +202,7 @@ void Player::join(Stream& s, const Track& track, const Transport& transport, uw:
 
 // Drops what's scheduled and ends the notes sounding, now.
 void Player::silence(Stream& s, uw::Nanoseconds now) {
-    outputs.cancel(s.handle);
+    streamCancel(s);
     std::vector<uw::MidiMessage> offs;
     for (const Sounding& n : s.sounding)
         if (n.on <= now + kCancelMargin && n.off > now) offs.push_back(noteOff(n.key));
@@ -174,7 +213,7 @@ void Player::silence(Stream& s, uw::Nanoseconds now) {
 // Drops what's scheduled, to send it again from the transport's new anchor:
 // notes that have started go on, and get their note-offs then.
 void Player::reschedule(Stream& s, const Transport& transport, uw::Nanoseconds now) {
-    outputs.cancel(s.handle);
+    streamCancel(s);
     std::erase_if(s.sounding, [now](const Sounding& n) { return n.on > now; });
     for (Sounding& n : s.sounding)
         if (n.off > now) n.off = kNever;
@@ -186,7 +225,7 @@ void Player::reschedule(Stream& s, const Transport& transport, uw::Nanoseconds n
 // loop wrap, the notes sounding end and Pitch 7.25 is chased at the loop's
 // start.
 void Player::schedule(Stream& s, const Track& track, const Transport& transport, uw::Nanoseconds now) {
-    const Tick to = transport.rawAt(now + (outputs.schedules(s.handle) ? kLookahead : 0));
+    const Tick to = transport.rawAt(now + (streamSchedules(s) ? kLookahead : 0));
     if (to <= s.frontier) return;
     struct Due {
         Tick                   tick = 0;
@@ -274,9 +313,9 @@ void Player::endSounding(Stream& s, uw::Nanoseconds when) {
 // Clips are MIDI 2.0; a MIDI 1.0 device gets them downconverted, without what
 // MIDI 1.0 can't say (per-note data, Pitch 7.25 and 7.9 among it).
 void Player::send(Stream& s, const uw::MidiMessage* messages, std::size_t count, uw::Nanoseconds when) {
-    if (count == 0 || s.handle == uw::kInvalidMidiDestination) return;
-    if (outputs.protocol(s.handle) == uw::MidiProtocol::Midi2) {
-        outputs.sendAt(s.handle, messages, count, when);
+    if (count == 0 || !streamOpen(s)) return;
+    if (streamProtocol(s) == uw::MidiProtocol::Midi2) {
+        streamSendAt(s, messages, count, when);
         return;
     }
     std::vector<uw::MidiMessage> out;
@@ -285,7 +324,7 @@ void Player::send(Stream& s, const uw::MidiMessage* messages, std::size_t count,
         const std::size_t n = ump::downconvert(messages[i], converted, std::size(converted));
         out.insert(out.end(), converted, converted + n);
     }
-    outputs.sendAt(s.handle, out.data(), out.size(), when);
+    streamSendAt(s, out.data(), out.size(), when);
 }
 
 // --- played live ----------------------------------------------------------------------
@@ -304,7 +343,7 @@ void Player::thru(TrackId track, const uw::MidiMessage* messages, std::size_t co
             }
         }
         const auto it = streams.find(to);
-        if (it == streams.end() || it->second.muted || it->second.handle == uw::kInvalidMidiDestination) continue;
+        if (it == streams.end() || it->second.muted || !streamOpen(it->second)) continue;
         if (ump::isChannelVoice(m) && ump::isNoteOn(m)) thruHeld[noteKey(m)] = to;
         send(it->second, &m, 1, 0);
     }
@@ -332,6 +371,7 @@ std::string Player::outputLabel(const Session& session, TrackId track, bool* con
         if (connected != nullptr) *connected = true;
         return "No output";
     }
+    if (Instruments::isPluginOutput(*device)) return engine.label(*device, connected);
     return outputs.label(*device, connected);
 }
 

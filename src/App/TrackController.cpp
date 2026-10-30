@@ -29,8 +29,8 @@ std::string joined(const std::vector<std::string>& names) {
 
 } // namespace
 
-TrackController::TrackController(MidiInputs& in, MidiOutputs& out, Clock c)
-    : inputs(in), outputs(out), clockFn(c ? std::move(c) : Clock(uw::nowNanoseconds)), player(out) {
+TrackController::TrackController(MidiInputs& in, MidiOutputs& out, AudioEngine& eng, Clock c)
+    : inputs(in), outputs(out), engine(eng), clockFn(c ? std::move(c) : Clock(uw::nowNanoseconds)), player(out, eng) {
     // A new session is empty: it shows only the prompt (ui-direction.md).
     rebuild();
 }
@@ -149,6 +149,7 @@ void TrackController::finishTakes(Tick at) {
 }
 
 void TrackController::tick() {
+    engine.idle();
     if (inputs.syncDevices()) changed();
     if (outputs.syncDevices()) changed();
     // Playback first, so what's played through goes by the session as it is
@@ -270,6 +271,7 @@ void TrackController::rebuild() {
         next.status = "Play something to start";
     }
     for (const MidiOutputs::Choice& c : outputs.choices()) next.outputs.push_back(OutputChoice{c.label, c.id, c.hardware});
+    for (const Instruments::Choice& c : engine.instruments().choices()) next.outputs.push_back(OutputChoice{c.label, c.id, false});
     next.undoLabel    = history.undoLabel();
     next.redoLabel    = history.redoLabel();
     next.midiBackend  = inputs.backendName();

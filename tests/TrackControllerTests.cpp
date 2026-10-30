@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <string>
 
+#include "App/AudioEngine.h"
 #include "App/GridModel.h"
 #include "App/MidiInputs.h"
 #include "App/TrackController.h"
@@ -20,6 +21,15 @@ void check(const char* what, bool ok, const std::string& detail = {}) {
     std::printf("%s  %s%s%s\n", ok ? "PASS" : "FAIL", what, detail.empty() ? "" : ": ", detail.c_str());
     if (!ok) ++failures;
 }
+
+// No CLAP plugins on this machine: AudioEngine has its own tests
+// (AudioEngineTests.cpp), and playback has its own (PlaybackTests.cpp).
+class NoPlugins final : public uw::PluginFactory {
+public:
+    uw::PluginFormat                  format() const override { return uw::PluginFormat::Clap; }
+    std::vector<uw::PluginDescriptor> scan() override { return {}; }
+    std::unique_ptr<uw::HostedPlugin> create(const uw::PluginDescriptor&, uw::HostServices&) override { return nullptr; }
+};
 
 // Two hardware devices and an app's source; handles count from 1 as they're opened.
 class FakeInput final : public uw::MidiInput {
@@ -88,7 +98,9 @@ int main() {
 
     uw::Nanoseconds clock = 1'000'000'000;
     MidiOutputs     noOutputs(nullptr);   // playback has its own tests (PlaybackTests.cpp)
-    TrackController c(inputs, noOutputs, [&clock] { return clock; });
+    NoPlugins       noPlugins;
+    AudioEngine     noEngine(nullptr, noPlugins);
+    TrackController c(inputs, noOutputs, noEngine, [&clock] { return clock; });
     const uw::MidiSourceHandle keylab    = fake.opened["KeyLab:KeyLab MIDI"];
     const uw::MidiSourceHandle launchkey = fake.opened["Launchkey:Launchkey MIDI"];
     c.tick();
@@ -297,7 +309,7 @@ int main() {
 
     MidiInputs none(nullptr);
     none.openAll();
-    TrackController quiet(none, noOutputs);
+    TrackController quiet(none, noOutputs, noEngine);
     quiet.tick();
     check("no MIDI on this machine: still a track view", quiet.view().rows.empty() && quiet.view().midiBackend == "no MIDI" &&
                                                            quiet.view().listening == "no inputs");

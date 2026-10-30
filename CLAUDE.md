@@ -1,9 +1,10 @@
 # Umpire
 
 A DAW built on MIDI 2.0's Universal MIDI Packet (UMP) from the ground up.
-MIDI-only to start, Linux first. Milestones 4 to 7 are built: `umpire-daw`
-is the track view, which records and plays to MIDI devices; see
-[docs/recording.md](docs/recording.md) and [docs/playback.md](docs/playback.md).
+MIDI-only to start, Linux first. Milestones 4 to 8 are built: `umpire-daw`
+is the track view, which records and plays to MIDI devices or hosted CLAP
+instruments; see [docs/recording.md](docs/recording.md),
+[docs/playback.md](docs/playback.md) and [docs/plugins.md](docs/plugins.md).
 
 ## Read first
 
@@ -20,6 +21,8 @@ is the track view, which records and plays to MIDI devices; see
    recording, undo; pitch and the grid's tuning),
    [docs/playback.md](docs/playback.md) (milestone 7: outputs, scheduling,
    the loop, chasing Pitch 7.25),
+   [docs/plugins.md](docs/plugins.md) (milestone 8: hosting CLAP
+   instruments, the audio engine, sample-accurate timing),
    [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
    you need; read before any UI work).
 

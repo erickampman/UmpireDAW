@@ -9,7 +9,8 @@
 // Where MIDI comes from belongs to the session, not a track (ui-direction.md,
 // "Input belongs to the session"): Umpire listens to every input. Where a
 // track's MIDI goes is an edge of the graph (Output), not a field of the
-// track: a MIDI device since milestone 7, a plugin with milestone 8.
+// track: a MIDI device (milestone 7) or a CLAP instrument (milestone 8,
+// App/Instruments.h), named by the same opaque id either way.
 
 #include <cstdint>
 #include <string>
@@ -33,8 +34,9 @@ struct Track {
 };
 
 // An edge from a track to where its MIDI goes: a MIDI device, by its id
-// (uw::MidiDestinationInfo::id, "client name:port name" on ALSA), kept when
-// the device is absent so it plays again when it's back.
+// (uw::MidiDestinationInfo::id, "client name:port name" on ALSA), or a CLAP
+// instrument, by Instruments::outputId(); kept when it's absent (the device
+// unplugged, the plugin uninstalled) so it plays again when it's back.
 struct Output {
     TrackId     track = 0;
     std::string device;
