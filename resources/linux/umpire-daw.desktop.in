@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Umpire
+GenericName=MIDI Sequencer
+Comment=Records and plays MIDI 2.0 to MIDI devices and CLAP instruments
+Exec=@EXEC@
+Icon=umpire-daw
+Terminal=false
+Categories=AudioVideo;Audio;Music;Midi;Sequencer;
+Keywords=MIDI;MIDI 2.0;UMP;CLAP;DAW;sequencer;
+StartupWMClass=Umpire
+StartupNotify=false

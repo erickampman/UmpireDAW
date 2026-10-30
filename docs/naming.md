@@ -10,7 +10,7 @@ decisions.md, "Audio"), the way MOTU's Performer became Digital Performer.
 | Logo / wordmark only | UMPire |
 | Repo, folder, CMake `project()` | UmpireDAW |
 | Linux binary and distro package | `umpire-daw` |
-| Linux `.desktop` file | `Name=Umpire`, `Exec=umpire-daw` |
+| Linux `.desktop` file | `umpire-daw.desktop`: `Name=Umpire`, `Exec=umpire-daw`, `Icon=umpire-daw`, `StartupWMClass=Umpire` |
 | Linux app ID (Flatpak, AppStream) | `com.unlikelyware.Umpire` |
 | macOS app | `Umpire.app` |
 | macOS bundle ID | `com.unlikelyware.umpire` |

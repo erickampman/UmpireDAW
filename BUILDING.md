@@ -114,6 +114,31 @@ DPF_SCALE_FACTOR=2 ./build/umpire-daw --self-test /tmp/umpire-shots
 
 `--log-frames` prints the frames drawn each second (none while idle).
 
+### The dock icon
+
+GNOME's dock (and the Ubuntu Dock) takes an app's icon from an installed
+`.desktop` launcher whose `StartupWMClass` matches the window's WM_CLASS
+(`Umpire`, set in `src/Ui/MainWindow.cpp`). Install one, for this user,
+running this checkout's `build/umpire-daw`:
+
+```bash
+tools/install-desktop-entry.sh
+```
+
+It writes `~/.local/share/applications/umpire-daw.desktop` (from
+`resources/linux/umpire-daw.desktop.in`) and the icons into
+`~/.local/share/icons/hicolor`. Umpire then has its icon in the dock, however
+it's started (the launcher, or `./build/umpire-daw` in a terminal), and
+"Pin to Dash" keeps it there. Run it again after moving the checkout; log out
+and in if the dock doesn't pick it up. Without the launcher, the windows
+still carry the icon themselves (`_NET_WM_ICON`, `src/Ui/WindowIcon.cpp`),
+which the window switcher shows.
+
+The icons in `resources/linux/icons` are rendered from the macOS icon's
+artwork (`resources/Umpire.icon`) by `tools/render-linux-icons.sh`
+(ImageMagick); run it again when the artwork changes. StageHand does the
+same with the same scripts.
+
 ## macOS
 
 Apple silicon, macOS 26 or later: the build sets `CMAKE_OSX_ARCHITECTURES`
@@ -188,8 +213,8 @@ different here, and why:
 - No CI yet: StageHand and KeyboardEDO have a GitHub Actions workflow;
   Umpire doesn't.
 - No `cmake --install` or packaged app yet: `umpire-daw` runs from `build/`
-  on both platforms, with no app bundle on macOS (the macOS port is a later
-  decision).
+  on both platforms (on macOS as `Umpire.app`, for its icon; on Linux
+  `tools/install-desktop-entry.sh` adds a launcher pointing at it).
 - Umpire also needs `external/DPF-Widgets`, for Dear ImGui's sources
   (1.91.9b): StageHand doesn't host plugin UIs this way, and KeyboardEDO
   vendors Dear ImGui as its own submodule instead.

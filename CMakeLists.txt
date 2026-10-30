@@ -113,6 +113,18 @@ target_link_libraries(umpire-ui
     PRIVATE dgl-opengl dgl-opengl-definitions umpire-imgui umpire-warnings)
 if(APPLE)
     target_compile_definitions(umpire-ui PRIVATE GL_SILENCE_DEPRECATION)
+else()
+    # The windows' icon (_NET_WM_ICON), embedded: tools/render-linux-icons.sh made them.
+    include(cmake/EmbedFile.cmake)
+    embed_file("${CMAKE_SOURCE_DIR}/resources/linux/icons/umpire-daw-128.png"
+               "${CMAKE_BINARY_DIR}/WindowIcon128.cpp" kWindowIcon128)
+    embed_file("${CMAKE_SOURCE_DIR}/resources/linux/icons/umpire-daw-48.png"
+               "${CMAKE_BINARY_DIR}/WindowIcon48.cpp" kWindowIcon48)
+    target_sources(umpire-ui PRIVATE src/Ui/WindowIcon.cpp
+                   "${CMAKE_BINARY_DIR}/WindowIcon128.cpp" "${CMAKE_BINARY_DIR}/WindowIcon48.cpp")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+    target_link_libraries(umpire-ui PRIVATE PkgConfig::X11)
 endif()
 
 # --- umpire-daw: the app ---------------------------------------------------

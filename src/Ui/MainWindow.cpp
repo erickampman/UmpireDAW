@@ -17,6 +17,9 @@
 #include "Ui/TrackCanvas.h"
 #include "Ui/TrackPanels.h"
 #include "Ui/TrackSelfTest.h"
+#ifndef __APPLE__
+#include "Ui/WindowIcon.h"
+#endif
 
 namespace umpire::ui {
 
@@ -72,6 +75,9 @@ void place(dgl::Window& window, const char* title, double w, double h) {
     window.setResizable(true);
     window.setGeometryConstraints(px(640), px(400));
     window.setSize(px(w), px(h));
+#ifndef __APPLE__
+    setWindowIcon(window.getNativeWindowHandle());   // the dock's and the window switcher's
+#endif
 }
 
 } // namespace
