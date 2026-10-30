@@ -83,6 +83,10 @@ public:
     void record();
     void locate(Tick to);
     void clearMonitor();
+    // Open or close the track's plugin editor (milestone 11): no-op if its
+    // output isn't a plugin, or that plugin has no editor.
+    void openEditor(TrackId id);
+    void closeEditor(TrackId id);
 
     const Session&              session() const noexcept { return doc; }
     const std::vector<Track>&   tracks() const noexcept { return doc.tracks; }

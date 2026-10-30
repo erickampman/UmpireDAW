@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "uw/base/SpscQueue.h"
+#include "uw/plugin/EditorWindow.h"
 #include "uw/plugin/HostServices.h"
 #include "uw/plugin/HostedPlugin.h"
 #include "uw/plugin/PortLayout.h"
@@ -19,12 +20,13 @@ uw::HostInfo umpireHostInfo() { return {"Umpire", "Unlikelyware", "https://unlik
 } // namespace
 
 // The HostServices one voice's plugin sees: logging and identity are the
-// engine's; the rest aren't acted on yet (no plugin editors or param UI
-// before milestone 11, so a plugin asking to be restarted or flushed has
-// nothing to disturb).
+// engine's; the loop services (milestone 11) forward to the app's MainLoop,
+// since a plugin editor has no event loop of its own (CLAP's timer-support
+// and posix-fd-support). The rest aren't acted on yet: no param UI before a
+// plugin's parameters are exposed, so a flush request has nothing to apply.
 class AudioEngine::VoiceHost final : public uw::HostServices {
 public:
-    explicit VoiceHost(std::string pluginName) : name(std::move(pluginName)) {}
+    VoiceHost(std::string pluginName, MainLoop& mainLoop) : name(std::move(pluginName)), loop(mainLoop) {}
 
     void requestRestart() override {}
     void requestProcess() override {}
@@ -34,8 +36,19 @@ public:
     }
     uw::HostInfo hostInfo() const override { return umpireHostInfo(); }
 
+    uw::TimerId addTimer(std::uint32_t periodMs, std::function<void()> callback) override {
+        return loop.addTimer(periodMs, std::move(callback));
+    }
+    void removeTimer(uw::TimerId id) override { loop.removeTimer(id); }
+    bool watchFd(int fd, std::uint32_t events, std::function<void(std::uint32_t)> callback) override {
+        return loop.watchFd(fd, events, std::move(callback));
+    }
+    bool modifyFd(int fd, std::uint32_t events) override { return loop.modifyFd(fd, events); }
+    void unwatchFd(int fd) override { loop.unwatchFd(fd); }
+
 private:
     std::string name;
+    MainLoop&   loop;
 };
 
 // One track's plugin instance and what it needs to process a block.
@@ -59,9 +72,14 @@ struct AudioEngine::Voice {
     std::vector<std::vector<float>> scratch;
     std::vector<float*>             scratchPointers;
     std::vector<uw::Event>          blockEvents;   // reused each block
+
+    // The window hosting this voice's plugin editor, if one is open
+    // (milestone 11). Main thread only; closed before the plugin deactivates.
+    std::unique_ptr<uw::EditorWindow> editor;
 };
 
-AudioEngine::AudioEngine(uw::AudioBackend* b, uw::PluginFactory& f) : backend(b), factory(f), instrumentList(f) {}
+AudioEngine::AudioEngine(uw::AudioBackend* b, uw::PluginFactory& f, MainLoop& loop)
+    : backend(b), factory(f), mainLoop(loop), instrumentList(f) {}
 
 AudioEngine::~AudioEngine() {
     if (started) stop();
@@ -132,7 +150,7 @@ VoiceHandle AudioEngine::open(const std::string& outputId) {
 
     auto voice      = std::make_unique<Voice>();
     voice->pluginId = outputId;
-    voice->host     = std::make_unique<VoiceHost>(desc->name);
+    voice->host     = std::make_unique<VoiceHost>(desc->name, mainLoop);
     voice->plugin   = factory.create(*desc, *voice->host);
     if (!voice->plugin) return kInvalidVoice;
 
@@ -148,6 +166,7 @@ void AudioEngine::close(VoiceHandle handle) {
     const auto it = voices.find(handle);
     if (it == voices.end()) return;
     Voice& v = *it->second;
+    v.editor.reset();   // the editor closes before its plugin does (HostedPlugin.h)
     if (v.activated) {
         if (started) {
             v.removeRequested.store(true, std::memory_order_release);
@@ -197,9 +216,33 @@ std::string AudioEngine::label(const std::string& outputId, bool* connectedOut) 
     return desc != nullptr ? desc->name : outputId;
 }
 
+bool AudioEngine::openEditor(VoiceHandle handle, const std::string& title, std::function<void()> requestQuit) {
+    const auto it = voices.find(handle);
+    if (it == voices.end() || !it->second->activated) return false;
+    Voice& v = *it->second;
+    if (v.editor && v.editor->isOpen()) return true;   // already open: nothing to do
+    v.editor = uw::EditorWindow::open(*v.plugin, *v.host, title, std::move(requestQuit));
+    return v.editor != nullptr;
+}
+
+void AudioEngine::closeEditor(VoiceHandle handle) {
+    const auto it = voices.find(handle);
+    if (it != voices.end()) it->second->editor.reset();
+}
+
+bool AudioEngine::editorOpen(VoiceHandle handle) const {
+    const auto it = voices.find(handle);
+    return it != voices.end() && it->second->editor && it->second->editor->isOpen();
+}
+
 void AudioEngine::idle() {
-    for (auto& [handle, voice] : voices)
+    for (auto& [handle, voice] : voices) {
         if (voice->activated) voice->plugin->idle();
+        // The user (or the plugin) closed the window on its own: drop it, so
+        // editorOpen() reports it gone and a later openEditor() makes a
+        // fresh one rather than reusing a closed EditorWindow.
+        if (voice->editor && !voice->editor->isOpen()) voice->editor.reset();
+    }
 }
 
 uw::Event AudioEngine::toClapEvent(const PendingEvent& e, const uw::AudioCallbackContext& ctx, int notePort) {

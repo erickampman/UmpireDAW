@@ -272,12 +272,14 @@ void TrackPanels::row(const TrackRowModel& r, float x, float y, float w) {
         if (toggle("##solo", "S", r.soloed, colour::kNote, ImVec2(btn, btn))) controller.setSoloed(r.id, !r.soloed);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Solo");
 
-        // Where its MIDI goes: a device (a plugin with milestone 8).
+        // Where its MIDI goes: a device, or a CLAP instrument (milestone 8),
+        // with an Edit button for the instrument's editor (milestone 11).
         ImGui::SetCursorScreenPos(ImVec2(nameX, line2));
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled(">");
         ImGui::SameLine(0, pad * 0.5f);
-        ImGui::SetNextItemWidth(x + w - pad - ImGui::GetCursorScreenPos().x);
+        const float comboRight = x + w - pad - (r.outputIsPlugin ? btn + pad * 0.4f : 0.0f);
+        ImGui::SetNextItemWidth(comboRight - ImGui::GetCursorScreenPos().x);
         const std::string shown = r.outputMissing ? r.outputLabel + " (not connected)" : r.outputLabel;
         if (r.outputMissing) ImGui::PushStyleColor(ImGuiCol_Text, colour::kRecord);
         const bool open = ImGui::BeginCombo("##output", shown.c_str());
@@ -294,10 +296,18 @@ void TrackPanels::row(const TrackRowModel& r, float x, float y, float w) {
                 if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", c.device.c_str());
                 ImGui::PopID();
             }
-            if (choices.empty()) ImGui::TextDisabled("No MIDI devices to play to");
+            if (choices.empty()) ImGui::TextDisabled("Nothing to play to");
             ImGui::EndCombo();
         } else if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("Where the track plays: a MIDI device");
+            ImGui::SetTooltip("Where the track plays: a MIDI device or a CLAP instrument");
+        }
+        if (r.outputIsPlugin) {
+            ImGui::SameLine(0, pad * 0.4f);
+            if (toggle("##edit", "E", r.editorOpen, colour::kAccent, ImVec2(btn, btn))) {
+                if (r.editorOpen) controller.closeEditor(r.id);
+                else controller.openEditor(r.id);
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip(r.editorOpen ? "Close the plugin's editor" : "Open the plugin's editor");
         }
     } else {
         // The name, and badges only for what isn't the default.

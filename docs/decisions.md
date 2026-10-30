@@ -426,6 +426,33 @@ Made while building milestone 8 on the Mac ([plugins.md](plugins.md)).
   fork", above), not only once two plugins happen to load into the same
   host at once.
 
+## Plugin editor windows (milestone 11, 2026-10-30)
+
+Made while building milestone 11 on the Mac ([plugin-editors.md](plugin-editors.md)),
+done out of order (before 9 and 10) at the author's request.
+- **Moved from StageHand into uw-core, not rewritten**: `EditorWindow`
+  already had the same class name and public interface on both platforms in
+  StageHand (`App/EditorWindow.{h,cpp}` for X11, `App/EditorWindowMac.{h,mm}`
+  for Cocoa), so the move was decoupling it from `stagehand::MainLoop`, not
+  a redesign: a `uw::HostServices&` covers the only loop services either
+  platform used (`watchFd`/`unwatchFd`, Linux only), and a
+  `std::function<void()> requestQuit` parameter replaces
+  `MainLoop::requestQuit()`.
+- **StageHand's own copy is untouched.** Switching StageHand to
+  `uw::editor-window` is separate work in StageHand's own repo, as its
+  earlier switches to uw-core and the DPF fork were (MILESTONES.md,
+  "Outside Umpire").
+- **A plugin editor's timer and fd requests now go somewhere**: milestone
+  8's `AudioEngine::VoiceHost` answered them with `HostServices`' defaults
+  ("not available"), deferred until editors existed. It now forwards to
+  `AudioEngine`'s own `MainLoop&`, so a plugin editor's redraw timer (CLAP's
+  timer-support, since an editor has no event loop of its own) runs on the
+  same 10 ms tick that already drives the track view.
+- **No "quit" or "save" from an editor window yet**: StageHand's reason for
+  grabbing Ctrl/Cmd-Q there (quitting safely still saves a titled rack)
+  doesn't apply until milestone 9 gives Umpire something to save, so
+  `TrackController` doesn't supply either callback yet.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

@@ -9,6 +9,7 @@
 
 #include "App/AudioEngine.h"
 #include "App/GridModel.h"
+#include "App/MainLoop.h"
 #include "App/MidiInputs.h"
 #include "App/TrackController.h"
 #include "uw/ump/Ump.h"
@@ -99,7 +100,8 @@ int main() {
     uw::Nanoseconds clock = 1'000'000'000;
     MidiOutputs     noOutputs(nullptr);   // playback has its own tests (PlaybackTests.cpp)
     NoPlugins       noPlugins;
-    AudioEngine     noEngine(nullptr, noPlugins);
+    MainLoop        noLoop;
+    AudioEngine     noEngine(nullptr, noPlugins, noLoop);
     TrackController c(inputs, noOutputs, noEngine, [&clock] { return clock; });
     const uw::MidiSourceHandle keylab    = fake.opened["KeyLab:KeyLab MIDI"];
     const uw::MidiSourceHandle launchkey = fake.opened["Launchkey:Launchkey MIDI"];

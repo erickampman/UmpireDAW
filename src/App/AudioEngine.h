@@ -29,14 +29,21 @@
 // it runs) before the main thread may deactivate it; close() asks for that
 // and waits for it to happen (bounded; immediate if the engine was never
 // started, since then nothing else ever calls renderBlock()).
+//
+// Plugin editors (milestone 11, docs/plugins.md): each voice's HostServices
+// forwards CLAP's timer-support and posix-fd-support to the app's MainLoop
+// (a plugin editor has no event loop of its own), and openEditor() opens an
+// EditorWindow (uw-core's, moved from StageHand) for it, on that same loop.
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "App/Instruments.h"
+#include "App/MainLoop.h"
 #include "uw/audio/AudioBackend.h"
 #include "uw/base/Event.h"
 #include "uw/plugin/PluginFactory.h"
@@ -58,8 +65,9 @@ public:
 
     // `backend` may be null (no audio backend on this machine): voices still
     // host and process, with nothing to mix their audio into. Owns neither
-    // `backend` nor `factory`.
-    AudioEngine(uw::AudioBackend* backend, uw::PluginFactory& factory);
+    // `backend`, `factory` nor `mainLoop`; `mainLoop` services a plugin
+    // editor's timers and fds, and an open EditorWindow's own.
+    AudioEngine(uw::AudioBackend* backend, uw::PluginFactory& factory, MainLoop& mainLoop);
     ~AudioEngine() override;
 
     AudioEngine(const AudioEngine&)            = delete;
@@ -95,7 +103,17 @@ public:
     // this). `connected` false if it's no longer found (uninstalled).
     std::string label(const std::string& outputId, bool* connected = nullptr) const;
 
-    // Main-thread housekeeping (CLAP's on_main_thread): call every tick.
+    // Open (or bring forward) a window hosting the voice's plugin editor,
+    // titled `title`; `requestQuit`, given, runs on Ctrl/Cmd-Q from it.
+    // False if the voice is unknown or its plugin has no editor this
+    // platform can embed.
+    bool openEditor(VoiceHandle voice, const std::string& title, std::function<void()> requestQuit = {});
+    void closeEditor(VoiceHandle voice);
+    // False once the user (or the plugin) closed it.
+    bool editorOpen(VoiceHandle voice) const;
+
+    // Main-thread housekeeping (CLAP's on_main_thread; notices an editor
+    // window closed on its own): call every tick.
     void idle();
 
     const char* backendName() const noexcept { return backend != nullptr ? backend->name() : "no audio"; }
@@ -126,6 +144,7 @@ private:
 
     uw::AudioBackend*                             backend;
     uw::PluginFactory&                            factory;
+    MainLoop&                                     mainLoop;
     Instruments                                   instrumentList;
     std::map<VoiceHandle, std::unique_ptr<Voice>> voices;
     VoiceHandle                                   nextHandle     = 1;

@@ -48,6 +48,14 @@ int main(int argc, char** argv) {
         }
     }
 
+    // The main loop: plugin editors (milestone 11) need it from the moment a
+    // voice can open one, so it's made before AudioEngine, not just before
+    // run().
+    umpire::MainLoop loop;
+    signalLoop = &loop;
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
+
     // MIDI input: ALSA sequencer UMP (Linux) or CoreMIDI (macOS). Without it,
     // the track view still opens; nothing arrives.
     std::unique_ptr<uw::PlatformMidiInput> platform = uw::PlatformMidiInput::create("Umpire");
@@ -65,7 +73,7 @@ int main(int argc, char** argv) {
     // just plays into silence.
     uw::ClapPluginFactory              pluginFactory;
     std::unique_ptr<uw::AudioBackend>  audioBackend = umpire::createAudioBackend("Umpire");
-    umpire::AudioEngine                engine(audioBackend.get(), pluginFactory);
+    umpire::AudioEngine                engine(audioBackend.get(), pluginFactory, loop);
 
     umpire::TrackController controller(inputs, outputs, engine);
 
@@ -79,10 +87,6 @@ int main(int argc, char** argv) {
     engine.instruments().rescan();
     engine.start();   // best-effort: silence, not a hard failure, if it can't
 
-    umpire::MainLoop loop;
-    signalLoop = &loop;
-    std::signal(SIGINT, onSignal);
-    std::signal(SIGTERM, onSignal);
     // The controller's tick, then the windows' events and drawing, as StageHand
     // drives its rack window.
     loop.addTimer(10, [&] {

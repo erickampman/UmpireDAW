@@ -13,6 +13,7 @@
 
 #include "App/AudioEngine.h"
 #include "App/Instruments.h"
+#include "App/MainLoop.h"
 
 namespace {
 
@@ -111,7 +112,8 @@ int main() {
     using namespace umpire;
 
     FakeFactory factory;
-    AudioEngine engine(nullptr, factory);   // no backend: never started, driven by hand
+    MainLoop    loop;
+    AudioEngine engine(nullptr, factory, loop);   // no backend: never started, driven by hand
     engine.instruments().rescan();
 
     check("the two instruments are found, sorted by name",

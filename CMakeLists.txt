@@ -95,7 +95,7 @@ else()
     target_sources(umpire-app PRIVATE src/App/MainLoop.cpp)
 endif()
 target_include_directories(umpire-app PUBLIC src)
-target_link_libraries(umpire-app PUBLIC uw::base uw::plugin uw::clap-host uw::audio PRIVATE umpire-warnings)
+target_link_libraries(umpire-app PUBLIC uw::base uw::plugin uw::clap-host uw::editor-window uw::audio PRIVATE umpire-warnings)
 
 # --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library sees the toolkit.
 add_library(umpire-ui STATIC

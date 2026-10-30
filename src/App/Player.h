@@ -59,6 +59,12 @@ public:
     // A track's output, for its row: the device's name and whether it's there.
     std::string outputLabel(const Session& session, TrackId track, bool* connected) const;
 
+    // The track's plugin editor (milestone 11): false if its output isn't a
+    // plugin, or that voice isn't open, or the plugin has no editor.
+    bool openEditor(TrackId track, const std::string& title, std::function<void()> requestQuit = {});
+    void closeEditor(TrackId track);
+    bool editorOpen(TrackId track) const;
+
 private:
     struct Sounding {
         int             key = 0;   // group, channel and note

@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "App/AudioEngine.h"
+#include "App/MainLoop.h"
 #include "App/MidiInputs.h"
 #include "App/MidiOutputs.h"
 #include "App/TrackController.h"
@@ -255,7 +256,8 @@ int main() {
           outputs.choices().size() == 2 && outputs.choices()[0].id == "Synth2:in" && outputs.choices()[1].id == "Synth1:in");
 
     FakePluginFactory pluginFactory;
-    AudioEngine       engine(nullptr, pluginFactory);   // no backend: driven by hand, offline-style, below
+    MainLoop          mainLoop;
+    AudioEngine       engine(nullptr, pluginFactory, mainLoop);   // no backend: driven by hand, offline-style, below
     engine.instruments().rescan();
     TrackController   c(inputs, outputs, engine, [] { return fakeNow; });
     const TrackId keys = c.addTrack();
@@ -589,6 +591,15 @@ int main() {
         check("a plugin voice gets its note at the exact sample (sample-accurate timing)",
               received.size() == 1 && ump::isNoteOn(received[0].midi) && ump::noteNumber(received[0].midi) == 60 &&
                   received[0].sampleOffset == expected);
+
+        // The fake plugin has no editor (its hasEditor() defaults to
+        // false), so opening one fails cleanly -- never a real window
+        // (ctest stays silent, needs no display).
+        c.openEditor(synthTrack);
+        check("a plugin with no editor: opening it leaves nothing open", !c.view().rows.back().editorOpen);
+        c.closeEditor(synthTrack);   // a no-op: safe when nothing is open
+        c.openEditor(keys);         // keys plays to a MIDI device: no editor to open
+        check("and a MIDI track has no editor at all", !c.view().rows[0].editorOpen);
 
         c.stop();
         c.removeTrack(synthTrack);

@@ -375,4 +375,20 @@ std::string Player::outputLabel(const Session& session, TrackId track, bool* con
     return outputs.label(*device, connected);
 }
 
+bool Player::openEditor(TrackId track, const std::string& title, std::function<void()> requestQuit) {
+    const auto it = streams.find(track);
+    if (it == streams.end() || !it->second.plugin || it->second.pluginVoice == kInvalidVoice) return false;
+    return engine.openEditor(it->second.pluginVoice, title, std::move(requestQuit));
+}
+
+void Player::closeEditor(TrackId track) {
+    const auto it = streams.find(track);
+    if (it != streams.end() && it->second.plugin) engine.closeEditor(it->second.pluginVoice);
+}
+
+bool Player::editorOpen(TrackId track) const {
+    const auto it = streams.find(track);
+    return it != streams.end() && it->second.plugin && engine.editorOpen(it->second.pluginVoice);
+}
+
 } // namespace umpire

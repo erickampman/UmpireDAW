@@ -208,6 +208,9 @@ void TrackController::rebuild() {
         bool connected = true;
         row.outputLabel   = player.outputLabel(doc, track.id, &connected);
         row.outputMissing = !connected;
+        const std::string* device = doc.outputOf(track.id);
+        row.outputIsPlugin = device != nullptr && Instruments::isPluginOutput(*device);
+        row.editorOpen      = player.editorOpen(track.id);
         const auto it  = lastActivity.find(track.id);
         row.midiActive = it != lastActivity.end() && static_cast<double>(t - it->second) < kActivitySeconds * 1e9;
         for (const ClipRef& ref : track.clips) row.clips.push_back(clipModel(ref));
@@ -468,6 +471,19 @@ void TrackController::locate(Tick to) {
 void TrackController::clearMonitor() {
     monitor.clear();
     firstCapture = -1;
+    rebuild();
+}
+
+void TrackController::openEditor(TrackId id) {
+    const Track* t = doc.track(id);
+    if (t == nullptr) return;
+    const std::string* device = doc.outputOf(id);
+    const std::string   title = device != nullptr ? t->name + ": " + engine.label(*device) : t->name;
+    if (player.openEditor(id, title)) rebuild();
+}
+
+void TrackController::closeEditor(TrackId id) {
+    player.closeEditor(id);
     rebuild();
 }
 

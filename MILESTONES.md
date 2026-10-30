@@ -43,8 +43,12 @@ timeline. Linux first (decisions.md, "Scope").
 9. [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs
 10. [ ] Clip editor (piano roll): select, move, resize, delete, velocity,
     undo; Pitch 7.9 on EDO grid
-11. [ ] Plugin editor windows (uw-core, then Umpire): move X11 embedding
-    from StageHand into uw-core, open from a track's row
+11. [x] Plugin editor windows (uw-core, then Umpire; docs/plugin-editors.md):
+    `EditorWindow` moved from StageHand into uw-core (`uw::editor-window`,
+    X11 and Cocoa), opened from a track's row -- built and self-tested on
+    the Mac 2026-10-30, done out of order (before 9 and 10) at the author's
+    request; not yet built on Linux, and opening a real plugin's editor is
+    the author's
 12. [ ] UMP groups and arrangement (Umpire): tracks over group ranges,
     clip references with transforms
 13. [ ] First useful version (Umpire): record from KeyEDO, edit, play to

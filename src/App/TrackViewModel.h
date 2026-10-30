@@ -41,6 +41,8 @@ struct TrackRowModel {
     bool        soloed = false;
     std::string outputLabel = "No output";   // its device's or plugin's name
     bool        outputMissing = false;       // its device isn't connected now
+    bool        outputIsPlugin = false;      // its output is a CLAP instrument, not a MIDI device
+    bool        editorOpen     = false;      // its plugin's editor window is open (milestone 11)
     bool        midiActive  = false;   // MIDI reached the track in the last moment
     bool        touched     = false;   // the selected track: playing goes to it
     std::vector<ClipModel> clips;
