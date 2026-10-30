@@ -116,6 +116,26 @@ voices through `renderBlock()` with its own clock, never opening a device,
 and milestone 8 didn't have to add anything to make that true — it just
 had to not couple `renderBlock()` to the backend in the first place.
 
+### Linux: pw-jack
+
+Umpire links the ordinary `libjack`, jackd2's, which reaches only a real
+`jackd`. On a PipeWire system there's none: PipeWire's JACK layer is
+reached by running under `pw-jack`. Before 2026-10-30, started without it,
+`engine.start()` failed silently, so a track's plugin output opened and
+was fed notes but nothing was ever heard (found on the Linux PC, the first
+time a plugin was played there). Now, as StageHand does (its
+docs/architecture.md and docs/command-line.md, "Audio: pw-jack"),
+`main.cpp` checks `uw::JackBackend::serverAvailable()` before anything
+opens and, with no server, restarts itself under `pw-jack` ("No JACK
+server in reach; restarting under pw-jack."). At most once
+(`UMPIRE_PW_JACK=1` marks the restarted process); a real `jackd`, if one
+runs, is used as is; `--self-test` never restarts (it never opens audio).
+If the backend still won't open, Umpire says "No audio output: CLAP
+instruments will be silent." Not chosen: switching the system's `libjack`
+to PipeWire's (`ld.so.conf.d`), which would rule out a real `jackd` for
+every program (StageHand's reasoning). The outputs, `Umpire:out_1` and
+`out_2`, connect to the system's playback ports by themselves.
+
 ### macOS: CoreAudio, not JACK
 
 The Mac has no JACK at all (BUILDING.md, "macOS"): `CoreAudioBackend` opens

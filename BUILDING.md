@@ -91,7 +91,13 @@ should show no warnings.
 ./build/umpire-daw
 ```
 
-It needs an X display (`DISPLAY` set; XWayland under Wayland). It opens the
+It needs an X display (`DISPLAY` set; XWayland under Wayland). Audio, for
+CLAP instruments, goes through JACK, which on a PipeWire system is
+PipeWire's JACK layer, reached under `pw-jack` (the `pipewire-jack`
+package). You don't have to type it: started with no JACK server in reach,
+`umpire-daw` restarts itself under `pw-jack`, once, as StageHand does
+([docs/plugins.md](docs/plugins.md), "Linux: pw-jack"). If audio can't
+open at all it says "No audio output" and plugins are silent. It opens the
 ALSA sequencer as two clients, `Umpire` (MIDI 1.0) and `Umpire MIDI 2.0`,
 opens every hardware input, and makes two virtual inputs, "MIDI 2.0 In" and
 "MIDI 1.0 In", for KeyEDO and other apps to connect to (`aconnect -l` lists

@@ -9,10 +9,18 @@
 //   umpire-daw --self-test DIR   scripted input, checks, screenshots in DIR
 
 #include <csignal>
+#include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
+
+#ifndef __APPLE__
+#include <unistd.h>
+#endif
 
 #include "App/AudioEngine.h"
 #include "App/MainLoop.h"
@@ -32,6 +40,31 @@ void onSignal(int) {
     if (signalLoop != nullptr) signalLoop->requestQuit();
 }
 
+#ifndef __APPLE__
+// Started without pw-jack (from the launcher, say) and no JACK server in reach:
+// run again under pw-jack, once, as StageHand does (its docs/command-line.md,
+// "Audio: pw-jack"). The ordinary libjack is jackd2's, which reaches only a
+// real jackd; PipeWire's JACK layer needs pw-jack. Without this, every plugin
+// output plays into silence. Returns if a restart isn't needed or didn't work.
+void restartUnderPwJackIfNeeded(int argc, char** argv) {
+    constexpr const char* kMarker = "UMPIRE_PW_JACK";
+    if (std::getenv(kMarker) != nullptr || uw::JackBackend::serverAvailable()) return;
+
+    std::error_code    ec;
+    const std::string  self = std::filesystem::read_symlink("/proc/self/exe", ec).string();
+    std::vector<char*> args{const_cast<char*>("pw-jack"), ec ? argv[0] : const_cast<char*>(self.c_str())};
+    for (int i = 1; i < argc; ++i) args.push_back(argv[i]);
+    args.push_back(nullptr);
+
+    std::puts("No JACK server in reach; restarting under pw-jack.");
+    std::fflush(stdout);
+    setenv(kMarker, "1", 1);
+    execvp("pw-jack", args.data());   // returns only on failure
+    std::fprintf(stderr, "Couldn't run pw-jack: %s\n", std::strerror(errno));
+    unsetenv(kMarker);
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -47,6 +80,12 @@ int main(int argc, char** argv) {
             return 2;
         }
     }
+
+#ifndef __APPLE__
+    // Before anything opens (MIDI clients, the window): exec replaces the
+    // process. Not for --self-test, which never opens audio.
+    if (testDir == nullptr) restartUnderPwJackIfNeeded(argc, argv);
+#endif
 
     // The main loop: plugin editors (milestone 11) need it from the moment a
     // voice can open one, so it's made before AudioEngine, not just before
@@ -85,7 +124,9 @@ int main(int argc, char** argv) {
     // (App/Instruments.h), so it happens here, not during --self-test or a
     // ctest suite.
     engine.instruments().rescan();
-    engine.start();   // best-effort: silence, not a hard failure, if it can't
+    // Best-effort: silence, not a hard failure, if it can't; but said, since
+    // every plugin output is then silent.
+    if (!engine.start()) std::fputs("No audio output: CLAP instruments will be silent.\n", stderr);
 
     // The controller's tick, then the windows' events and drawing, as StageHand
     // drives its rack window.
