@@ -44,7 +44,8 @@ public:
         Rect    row, name, arm, mute;   // arm and mute: the touched row's only
     };
     std::vector<RowRects> rowRects;
-    Rect addTrackRect, trackMenuRect, editMenuRect, playRect, recordRect, tempoRect, statusRect, monitorRect;
+    Rect addTrackRect, trackMenuRect, editMenuRect, playRect, recordRect, loopRect, tempoRect, statusRect, monitorRect;
+    Rect outputRect;   // the touched row's output choice
 
 protected:
     void onImGuiDisplay() override;

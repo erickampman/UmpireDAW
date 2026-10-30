@@ -1,6 +1,7 @@
 // umpire-daw: Umpire, a DAW built on MIDI 2.0's Universal MIDI Packet.
-// Milestone 6 (docs/recording.md): the track view, fed by the platform's MIDI
-// input, with a transport that records it into clips; driven by the main loop.
+// Milestone 7 (docs/playback.md): the track view, fed by the platform's MIDI
+// input, with a transport that records it into clips and plays them to the
+// platform's MIDI outputs; driven by the main loop.
 //
 //   umpire-daw                   the window
 //   umpire-daw --log-frames      ... printing frames drawn per second
@@ -17,6 +18,7 @@
 #include "App/TrackController.h"
 #include "Ui/MainWindow.h"
 #include "uw/midi/PlatformMidiInput.h"
+#include "uw/midi/PlatformMidiOutput.h"
 
 namespace {
 
@@ -47,7 +49,13 @@ int main(int argc, char** argv) {
     std::unique_ptr<uw::PlatformMidiInput> platform = uw::PlatformMidiInput::create("Umpire");
     umpire::MidiInputs                     inputs(platform.get());
     inputs.openAll();
-    umpire::TrackController controller(inputs);
+    // MIDI output, as its own client ("Umpire Out"), not offering Umpire's
+    // inputs: a track playing into them would loop.
+    std::unique_ptr<uw::PlatformMidiOutput> platformOut = uw::PlatformMidiOutput::create("Umpire Out");
+    umpire::MidiOutputs outputs(platformOut.get(), {"Umpire", "Umpire MIDI 2.0",   // ALSA's clients; CoreMIDI's names
+                                                    std::string("Umpire ") + umpire::MidiInputs::kVirtualMidi2,
+                                                    std::string("Umpire ") + umpire::MidiInputs::kVirtualMidi1});
+    umpire::TrackController controller(inputs, outputs);
 
     auto window = umpire::ui::MainWindow::open(controller, options);
     if (!window) return 1;

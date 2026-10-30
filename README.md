@@ -5,9 +5,10 @@ rather than MIDI 1.0 with MIDI 2.0 added on. It starts MIDI-only and Linux
 first, and may take on audio later. An [unlikelyware.com](https://unlikelyware.com)
 product.
 
-Status: early. `umpire-daw` is the track view (milestone 6): it listens to
-every MIDI input, records the armed tracks into clips of UMP, with a
-transport, undo and a MIDI monitor; a clip opens in a grid of EDO steps. See
+Status: early. `umpire-daw` is the track view (milestone 7): it listens to
+every MIDI input, records the armed tracks into clips of UMP, and plays them
+to MIDI devices, with a transport that loops, undo and a MIDI monitor; a clip
+opens in a grid of EDO steps. See [docs/playback.md](docs/playback.md),
 [docs/recording.md](docs/recording.md) and [docs/skeleton.md](docs/skeleton.md).
 
 ```bash
@@ -26,6 +27,7 @@ the tests, and running it.
 - [Milestones](MILESTONES.md): the milestones to a first useful version
 - [Building](BUILDING.md): Linux and macOS, dependencies, tests
 - [Contributing](CONTRIBUTING.md): before each commit, submodule push order
+- [Playback](docs/playback.md): milestone 7, outputs, scheduling, the loop, chasing Pitch 7.25
 - [Recording](docs/recording.md): milestone 6, transport, clips, undo, tuning
 - [Track view](docs/track-view.md): milestone 5, the main window and MIDI in
 - [Skeleton](docs/skeleton.md): milestone 4, what `umpire-daw` is built from

@@ -29,10 +29,12 @@ timeline. Linux first (decisions.md, "Scope").
    sparse rows, armed tracks record clips on lanes; double-click opens the
    grid (EDO rows) — built and self-tested on Linux 2026-10-23; the Mac
    build and recording real MIDI by hand are the author's
-7. [ ] Playback to MIDI outputs (uw-core, then Umpire): ALSA UMP output,
-   track output to a device, scheduler, loop/locate; chase per-key
-   Pitch 7.25 on play, seek and loop wrap (the synths keep it as a tuning
-   table)
+7. [x] Playback to MIDI outputs (uw-core, then Umpire; playback.md): ALSA
+   UMP output, track output to a device, scheduler, loop/locate; chase
+   per-key Pitch 7.25 on play, seek and loop wrap (the synths keep it as a
+   tuning table) — built and self-tested on Linux 2026-10-29, uw-core
+   9f4ee51 (scheduled output); listening to it, and the Mac build, are the
+   author's
 8. [ ] Hosting CLAP instruments (Umpire): track output to a plugin, JACK
    audio via uw-core, sample-accurate timing, offline-capable engine
 9. [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs

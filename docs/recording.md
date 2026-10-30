@@ -228,7 +228,6 @@ On the Linux PC (GCC 15.2, X11), 2026-10-23:
 ## Not in it (later)
 
 - The command palette and task surfaces (ui-direction.md): not scheduled yet.
-- Playback (milestone 7): mute and solo change nothing yet, and the playhead
-  plays nothing.
+- Playback: milestone 7, [playback.md](playback.md).
 - Loop recording, count-in, a metronome, meters other than 4/4.
 - Saving (milestone 9): the tempo and the clips live only as long as the app.

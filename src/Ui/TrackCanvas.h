@@ -7,9 +7,10 @@
 // session shows only a prompt. The ImGui panels (TrackPanels) are its only
 // subwidget, covering the window, so they draw over it and see input first.
 //
-// A click on the ruler moves the playhead. A clip is selected by a click,
-// moved along its lane by a drag (to the beat; Shift: freely), deleted with
-// Delete, and opened in the grid by a double click.
+// A click on the ruler moves the playhead; a drag along it sets the loop (to
+// the beat) and turns looping on; L turns it on and off. A clip is selected
+// by a click, moved along its lane by a drag (to the beat; Shift: freely),
+// deleted with Delete, and opened in the grid by a double click.
 //
 // Rows line up across the two layers: both place row i at rowY(i), from the
 // same scroll position, which the canvas keeps.
@@ -52,6 +53,7 @@ public:
     // The clip under a point on a lane, or 0.
     ClipRefId clipAt(float x, float y);
     bool      dragging() const noexcept { return dragRef != 0; }
+    bool      settingLoop() const noexcept { return loopDrag; }
 
     // A clip double-clicked: MainWindow opens its grid, then sets this back to 0.
     ClipRefId openRequested = 0;
@@ -84,6 +86,9 @@ private:
     ClipRefId                    dragRef = 0;
     Tick                         dragGrab = 0, dragOrigin = 0, dragTo = 0;
     bool                         dragMoved = false;
+    // A drag along the ruler: the loop it would set, from the beat pressed.
+    bool                         loopDrag = false;
+    Tick                         loopFrom = 0, loopTo = 0;
     ClipRefId                    lastPressRef = 0;
     std::uint32_t                lastPressTime = 0;   // ms, for a double click
 };

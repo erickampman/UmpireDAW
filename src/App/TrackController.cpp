@@ -29,8 +29,8 @@ std::string joined(const std::vector<std::string>& names) {
 
 } // namespace
 
-TrackController::TrackController(MidiInputs& in, Clock c)
-    : inputs(in), clockFn(c ? std::move(c) : Clock(uw::nowNanoseconds)) {
+TrackController::TrackController(MidiInputs& in, MidiOutputs& out, Clock c)
+    : inputs(in), outputs(out), clockFn(c ? std::move(c) : Clock(uw::nowNanoseconds)), player(out) {
     // A new session is empty: it shows only the prompt (ui-direction.md).
     rebuild();
 }
@@ -67,7 +67,19 @@ void TrackController::route(uw::MidiSourceHandle source, const uw::TimedMidiMess
         // "Play something to start": the first note makes the first track.
         if (doc.tracks.empty() && ump::isNoteOn(timed.message)) addTrack();
         if (const Track* t = doc.track(selectedId)) took(*t);
-        recordMessage(source, timed);
+        // MIDI 1.0 is upconverted to MIDI 2.0 first, always, so the converter
+        // follows each input's RPN and bank selections even while nothing
+        // records or plays.
+        uw::MidiMessage out[ump::kMaxTranslatedMessages];
+        std::size_t     count = 1;
+        out[0]                = timed.message;
+        if (ump::messageType(timed.message) == ump::MessageType::Midi1ChannelVoice) {
+            auto& state = upconverters[source];
+            if (!state) state = std::make_unique<ump::UpconvertState>();
+            count = ump::upconvert(timed.message, *state, out, std::size(out));
+        }
+        player.thru(selectedId, out, count);
+        recordMessages(timed, out, count);
         for (const Take& take : takes)
             if (const Track* t = doc.track(take.track)) took(*t);
     }
@@ -88,18 +100,8 @@ void TrackController::route(uw::MidiSourceHandle source, const uw::TimedMidiMess
     ++monitorCount;
 }
 
-// A channel voice message, into every take. MIDI 1.0 is upconverted to MIDI
-// 2.0 first, always, so the converter follows each input's RPN and bank
-// selections even while nothing records.
-void TrackController::recordMessage(uw::MidiSourceHandle source, const uw::TimedMidiMessage& timed) {
-    uw::MidiMessage out[ump::kMaxTranslatedMessages];
-    std::size_t     count = 1;
-    out[0]                = timed.message;
-    if (ump::messageType(timed.message) == ump::MessageType::Midi1ChannelVoice) {
-        auto& state = upconverters[source];
-        if (!state) state = std::make_unique<ump::UpconvertState>();
-        count = ump::upconvert(timed.message, *state, out, std::size(out));
-    }
+// A channel voice message, as MIDI 2.0 (`out`), into every take.
+void TrackController::recordMessages(const uw::TimedMidiMessage& timed, const uw::MidiMessage* out, std::size_t count) {
     if (!transportState.recording()) return;
     const Tick at = transportState.tickAt(timed.captureTime);
     for (Take& take : takes) {
@@ -148,6 +150,10 @@ void TrackController::finishTakes(Tick at) {
 
 void TrackController::tick() {
     if (inputs.syncDevices()) changed();
+    if (outputs.syncDevices()) changed();
+    // Playback first, so what's played through goes by the session as it is
+    // now (an output just set, a track just muted).
+    player.tick(doc, transportState, now());
     inputs.drain(arrived);
     for (const MidiInputs::Received& r : arrived) route(r.source, r.message);
     arrived.clear();
@@ -175,8 +181,11 @@ void TrackController::rebuild() {
     // Undo can take away the touched track or the selected clip.
     if (doc.track(selectedId) == nullptr) selectedId = doc.tracks.empty() ? 0 : doc.tracks.front().id;
     if (selectedRef != 0 && !clip(selectedRef)) selectedRef = 0;
-    // And change the tempo: the transport follows the session's.
+    // And change the tempo and the loop: the transport follows the session's.
     if (transportState.tempo() != doc.tempoBpm) transportState.setTempo(doc.tempoBpm, t);
+    if (transportState.looping() != doc.looping || transportState.loopStart() != doc.loopStart ||
+        transportState.loopEnd() != doc.loopEnd)
+        transportState.setLoop(doc.looping, doc.loopStart, doc.loopEnd, t);
 
     const Tick live = transportState.tickAt(t);
     if (!transportState.playing() || t - shownAt >= kPositionInterval) {
@@ -195,6 +204,9 @@ void TrackController::rebuild() {
         row.muted      = track.muted;
         row.soloed     = track.soloed;
         row.touched    = track.id == selectedId;
+        bool connected = true;
+        row.outputLabel   = player.outputLabel(doc, track.id, &connected);
+        row.outputMissing = !connected;
         const auto it  = lastActivity.find(track.id);
         row.midiActive = it != lastActivity.end() && static_cast<double>(t - it->second) < kActivitySeconds * 1e9;
         for (const ClipRef& ref : track.clips) row.clips.push_back(clipModel(ref));
@@ -228,6 +240,9 @@ void TrackController::rebuild() {
     tr.recording       = transportState.recording();
     tr.position        = shownPosition;
     tr.tempoBpm        = doc.tempoBpm;
+    tr.looping         = doc.looping;
+    tr.loopStart       = doc.loopStart;
+    tr.loopEnd         = doc.loopEnd;
     {
         const Tick beat    = shownPosition / kTicksPerQuarter;
         const int  bar     = static_cast<int>(beat / doc.beatsPerBar) + 1;
@@ -254,6 +269,7 @@ void TrackController::rebuild() {
     } else {
         next.status = "Play something to start";
     }
+    for (const MidiOutputs::Choice& c : outputs.choices()) next.outputs.push_back(OutputChoice{c.label, c.id, c.hardware});
     next.undoLabel    = history.undoLabel();
     next.redoLabel    = history.redoLabel();
     next.midiBackend  = inputs.backendName();
@@ -293,6 +309,7 @@ void TrackController::removeTrack(TrackId id) {
     lastActivity.erase(id);
     command("Remove track", [id](Session& s) {
         std::erase_if(s.tracks, [id](const Track& t) { return t.id == id; });
+        std::erase_if(s.outputs, [id](const Output& o) { return o.track == id; });
     });
 }
 
@@ -325,6 +342,32 @@ void TrackController::setTempo(double bpm) {
     if (!std::isfinite(bpm)) return;
     bpm = std::clamp(bpm, kMinTempo, kMaxTempo);
     command("Tempo", [bpm](Session& s) { s.tempoBpm = bpm; });
+}
+
+void TrackController::setOutput(TrackId id, const std::string& device) {
+    if (doc.track(id) == nullptr) return;
+    command(device.empty() ? "No output" : "Set output", [&](Session& s) {
+        std::erase_if(s.outputs, [id](const Output& o) { return o.track == id; });
+        if (!device.empty()) s.outputs.push_back(Output{id, device});
+    });
+}
+
+void TrackController::setLoop(Tick start, Tick end) {
+    start = std::max<Tick>(0, std::min(start, end));
+    end   = std::max({start + kTicksPerQuarter, end});
+    command("Set loop", [&](Session& s) {
+        s.loopStart = start;
+        s.loopEnd   = end;
+        s.looping   = true;
+    });
+}
+
+void TrackController::setLooping(bool on) {
+    if (on && doc.loopEnd <= doc.loopStart) {   // no range yet: the first bar
+        setLoop(0, doc.beatsPerBar * kTicksPerQuarter);
+        return;
+    }
+    command(on ? "Loop on" : "Loop off", [on](Session& s) { s.looping = on; });
 }
 
 void TrackController::moveClip(ClipRefId ref, Tick start) {
@@ -383,24 +426,29 @@ void TrackController::selectClip(ClipRefId ref) {
 }
 
 void TrackController::play() {
+    if (transportState.playing()) return;
     transportState.play(now());
+    player.started(doc, transportState, now());
     rebuild();
 }
 
 void TrackController::stop() {
     if (transportState.recording()) finishTakes(position());
     transportState.stop(now());
+    player.stopped(transportState, now());
     rebuild();
 }
 
 void TrackController::record() {
     if (transportState.recording()) {
         finishTakes(position());
-        transportState.setRecording(false);
+        transportState.setRecording(false, now());
     } else {
+        const bool starting = !transportState.playing();
         transportState.play(now());
+        transportState.setRecording(true, now());
+        if (starting) player.started(doc, transportState, now());
         startTakes(position());
-        transportState.setRecording(true);
     }
     rebuild();
 }
@@ -410,6 +458,7 @@ void TrackController::locate(Tick to) {
     const bool recording = transportState.recording();
     if (recording) finishTakes(position());
     transportState.locate(to, now());
+    if (transportState.playing()) player.started(doc, transportState, now());
     if (recording) startTakes(position());
     rebuild();
 }

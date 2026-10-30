@@ -296,6 +296,44 @@ struct TrackSelfTest {
         check("and stops", !view().transport.playing);
         tap(dgl::kKeyHome);
 
+        // --- the loop: a drag along the ruler, the L key, the button
+        {
+            const double ry = (canvas.rulerY() + TrackCanvas::kRulerH / 2) * sf();
+            drag((canvas.tickX(kTicksPerQuarter * 4) + 3) * sf(), ry, (canvas.tickX(kTicksPerQuarter * 12) - 3) * sf(), ry);
+            check("a drag along the ruler sets the loop, to the beat, and loops",
+                  view().transport.looping && view().transport.loopStart == kTicksPerQuarter * 4 &&
+                      view().transport.loopEnd == kTicksPerQuarter * 12 && view().undoLabel == "Set loop");
+            screenshot("t06-loop.ppm");
+            tap('l');
+            check("L turns looping off, the range kept", !view().transport.looping && view().transport.loopEnd == kTicksPerQuarter * 12);
+            click(panels.loopRect);
+            check("the Loop button turns it on", view().transport.looping);
+            tap(' ');
+            pump(2200);   // beats 0 to 4, then round the loop (4 to 12) at 120
+            check("playing, the playhead wraps at the loop's end",
+                  view().transport.playing && view().transport.position >= kTicksPerQuarter * 4 &&
+                      view().transport.position < kTicksPerQuarter * 12);
+            tap(' ');
+            click(panels.loopRect);
+            check("and off", !view().transport.looping);
+            tap(dgl::kKeyHome);
+        }
+
+        // --- the touched row's output: the choice opens (nothing is chosen: that would sound)
+        {
+            click(laneX(), laneY(0));
+            const auto* r = rects(view().rows[0].id);
+            check("the touched row shows its output", r != nullptr && panels.outputRect.x1 > panels.outputRect.x0 &&
+                                                          view().rows[0].outputLabel == "No output");
+            click(panels.outputRect);
+            pump(100);
+            check("its choice opens", panels.popupOpen());
+            screenshot("t07-output.ppm");
+            tap(dgl::kKeyEscape);
+            check("Escape closes it, nothing chosen", !panels.popupOpen() && controller.session().outputs.empty());
+            if (!view().rows[0].clips.empty()) controller.selectClip(view().rows[0].clips[0].ref);   // for MainWindow's test
+        }
+
         // --- many tracks: the wheel scrolls headers and lanes together
         while (view().rows.size() < 16) controller.addTrack();
         pump(100);

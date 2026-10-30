@@ -39,7 +39,8 @@ struct TrackRowModel {
     bool        armed  = false;
     bool        muted  = false;
     bool        soloed = false;
-    std::string outputLabel = "No output";   // milestones 7 and 8
+    std::string outputLabel = "No output";   // its device's name; a plugin with milestone 8
+    bool        outputMissing = false;       // its device isn't connected now
     bool        midiActive  = false;   // MIDI reached the track in the last moment
     bool        touched     = false;   // the selected track: playing goes to it
     std::vector<ClipModel> clips;
@@ -52,6 +53,8 @@ struct TransportModel {
     bool   recording = false;
     Tick   position  = 0;   // updated about 30 times a second while playing
     double tempoBpm  = 120;
+    bool   looping   = false;
+    Tick   loopStart = 0, loopEnd = 0;   // loopEnd == loopStart: no loop set
     std::string positionLabel = "1.1.1";   // bar.beat.sixteenth
     std::string timeLabel     = "0:00.0";
 
@@ -68,8 +71,18 @@ struct MonitorLine {
     bool operator==(const MonitorLine&) const = default;
 };
 
+// A device a track can play to.
+struct OutputChoice {
+    std::string label;
+    std::string device;   // its id, for TrackController::setOutput
+    bool        hardware = false;
+
+    bool operator==(const OutputChoice&) const = default;
+};
+
 struct TrackViewModel {
     std::vector<TrackRowModel> rows;
+    std::vector<OutputChoice>  outputs;   // where a track can play to, hardware first
     TransportModel             transport;
     int                        beatsPerBar = 4;
 

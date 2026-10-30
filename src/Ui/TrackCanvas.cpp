@@ -100,6 +100,28 @@ void TrackCanvas::onNanoDisplay() {
     fill();
     save();
     scissor(x0, ry, laneW, kRulerH);
+    // The loop, across the ruler: amber while looping, grey when off; the
+    // range being dragged, brighter.
+    {
+        const TransportModel& tr = view.transport;
+        const Tick from = loopDrag ? std::min(loopFrom, loopTo) : tr.loopStart;
+        const Tick to   = loopDrag ? std::max(loopFrom, loopTo) : tr.loopEnd;
+        if (to > from) {
+            const bool on = loopDrag || tr.looping;
+            beginPath();
+            rect(tickX(from), ry + 2, tickX(to) - tickX(from), kRulerH - 4);
+            fillColor(on ? rgb(240, 170, 50, loopDrag ? 110 : 70) : rgb(110, 116, 130, 50));
+            fill();
+            beginPath();
+            moveTo(tickX(from) + 0.5f, ry + 2);
+            lineTo(tickX(from) + 0.5f, ry + kRulerH - 2);
+            moveTo(tickX(to) - 0.5f, ry + 2);
+            lineTo(tickX(to) - 0.5f, ry + kRulerH - 2);
+            strokeWidth(1.5f);
+            strokeColor(on ? rgb(240, 170, 50) : rgb(110, 116, 130));
+            stroke();
+        }
+    }
     fontSize(11);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
     const int firstBeat = static_cast<int>(std::floor(scrollX / kBeatW));
@@ -261,7 +283,13 @@ bool TrackCanvas::onMouse(const MouseEvent& ev) {
     if (NanoTopLevelWidget::onMouse(ev)) return true;
     if (ev.button != dgl::kMouseButtonLeft) return false;
     const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
-    if (!ev.press) {   // the end of a drag: the move, as one command
+    if (!ev.press) {   // the end of a drag: the move, or the loop, as one command
+        if (loopDrag) {
+            loopDrag = false;
+            if (loopTo != loopFrom) controller.setLoop(std::min(loopFrom, loopTo), std::max(loopFrom, loopTo));
+            refresh();
+            return true;
+        }
         if (dragRef == 0) return false;
         const ClipRefId ref = dragRef;
         dragRef = 0;
@@ -269,10 +297,14 @@ bool TrackCanvas::onMouse(const MouseEvent& ev) {
         refresh();
         return true;
     }
-    // The ruler: the playhead goes there, to the beat.
+    // The ruler: the playhead goes there, to the beat; a drag from there
+    // sets the loop.
     if (x >= kHeaderW && y >= rulerY() && y < lanesY()) {
-        const Tick at = xTick(x) + kTicksPerQuarter / 2;
-        controller.locate(std::max<Tick>(0, at - at % kTicksPerQuarter));
+        const Tick at   = xTick(x) + kTicksPerQuarter / 2;
+        const Tick beat = std::max<Tick>(0, at - at % kTicksPerQuarter);
+        controller.locate(beat);
+        loopDrag = true;
+        loopFrom = loopTo = beat;
         refresh();
         return true;
     }
@@ -307,6 +339,15 @@ bool TrackCanvas::onMouse(const MouseEvent& ev) {
 bool TrackCanvas::onMotion(const MotionEvent& ev) {
     if (NanoTopLevelWidget::onMotion(ev)) return true;
     ++probe.canvasMotions;
+    if (loopDrag) {
+        const Tick at   = xTick(static_cast<float>(ev.pos.getX()) / sf()) + kTicksPerQuarter / 2;
+        const Tick beat = std::max<Tick>(0, at - ((at % kTicksPerQuarter) + kTicksPerQuarter) % kTicksPerQuarter);
+        if (beat != loopTo) {
+            loopTo = beat;
+            refresh();
+        }
+        return true;
+    }
     if (dragRef == 0) return false;
     Tick to = xTick(static_cast<float>(ev.pos.getX()) / sf()) - dragGrab;
     if ((ev.mod & dgl::kModifierShift) == 0) {   // to the nearest beat
@@ -363,6 +404,8 @@ bool TrackCanvas::onKeyboard(const KeyboardEvent& ev) {
         view.transport.playing ? controller.stop() : controller.play();
     } else if (ev.key == dgl::kKeyHome) {
         controller.locate(0);
+    } else if (ev.key == 'l' && !command) {
+        controller.setLooping(!view.transport.looping);
     } else if ((ev.key == dgl::kKeyDelete || ev.key == dgl::kKeyBackspace) && controller.selectedClip() != 0) {
         controller.deleteClip(controller.selectedClip());
     } else if ((ev.key == dgl::kKeyUp || ev.key == dgl::kKeyDown) && !view.rows.empty()) {

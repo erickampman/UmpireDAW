@@ -87,7 +87,8 @@ int main() {
           inputs.listening() == std::vector<std::string>{"KeyLab", "Launchkey", "MIDI 2.0 In", "MIDI 1.0 In"});
 
     uw::Nanoseconds clock = 1'000'000'000;
-    TrackController c(inputs, [&clock] { return clock; });
+    MidiOutputs     noOutputs(nullptr);   // playback has its own tests (PlaybackTests.cpp)
+    TrackController c(inputs, noOutputs, [&clock] { return clock; });
     const uw::MidiSourceHandle keylab    = fake.opened["KeyLab:KeyLab MIDI"];
     const uw::MidiSourceHandle launchkey = fake.opened["Launchkey:Launchkey MIDI"];
     c.tick();
@@ -296,7 +297,7 @@ int main() {
 
     MidiInputs none(nullptr);
     none.openAll();
-    TrackController quiet(none);
+    TrackController quiet(none, noOutputs);
     quiet.tick();
     check("no MIDI on this machine: still a track view", quiet.view().rows.empty() && quiet.view().midiBackend == "no MIDI" &&
                                                            quiet.view().listening == "no inputs");

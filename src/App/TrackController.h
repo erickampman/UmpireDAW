@@ -7,8 +7,9 @@
 // fake MIDI input and a fake clock.
 //
 // Input belongs to the session (ui-direction.md): Umpire listens to every
-// input. What's played goes to the touched track; while recording, it's
-// recorded on every armed track.
+// input. What's played goes to the touched track, and through to its output;
+// while recording, it's recorded on every armed track. While playing, each
+// track with an output plays its clips there (Player).
 
 #include <cstdint>
 #include <deque>
@@ -20,6 +21,8 @@
 
 #include "App/History.h"
 #include "App/MidiInputs.h"
+#include "App/MidiOutputs.h"
+#include "App/Player.h"
 #include "App/Session.h"
 #include "App/TrackViewModel.h"
 #include "App/Transport.h"
@@ -37,7 +40,7 @@ public:
     // The time, on uw-core's clock (the one MIDI capture times use).
     using Clock = std::function<uw::Nanoseconds()>;
 
-    explicit TrackController(MidiInputs& inputs, Clock clock = {});
+    TrackController(MidiInputs& inputs, MidiOutputs& outputs, Clock clock = {});
 
     // Take what MIDI arrived, route and record it, and rebuild the view.
     void tick();
@@ -56,6 +59,12 @@ public:
     void    setMuted(TrackId id, bool muted);
     void    setSoloed(TrackId id, bool soloed);
     void    setTempo(double bpm);
+    // Where a track's MIDI goes: a device by its id (MidiOutputs::Choice), or
+    // "" for nowhere.
+    void    setOutput(TrackId id, const std::string& device);
+    // The loop's range (to the beat at least), and looping on.
+    void    setLoop(Tick start, Tick end);
+    void    setLooping(bool on);
     void    moveClip(ClipRefId ref, Tick start);
     // A new scale for the clip `ref` places, for every reference to it.
     void    setClipScale(ClipRefId ref, const Scale& scale);
@@ -102,7 +111,7 @@ private:
 
     uw::Nanoseconds now() const { return clockFn(); }
     void   route(uw::MidiSourceHandle source, const uw::TimedMidiMessage& message);
-    void   recordMessage(uw::MidiSourceHandle source, const uw::TimedMidiMessage& message);
+    void   recordMessages(const uw::TimedMidiMessage& message, const uw::MidiMessage* messages, std::size_t count);
     void   startTakes(Tick at);
     void   finishTakes(Tick at);
     void   rebuild();
@@ -110,11 +119,13 @@ private:
     void   changed() { ++changes; }
 
     MidiInputs&                          inputs;
+    MidiOutputs&                         outputs;
     Clock                                clockFn;
     Session                              doc;
     History                              history;
     Transport                            transportState;
     std::vector<Take>                    takes;
+    Player                               player;
     std::map<uw::MidiSourceHandle, std::unique_ptr<uw::ump::UpconvertState>> upconverters;   // by input
     std::map<const Clip*, std::shared_ptr<const std::vector<NoteSpan>>>    clipNotes;      // the view's
     std::map<TrackId, uw::Nanoseconds>   lastActivity;

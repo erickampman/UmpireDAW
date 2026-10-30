@@ -99,6 +99,8 @@ void TrackPanels::menuBar() {
         if (ImGui::MenuItem(tr.playing ? "Stop" : "Play", "Space")) tr.playing ? controller.stop() : controller.play();
         if (ImGui::MenuItem(tr.recording ? "Stop recording" : "Record", kRecKey)) controller.record();
         if (ImGui::MenuItem("Go to start", "Home")) controller.locate(0);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Loop", "L", tr.looping)) controller.setLooping(!tr.looping);
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View")) {
@@ -114,7 +116,7 @@ void TrackPanels::menuBar() {
 }
 
 // The transport, in the menu bar from the lanes' left edge: to the start,
-// stop, play, record, the position and the tempo.
+// stop, play, record, loop, the position and the tempo.
 void TrackPanels::transport() {
     const float sf  = static_cast<float>(getWindow().getScaleFactor());
     const float em  = ImGui::GetFontSize();
@@ -137,6 +139,11 @@ void TrackPanels::transport() {
     if (transportButton("##record", Glyph::Record, tr.recording, colour::kRecord, ImVec2(btn, btn))) controller.record();
     recordRect = lastItem();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Record on the armed tracks (%s)", kRecKey);
+    ImGui::SameLine();
+    if (toggle("##loop", "Loop", tr.looping, colour::kAccent, ImVec2(ImGui::CalcTextSize("Loop").x + btn * 0.6f, btn)))
+        controller.setLooping(!tr.looping);
+    loopRect = lastItem();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Loop (L); drag along the ruler to set where");
 
     ImGui::SameLine(0, em);
     ImGui::AlignTextToFramePadding();
@@ -265,10 +272,33 @@ void TrackPanels::row(const TrackRowModel& r, float x, float y, float w) {
         if (toggle("##solo", "S", r.soloed, colour::kNote, ImVec2(btn, btn))) controller.setSoloed(r.id, !r.soloed);
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("Solo");
 
+        // Where its MIDI goes: a device (a plugin with milestone 8).
         ImGui::SetCursorScreenPos(ImVec2(nameX, line2));
         ImGui::AlignTextToFramePadding();
-        ImGui::TextDisabled("> %s", r.outputLabel.c_str());
-        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Output: a MIDI device (milestone 7) or a plugin (milestone 8)");
+        ImGui::TextDisabled(">");
+        ImGui::SameLine(0, pad * 0.5f);
+        ImGui::SetNextItemWidth(x + w - pad - ImGui::GetCursorScreenPos().x);
+        const std::string shown = r.outputMissing ? r.outputLabel + " (not connected)" : r.outputLabel;
+        if (r.outputMissing) ImGui::PushStyleColor(ImGuiCol_Text, colour::kRecord);
+        const bool open = ImGui::BeginCombo("##output", shown.c_str());
+        if (r.outputMissing) ImGui::PopStyleColor();
+        outputRect = lastItem();
+        if (open) {
+            const std::string* now = controller.session().outputOf(r.id);
+            if (ImGui::Selectable("No output", now == nullptr)) controller.setOutput(r.id, "");
+            const std::vector<OutputChoice>& choices = controller.view().outputs;
+            if (!choices.empty()) ImGui::Separator();
+            for (const OutputChoice& c : choices) {
+                ImGui::PushID(c.device.c_str());
+                if (ImGui::Selectable(c.label.c_str(), now != nullptr && *now == c.device)) controller.setOutput(r.id, c.device);
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", c.device.c_str());
+                ImGui::PopID();
+            }
+            if (choices.empty()) ImGui::TextDisabled("No MIDI devices to play to");
+            ImGui::EndCombo();
+        } else if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Where the track plays: a MIDI device");
+        }
     } else {
         // The name, and badges only for what isn't the default.
         ImGui::SetCursorScreenPos(ImVec2(nameX, line1));
@@ -286,6 +316,13 @@ void TrackPanels::row(const TrackRowModel& r, float x, float y, float w) {
         if (r.soloed) right("S", colour::kNote);
         if (r.muted) right("M", colour::kAccent);
         if (r.armed) right("R", colour::kRecord);
+        // Where it plays, once it plays somewhere: what it sounds through.
+        if (controller.session().outputOf(r.id) != nullptr) {
+            ImGui::SetCursorScreenPos(ImVec2(nameX, line2));
+            ImGui::AlignTextToFramePadding();
+            if (r.outputMissing) ImGui::TextColored(colour::kRecord, "> %s (not connected)", r.outputLabel.c_str());
+            else ImGui::TextDisabled("> %s", r.outputLabel.c_str());
+        }
     }
 
     // A click on the row, but not on a control, touches the track.

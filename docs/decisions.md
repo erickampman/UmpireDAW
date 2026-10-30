@@ -342,6 +342,33 @@ than 12-EDO.
   strong idea but depends on the controller; working it out from the notes
   is the fallback that works with any of them (ideas.md, same section).
 
+## Playback (milestone 7, 2026-10-29)
+
+Made while building milestone 7 on the Linux PC ([playback.md](playback.md)).
+- **Timing is the platform's.** Playback sends 100 ms ahead with a time on
+  uw-core's clock, and the platform holds each message until then
+  (`MidiOutput::sendAt`, an ALSA sequencer queue), so timing doesn't depend
+  on the main loop's 10 ms tick or a slow frame. Where a platform can't hold
+  them (CoreMIDI, for now) the player sends on the tick instead.
+- **A track's output is an edge of the graph** (`Session::outputs`), not a
+  field of the track, as ui-direction.md's graph asks; setting it is a
+  command. One output per track for now.
+- **One output handle per track**, so a track can be cancelled on its own (a
+  mute while playing) without cutting the others' notes.
+- **A stop, a locate and a loop wrap end the notes sounding**; a tempo or
+  loop change keeps them and retimes what's ahead.
+- **Pitch 7.25 is chased per key**, on play, a locate and a wrap: the value in
+  force at the playhead, or a Per-Note Management reset where none is, for
+  each key the track's clips tune, because the synths keep it as a tuning
+  table. Nothing else is chased yet.
+- **Playing goes through to the touched track's output** (ui-direction.md:
+  playing goes to the touched track), unless it's muted; a note-off follows
+  its note-on.
+- **The loop is the session's**, changed by commands, set by a drag along the
+  ruler; it doesn't loop while recording (loop recording is later).
+- **Umpire's own inputs aren't offered as outputs**, and Umpire's output is
+  its own ALSA client pair, "Umpire Out".
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
