@@ -119,6 +119,74 @@ endif()
 add_executable(umpire-daw src/App/main.cpp)
 target_link_libraries(umpire-daw PRIVATE umpire-ui umpire-app uw::midi umpire-warnings)
 
+if(APPLE)
+    # Umpire.app (BUILDING.md, "macOS"): just enough of a bundle for a Dock/Finder/
+    # Cmd-Tab icon (StageHand's CMakeLists.txt is the template this follows). No
+    # document types yet: those come with milestone 9 (Files).
+    set_target_properties(umpire-daw PROPERTIES
+        OUTPUT_NAME                        Umpire
+        MACOSX_BUNDLE                      TRUE
+        MACOSX_BUNDLE_INFO_PLIST           "${CMAKE_SOURCE_DIR}/cmake/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME          Umpire
+        MACOSX_BUNDLE_GUI_IDENTIFIER       com.unlikelyware.umpire
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_BUNDLE_VERSION       "${PROJECT_VERSION}")
+    # The icon, compiled from resources/Umpire.icon (an Icon Composer document) by
+    # Xcode's actool: Assets.car, which macOS 26 draws (its dark and tinted versions
+    # too), and Umpire.icns, which actool still writes. Without Xcode (only the
+    # Command Line Tools) the bundle has no icon. Nor with an Xcode before 26: Icon
+    # Composer documents are new in 26, and an older actool reports success and
+    # writes neither file.
+    execute_process(COMMAND xcrun --find actool OUTPUT_VARIABLE UMPIRE_ACTOOL
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET RESULT_VARIABLE actool_missing)
+    set(actool_version 0)
+    if(NOT actool_missing)
+        execute_process(COMMAND "${UMPIRE_ACTOOL}" --version OUTPUT_VARIABLE actool_info ERROR_QUIET)
+        if(actool_info MATCHES "<key>short-bundle-version</key>[ \t\r\n]*<string>([0-9.]+)</string>")
+            set(actool_version "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+    if(actool_missing)
+        message(WARNING "Xcode's actool not found: Umpire.app will have no icon "
+                        "(install Xcode, not just the Command Line Tools)")
+    elseif(actool_version VERSION_LESS 26)
+        message(WARNING "Xcode ${actool_version}'s actool can't compile Icon Composer documents: "
+                        "Umpire.app will have no icon (Xcode 26 or later makes it)")
+    else()
+        set(icon "${CMAKE_SOURCE_DIR}/resources/Umpire.icon")
+        set(icon_out "${CMAKE_BINARY_DIR}/icon")
+        file(GLOB_RECURSE icon_inputs CONFIGURE_DEPENDS "${icon}/*")
+        add_custom_command(
+            OUTPUT "${icon_out}/Assets.car" "${icon_out}/Umpire.icns"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${icon_out}"
+            COMMAND "${UMPIRE_ACTOOL}" "${icon}" --compile "${icon_out}" --app-icon Umpire
+                    --platform macosx --target-device mac
+                    --minimum-deployment-target "${CMAKE_OSX_DEPLOYMENT_TARGET}"
+                    --output-partial-info-plist "${icon_out}/partial.plist"
+                    --errors --warnings --output-format human-readable-text
+            DEPENDS ${icon_inputs}
+            COMMENT "Compiling the app icon"
+            VERBATIM)
+        set(icon_files "${icon_out}/Assets.car" "${icon_out}/Umpire.icns")
+        target_sources(umpire-daw PRIVATE ${icon_files})
+        set_source_files_properties(${icon_files} PROPERTIES GENERATED TRUE MACOSX_PACKAGE_LOCATION Resources)
+    endif()
+    # Ad-hoc signed once whole: the linker signs only the executable, not the
+    # Resources added after it.
+    add_custom_command(TARGET umpire-daw POST_BUILD
+        COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:umpire-daw>"
+        VERBATIM)
+    # build/umpire-daw stays the command line's: a script running the bundle's
+    # binary by its real path (BUILDING.md and the milestone docs document this
+    # path). Not a link: run through one, the binary isn't seen as the bundle's
+    # (no bundle id, name or Info.plist, so no Dock icon).
+    file(REMOVE "${CMAKE_BINARY_DIR}/umpire-daw")   # a plain executable, from before this bundle existed
+    file(CONFIGURE OUTPUT "${CMAKE_BINARY_DIR}/umpire-daw" @ONLY CONTENT
+"#!/bin/sh\nexec \"@CMAKE_BINARY_DIR@/Umpire.app/Contents/MacOS/Umpire\" \"$@\"\n")
+    file(CHMOD "${CMAKE_BINARY_DIR}/umpire-daw"
+         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+endif()
+
 # --- Tests (silent; one executable per suite) ---------------------------------
 # The window's own check, `umpire-daw --self-test DIR`, opens a window, so it
 # isn't one of these (docs/skeleton.md).

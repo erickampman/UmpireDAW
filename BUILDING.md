@@ -154,9 +154,14 @@ ctest --test-dir build --output-on-failure
 ./build/umpire-daw
 ```
 
-It's a plain executable for now, not an app bundle (no `Umpire.app`, no
-icon, no Dock entry of its own: the macOS port comes later, decisions.md).
-Run it from a terminal; Cmd-Q, or closing the window, quits. It makes a
+`cmake --build build` makes `Umpire.app`, with its icon (compiled from
+`resources/Umpire.icon` by Xcode's `actool`, as StageHand's
+`resources/StageHand.icon`) in the Dock, Finder and Cmd-Tab. Without Xcode
+(only the Command Line Tools), or with an Xcode older than 26, the build
+warns and the bundle has no icon. `./build/umpire-daw` is a small script
+that runs the bundle's real binary (`Umpire.app/Contents/MacOS/Umpire`), so
+the commands above and the milestone docs still work unchanged. Run it from
+a terminal; Cmd-Q, or closing the window, quits. It makes a
 CoreMIDI client, `Umpire`, with the same two virtual inputs as on Linux,
 which other apps (KeyboardEDO) see as destinations.
 
