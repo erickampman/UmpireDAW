@@ -54,6 +54,33 @@ timeline. Linux first (decisions.md, "Scope").
 13. [ ] First useful version (Umpire): record from KeyEDO, edit, play to
     plugin and hardware, save/reopen
 
+## Proposed: plugin routing (not yet decided)
+
+Proposed 2026-10-30 (docs/plugin-routing.md; decisions.md, "Plugin
+routing"): the session as a graph with one cable per input, MIDI and audio
+mixers, and the track's plugin stack. The author reviews the mockups
+first. If accepted, these get numbers, probably after 9 and 10; each is
+about a milestone:
+
+- R1. [ ] The graph (uw-core): nodes, typed ports, cables, one cable per
+  input, loops refused, edits as commands, dependency order; headless tests
+- R2. [ ] The engine on the graph (uw-core, then Umpire): a buffer per
+  node, the order on the audio thread, note effects' events passed on
+  within the block; today's routing rebuilt on it, sounding the same
+- R3. [ ] The MIDI mixer and the track head: same-key policies (Merge,
+  Retrigger, First wins, Louder wins), replacing `Player`'s silent merge of
+  live playing and clips
+- R4. [ ] The stack (Umpire): the track's output control becomes its
+  stack; collapsed and expanded, note effects and audio effects, the row
+  and lane growing
+- R5. [ ] Side inputs and the audio mixer: sidechain pickers in slots
+  (audio and notes), mixer slots, a second cable inserting a mixer
+- R6. [ ] The patch view (Umpire): the popover, for routing a stack can't
+  draw
+
+Mixer strips stay with milestone 14, whose audio strips would be this
+proposal's audio mixer node.
+
 ## After the first useful version: audio
 
 Decided 2026-10-14 (decisions.md, "Audio: printing, mixdown, playback").
@@ -74,3 +101,5 @@ Plugin tracks come first; hardware comes last.
 - [x] StageHand switches to uw-core (merged 2026-10-08)
 - [x] StageHand switches to DPF fork (2026-10-22, StageHand b65ba55)
 - [ ] Plugins move onto DPF fork and use uw::ump (plugins-roadmap.md)
+- [ ] StageHand's routing moves onto uw-core's graph, if plugin routing
+  (above) is accepted (plugin-routing.md, "Shared with StageHand")
