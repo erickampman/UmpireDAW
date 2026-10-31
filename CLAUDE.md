@@ -28,6 +28,8 @@ instruments, their editor windows included; see
    instruments, the audio engine, sample-accurate timing),
    [docs/plugin-editors.md](docs/plugin-editors.md) (milestone 11: plugin
    editor windows, moved into uw-core, opened from a track's row),
+   [docs/plugin-routing.md](docs/plugin-routing.md) (proposed: the
+   routing graph, MIDI and audio mixers, the track's plugin stack),
    [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
    you need; read before any UI work).
 

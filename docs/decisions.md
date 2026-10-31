@@ -453,6 +453,26 @@ done out of order (before 9 and 10) at the author's request.
   doesn't apply until milestone 9 gives Umpire something to save, so
   `TrackController` doesn't supply either callback yet.
 
+## Plugin routing (proposed 2026-10-30, not yet decided)
+
+On the Linux PC, after the first plugin was heard there:
+[plugin-routing.md](plugin-routing.md), with mockups the author reviews
+before anything is decided. In short:
+- **A graph of nodes and cables**, extending "the model is a graph" (The
+  UI direction, above): tracks, CLAP plugins, MIDI devices, MIDI mixers,
+  audio mixers, the audio out; typed ports, a sidechain being an input
+  that isn't the main one, audio or notes.
+- **An input takes one cable; outputs fan out.** Combining always goes
+  through a mixer node with settings: the MIDI mixer's same-key policy
+  (Merge, Retrigger, First wins, Louder wins), the audio mixer's gain and
+  pan. Nothing merges or sums silently, including `Player`'s merge of
+  live playing and clips, which becomes a mixer at the head of each track.
+- **Three views of one graph:** the stack in the track's header (replacing
+  the output control; the row grows when expanded), a patch popover for
+  routing a stack can't draw, and mixer strips (milestone 14).
+- **Built in uw-core**, shared with StageHand, whose routing needs the
+  same rework.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
