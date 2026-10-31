@@ -81,6 +81,25 @@ about a milestone:
 Mixer strips stay with milestone 14, whose audio strips would be this
 proposal's audio mixer node.
 
+## Proposed: the tempo map and stem export (not yet scheduled)
+
+Proposed 2026-10-30 (docs/stem-export.md; decisions.md, "Stem export"):
+other DAWs finish what Umpire leaves out, from its stems, and need its
+tempo map to line up with them.
+
+- T1. [ ] The tempo map: tempo changes (sudden or ramped) and meters at
+  ticks, used by the scheduler, recording, loop and locate, the ruler and
+  the render; before or with milestone 9, so the session file stores it
+- S1. [ ] Stem export, after milestone 14: one render pass tapping every
+  track, a WAV per track (same length, from zero, `bext` time stamps), the
+  tempo map as a tempo-only Standard MIDI File, a REAPER `.RPP`, a
+  manifest and a reference mix; stable names, export in place, only
+  changed tracks re-rendered (milestone 15's hash)
+- S2. [ ] Print points and stem groups, with plugin routing's stack and
+  mixers (R4, R5): wet, dry, both, or through a chosen slot
+- Later: the tempo map as MIDI 2.0 Flex Data (or in a MIDI Clip File),
+  once another DAW imports it
+
 ## After the first useful version: audio
 
 Decided 2026-10-14 (decisions.md, "Audio: printing, mixdown, playback").

@@ -473,6 +473,23 @@ before anything is decided. In short:
 - **Built in uw-core**, shared with StageHand, whose routing needs the
   same rework.
 
+## Stem export (proposed 2026-10-30, not yet scheduled)
+
+On the Linux PC: [stem-export.md](stem-export.md). In short:
+- **Audio only, plus the tempo map**: a WAV per track, all from zero and
+  the same length; no MIDI notes.
+- **The tempo map goes out as a Standard MIDI File** (tempo, time
+  signature, markers; ramps as steps), since that's what other DAWs
+  import. MIDI 2.0's Flex Data is on the roadmap for when they read it.
+  Umpire needs a tempo map first (it has one tempo and 4/4), before or
+  with milestone 9.
+- **Project files only for REAPER** (`.RPP`, plain text). Ardour,
+  Audacity, Logic, Live and Pro Tools import the WAVs; their formats are
+  closed, internal or too large to write.
+- **The routing graph isn't exported**: each stem has a print point (wet,
+  dry, both, or through a chosen slot), and the manifest names what
+  wasn't printed.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

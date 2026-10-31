@@ -30,6 +30,8 @@ instruments, their editor windows included; see
    editor windows, moved into uw-core, opened from a track's row),
    [docs/plugin-routing.md](docs/plugin-routing.md) (proposed: the
    routing graph, MIDI and audio mixers, the track's plugin stack),
+   [docs/stem-export.md](docs/stem-export.md) (proposed: stems and the
+   tempo map for other DAWs),
    [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
    you need; read before any UI work).
 
