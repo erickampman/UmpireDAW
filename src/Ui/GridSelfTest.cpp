@@ -95,16 +95,17 @@ struct GridSelfTest {
         canvas.onCharacterInput(ev);
         key(static_cast<std::uint32_t>(c), false);
     }
-    bool scroll(double x, double y, double dy) {
+    bool scroll(double x, double y, double dy, std::uint32_t mod = 0) {
         dgl::Widget::ScrollEvent ev;
         ev.time = ++time;
+        ev.mod  = mod;
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
         ev.delta                = dgl::Point<double>(0, dy);
         return canvas.onScroll(ev);
     }
 
     // The centre of a grid cell, in window pixels.
-    double cellX(int step) { return (canvas.gridX() + (step + 0.5) * GridCanvas::kStepW) * canvas.sf(); }
+    double cellX(int step) { return (canvas.gridX() + (step + 0.5) * GridCanvas::kStepW - canvas.scrollX) * canvas.sf(); }
     double cellY(int pitch) {
         return (canvas.gridY() + canvas.rowY(pitch) - canvas.scrollY + GridCanvas::kRowH / 2) * canvas.sf();
     }
@@ -267,7 +268,7 @@ struct GridSelfTest {
             click(cellX(8), cellY(64));
             pump(100);
             // The first note's right edge (two sixteenths long), dragged to column 9.
-            const double edgeX = (canvas.gridX() + 6 * GridCanvas::kStepW - 2) * canvas.sf();
+            const double edgeX = (canvas.gridX() + 6 * GridCanvas::kStepW - 2 - canvas.scrollX) * canvas.sf();
             motion(edgeX, cellY(67));
             button(edgeX, cellY(67), true);
             motion(cellX(7), cellY(67));
@@ -321,6 +322,19 @@ struct GridSelfTest {
             scroll(panelX(), 200, -1);
             check("the wheel goes to whatever is under the pointer",
                   canvas.scrollY != before && probe.canvasScrolls == 1 && probe.imguiScrolls == 1);
+            // A grid longer than the window (four bars) scrolls through time
+            // with Shift, as the track view does; the rows stay.
+            const int steps = model.steps;
+            model.steps     = 64;
+            const float rows = canvas.scrollY;
+            scroll(cellX(10), cellY(64), -2, dgl::kModifierShift);
+            check("Shift+wheel scrolls sideways, a beat a notch",
+                  canvas.scrollX == 8 * GridCanvas::kStepW && canvas.scrollY == rows);
+            const int at = canvas.stepAt(static_cast<float>(cellX(0) / canvas.sf()));
+            check("and the grid's columns go with it", at == 0, std::to_string(at));
+            scroll(cellX(10), cellY(64), 5, dgl::kModifierShift);
+            check("not past the start", canvas.scrollX == 0);
+            model.steps = steps;
         }
 
         // --- resizing

@@ -58,6 +58,7 @@ private:
     void  setPointer(DGL_NAMESPACE::MouseCursor cursor);
     float rowY(int pitch);
     void  centreOn(int row);   // scrolls so `row` is in the middle
+    void  clampScrollX();
     void  changed();   // the model changed here: redraw, and the panels too
 
     static constexpr float kKeysW = 44, kRowH = 14, kStepW = 22;
@@ -72,6 +73,7 @@ private:
     Probe&                  probe;
     std::unique_ptr<GridPanels> imgui;
     float                   scrollY  = 0;   // logical pixels from the top row
+    float                   scrollX  = 0;   // logical pixels from the first column
     int                     hoverRow = -1;
     // The tuning last drawn, and the pitch in the middle of the view then.
     int                     tunedEdo = 12, tunedReference = 60;

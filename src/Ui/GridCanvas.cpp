@@ -70,10 +70,10 @@ int GridCanvas::pitchAt(float y) {
     return model.rows() - 1 - static_cast<int>(std::floor((y - gridY() + scrollY) / kRowH));
 }
 int GridCanvas::stepAt(float x) {
-    return static_cast<int>(std::floor((x - gridX()) / kStepW));
+    return static_cast<int>(std::floor((x - gridX() + scrollX) / kStepW));
 }
 Tick GridCanvas::tickAt(float x) {
-    return static_cast<Tick>(std::floor((x - gridX()) / kStepW * static_cast<float>(GridModel::kStep)));
+    return static_cast<Tick>(std::floor((x - gridX() + scrollX) / kStepW * static_cast<float>(GridModel::kStep)));
 }
 float GridCanvas::tickX(Tick t) {
     return static_cast<float>(static_cast<double>(t) / GridModel::kStep) * kStepW;
@@ -84,7 +84,7 @@ int GridCanvas::edgeAt(float x, float y) {
     const int row = pitchAt(y);
     for (int i = static_cast<int>(model.notes.size()) - 1; i >= 0; --i) {
         const GridNote& n   = model.notes[static_cast<std::size_t>(i)];
-        const float     end = gridX() + tickX(n.start + n.length);
+        const float     end = gridX() + tickX(n.start + n.length) - scrollX;
         // A short note keeps most of itself for moving.
         const float edge = std::min(kEdge, (tickX(n.length)) / 3);
         if (n.pitch == row && x <= end && x >= end - edge) return i;
@@ -121,6 +121,7 @@ void GridCanvas::onNanoDisplay() {
         tunedEdo = model.edo, tunedReference = model.referenceNote;
     }
     scrollY     = std::clamp(scrollY, 0.0f, std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gh));
+    clampScrollX();
     centrePitch = model.rowSemitones(std::clamp(pitchAt(gy + gh / 2), 0, model.rows() - 1));
 
     beginPath();
@@ -157,8 +158,11 @@ void GridCanvas::onNanoDisplay() {
             text(3, y + kRowH / 2, noteName(semitones).c_str(), nullptr);
         }
     }
+    // The columns and the notes scroll sideways under the keyboard.
+    scissor(gx, gy, gw, gh);
     for (int step = 0; step <= model.steps; ++step) {
-        const float x = gx + static_cast<float>(step) * kStepW;
+        const float x = gx + static_cast<float>(step) * kStepW - scrollX;
+        if (x < gx - kStepW) continue;
         if (x > gx + gw) break;
         beginPath();
         moveTo(x, gy);
@@ -171,7 +175,7 @@ void GridCanvas::onNanoDisplay() {
     }
     for (std::size_t i = 0; i < model.notes.size(); ++i) {
         const GridNote& n = model.notes[i];
-        const float     x = gx + tickX(n.start), y = gy + rowY(n.pitch) - scrollY;
+        const float     x = gx + tickX(n.start) - scrollX, y = gy + rowY(n.pitch) - scrollY;
         // The notes' teal, brighter when louder.
         const float t = 0.45f + 0.55f * static_cast<float>(n.velocity) / GridModel::kMaxVelocity;
         beginPath();
@@ -290,12 +294,25 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
     return true;
 }
 
+// As the track view (and StageHand's sequence editor): the wheel scrolls the
+// rows; Shift+wheel, or a sideways swipe, scrolls through time, a beat a notch.
 bool GridCanvas::onScroll(const ScrollEvent& ev) {
     if (NanoTopLevelWidget::onScroll(ev)) return true;
-    scrollY = std::clamp(scrollY - static_cast<float>(ev.delta.getY()) * kRowH * 3, 0.0f,
-                         std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gridH()));
+    const bool sideways = (ev.mod & dgl::kModifierShift) != 0 || ev.delta.getX() != 0;
+    if (sideways) {
+        const double d = ev.delta.getX() != 0 ? ev.delta.getX() : ev.delta.getY();
+        scrollX -= static_cast<float>(d) * kStepW * 4;
+        clampScrollX();
+    } else {
+        scrollY = std::clamp(scrollY - static_cast<float>(ev.delta.getY()) * kRowH * 3, 0.0f,
+                             std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gridH()));
+    }
     repaint();
     return true;
+}
+
+void GridCanvas::clampScrollX() {
+    scrollX = std::clamp(scrollX, 0.0f, std::max(0.0f, static_cast<float>(model.steps) * kStepW - gridW()));
 }
 
 bool GridCanvas::onKeyboard(const KeyboardEvent& ev) {

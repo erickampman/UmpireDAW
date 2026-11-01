@@ -45,6 +45,10 @@ each case.
   The undo is the session's, shared with the track view. Each key press is
   one command.
 - **Right-click** deletes the note, or the selection it's in.
+- **Scrolling** (added 2026-11-01, after the author found no way to scroll
+  through time): the wheel scrolls the rows, and Shift+wheel or a sideways
+  swipe scrolls through time, a beat a notch. That's the track view's rule,
+  and StageHand's sequence editor's. The keyboard at the left stays put.
 - **Edit menu:** Undo and Redo, named ("Undo Move notes"), then Delete note
   (or Delete notes), then Delete all notes, which replaces Clear all. File >
   New clip is gone: the window is its clip's.
