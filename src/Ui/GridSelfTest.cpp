@@ -313,6 +313,44 @@ struct GridSelfTest {
             check("the redo key with nothing to redo does nothing", model.notes[0].pitch == 67 + model.edo);
             press('z', command);
             check("undo puts it back", model.notes.size() == 2 && model.notes[0].pitch == 67);
+
+            // Shift+click in and out; Shift+drag slides freely; Ctrl+drag onto
+            // the grid. The notes are a sixteenth on from the nudge (5 and 9).
+            click(cellX(5), cellY(67), dgl::kModifierShift);
+            click(cellX(9), cellY(64), dgl::kModifierShift);
+            click(cellX(9), cellY(64), dgl::kModifierShift);
+            pump(100);
+            check("Shift+click on a selected note takes it out", model.selectionSize() == 1 && model.notes[0].selected);
+            const double half  = GridCanvas::kStepW * 1.5 * canvas.sf();   // a sixteenth and a half
+            motion(cellX(5), cellY(67), dgl::kModifierShift);
+            button(cellX(5), cellY(67), true, dgl::kMouseButtonLeft, dgl::kModifierShift);
+            motion(cellX(5) + half / 2, cellY(67), dgl::kModifierShift);
+            motion(cellX(5) + half, cellY(67), dgl::kModifierShift);
+            button(cellX(5) + half, cellY(67), false, dgl::kMouseButtonLeft, dgl::kModifierShift);
+            pump(100);
+            const auto slid = clipNotes();
+            check("Shift+drag slides a note off the grid, and keeps it selected",
+                  slid.size() == 2 && slid[0].start > 6 * GridModel::kStep && slid[0].start % GridModel::kStep != 0 &&
+                      model.undoLabel == "Move note" && model.notes[0].selected,
+                  slid.empty() ? "" : "start " + std::to_string(slid[0].start));
+            const double onNote = (canvas.gridX() + canvas.tickX(model.notes[0].start) + 4 - canvas.scrollX) * canvas.sf();
+            motion(onNote, cellY(67), command);
+            button(onNote, cellY(67), true, dgl::kMouseButtonLeft, command);
+            motion(onNote + 2, cellY(67), command);
+            motion(onNote + 4, cellY(67), command);
+            button(onNote + 4, cellY(67), false, dgl::kMouseButtonLeft, command);
+            pump(100);
+            const auto put = clipNotes();
+            check("Ctrl+drag puts it on the nearest sixteenth", put.size() == 2 && put[0].start % GridModel::kStep == 0 &&
+                                                                    model.undoLabel == "Move note",
+                  put.empty() ? "" : "start " + std::to_string(put[0].start));
+            model.nudge(GridModel::kStep / 3, 0);   // off the grid again, as played
+            model.commit();
+            press('q');
+            const auto quantized = clipNotes();
+            check("Q quantizes the selection, as \"Quantize notes\"",
+                  quantized.size() == 2 && quantized[0].start % GridModel::kStep == 0 && model.undoLabel == "Quantize notes",
+                  quantized.empty() ? "" : "start " + std::to_string(quantized[0].start));
         }
 
         // --- the wheel

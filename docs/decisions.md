@@ -506,8 +506,18 @@ agreed with the author before it was built.
   free); otherwise a Pitch 7.9 attribute on the nearest free key, as
   StageHand. Notes an edit didn't touch keep their pitch, by an attribute if
   need be.
-- **The grid is in ticks**: recorded timing survives until a note is moved
-  in time, and moving only in pitch never quantizes.
+- **The grid is in ticks**: recorded timing survives, and moving only in
+  pitch never moves a note in time.
+- **Quantize is an effect unless printed** (the author, 2026-11-01). Tracks
+  and clips aren't quantized by default; quantize is a MIDI effect with a
+  strength (ideas.md, "Quantize as a plugin"), and printing it is an edit
+  that makes a new clip. So the grid's moves keep each note's offset from
+  the grid: a drag, the arrows and the Start and Length sliders go by whole
+  sixteenths, and a recorded note keeps its feel. Shift+drag slides freely;
+  Ctrl+drag (Cmd) puts a note on the grid, and Edit > Quantize notes (Q)
+  the whole selection: quantizing chosen notes on purpose.
+  Whether the grid should always be in sixteenths is open (clip-editor.md,
+  "Not in it").
 
 ## Plugin routing (proposed 2026-10-30, not yet decided)
 

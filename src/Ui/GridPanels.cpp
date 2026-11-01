@@ -77,6 +77,10 @@ void GridPanels::menuBar() {
         if (ImGui::MenuItem(redo.c_str(), redoKey, false, model.redo && !model.redoLabel.empty())) model.redo();
         ImGui::Separator();
         const int selected = model.selectionSize();
+        if (ImGui::MenuItem("Quantize notes", "Q", false, selected > 0)) {
+            model.quantizeSelected();
+            model.commit("Quantize notes");
+        }
         if (ImGui::MenuItem(selected > 1 ? "Delete notes" : "Delete note", "Del", false, selected > 0)) {
             model.deleteSelected();
             model.commit();
@@ -205,21 +209,23 @@ void GridPanels::inspector(float W, float H) {
         ImGui::SetCursorPosX(x);
         valueBox("##velocityValue", std::to_string(model.selectedNote()->velocity), col);
 
-        // Start and length in sixteenths: a slider snaps to them.
+        // Start and length in sixteenths, moved by whole sixteenths: a
+        // recorded note keeps its offset from the grid.
         constexpr Tick step = GridModel::kStep;
         ImGui::PushItemWidth(-4.5f * em);
-        int pitch = n->pitch, start = static_cast<int>((n->start + step / 2) / step);
-        int length = std::max(1, static_cast<int>((n->length + step / 2) / step));
+        const int shownStart  = static_cast<int>((n->start + step / 2) / step);
+        const int shownLength = std::max(1, static_cast<int>((n->length + step / 2) / step));
+        int pitch = n->pitch, start = shownStart, length = shownLength;
         if (sliderRow("Pitch", pitch, 0, model.rows() - 1, colour::kNote)) {
             model.moveSelected(n->start, pitch);
             editPending = true;
         }
         if (sliderRow("Start", start, 0, std::max(0, model.steps - length), colour::kNote)) {
-            model.moveSelected(start * step, model.selectedNote()->pitch);
+            model.moveSelected(n->start + (start - shownStart) * step, n->pitch);
             editPending = true;
         }
         if (sliderRow("Length", length, 1, std::max(1, model.steps - start), colour::kNote)) {
-            model.setSelectedLength(length * step);
+            model.setSelectedLength(n->length + (length - shownLength) * step);
             editPending = true;
         }
         ImGui::PopItemWidth();

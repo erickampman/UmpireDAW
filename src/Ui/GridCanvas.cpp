@@ -213,9 +213,13 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
         if (was == Drag::Click) {   // a click on empty grid adds a note
             if (model.addNote(pitchAt(pressY), stepAt(pressX)) >= 0) model.commit();
         } else if (was == Drag::Move || was == Drag::Resize) {
-            // A click on a note of a selection, without a drag, selects only it.
-            if (!model.commit() && std::abs(x - pressX) < kSlop && std::abs(y - pressY) < kSlop)
-                model.select(model.focus);
+            // Without a drag: a click on a note of a selection selects only
+            // it, and Shift+click on a selected note takes it out.
+            const bool still = std::abs(x - pressX) < kSlop && std::abs(y - pressY) < kSlop;
+            if (!model.commit() && still) {
+                if (!shiftAtPress) model.select(model.focus);
+                else if (toggleOff) model.toggle(model.focus);
+            }
         }
         changed();
         return true;
@@ -242,10 +246,13 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
             } else {
                 model.select(-1);
             }
-        } else if (shift) {
-            model.toggle(note);   // in or out of the selection; no drag
         } else {
-            if (!model.notes[static_cast<std::size_t>(note)].selected) model.select(note);
+            // Shift adds the note to the selection; let go without a drag,
+            // a note that was selected already goes out of it. Shift+drag
+            // slides freely (as in DP).
+            const bool selected = model.notes[static_cast<std::size_t>(note)].selected;
+            toggleOff           = shift && selected;
+            if (!selected) shift ? model.toggle(note) : model.select(note);
             else model.focus = note, model.touch();
             model.beginDrag();
             drag = edge >= 0 ? Drag::Resize : Drag::Move;
@@ -268,12 +275,18 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
         return true;
     }
     ++probe.canvasMotions;
-    // Snapped to sixteenths, by the columns the pointer crossed; Shift: freely.
+    // By whole sixteenths, the columns the pointer crossed, so notes keep
+    // their offsets from the grid; Shift: freely; Ctrl (Cmd): onto the grid.
+#ifdef __APPLE__
+    const bool toGrid = (ev.mod & dgl::kModifierSuper) != 0;
+#else
+    const bool toGrid = (ev.mod & dgl::kModifierControl) != 0;
+#endif
     const bool snap  = (ev.mod & dgl::kModifierShift) == 0;
     const Tick ticks = snap ? (stepAt(x) - grabStep) * GridModel::kStep : tickAt(x) - grabTick;
     switch (drag) {
-    case Drag::Move: model.dragMove(ticks, pitchAt(y) - grabPitch, snap); break;
-    case Drag::Resize: model.dragResize(ticks, snap); break;
+    case Drag::Move: model.dragMove(ticks, pitchAt(y) - grabPitch, snap && toGrid); break;
+    case Drag::Resize: model.dragResize(ticks, snap, snap && toGrid); break;
     case Drag::Click:
         if (std::abs(x - pressX) < kSlop && std::abs(y - pressY) < kSlop) return true;
         drag = Drag::Box;
@@ -331,6 +344,9 @@ bool GridCanvas::onKeyboard(const KeyboardEvent& ev) {
         if (model.redo) model.redo();
     } else if (command && ev.key == 'z') {
         if (model.undo) model.undo();
+    } else if (ev.key == 'q' && !command && selected) {   // Quantize notes
+        model.quantizeSelected();
+        model.commit("Quantize notes");
     } else if ((ev.key == dgl::kKeyDelete || ev.key == dgl::kKeyBackspace) && selected) {
         model.deleteSelected();
         model.commit();

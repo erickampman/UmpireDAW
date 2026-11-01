@@ -171,17 +171,21 @@ void GridModel::beginDrag() {
     grabbed = notes;
 }
 
-void GridModel::dragMove(Tick ticks, int by, bool snap) {
+void GridModel::dragMove(Tick ticks, int by, bool toGrid) {
     if (grabbed.size() != notes.size() || focus < 0) return;
-    const GridNote& f = grabbed[static_cast<std::size_t>(focus)];
-    if (snap && ticks != 0) ticks = nearestStep(f.start + ticks) - f.start;
+    if (toGrid) {   // the focus note's start onto the nearest sixteenth
+        const Tick start = grabbed[static_cast<std::size_t>(focus)].start;
+        ticks            = nearestStep(start + ticks) - start;
+    }
     moveBy(grabbed, ticks, by);
 }
 
-void GridModel::dragResize(Tick ticks, bool snap) {
+void GridModel::dragResize(Tick ticks, bool snap, bool toGrid) {
     if (grabbed.size() != notes.size() || focus < 0) return;
-    const GridNote& f = grabbed[static_cast<std::size_t>(focus)];
-    if (snap && ticks != 0) ticks = nearestStep(f.start + f.length + ticks) - (f.start + f.length);
+    if (toGrid) {   // the focus note's end onto the nearest sixteenth
+        const GridNote& f = grabbed[static_cast<std::size_t>(focus)];
+        ticks             = nearestStep(f.start + f.length + ticks) - (f.start + f.length);
+    }
     const Tick shortest = snap ? kStep : 1;
     bool       diff     = false;
     for (std::size_t i = 0; i < notes.size(); ++i) {
@@ -230,6 +234,18 @@ void GridModel::setSelectedVelocity(int velocity) {
         n.velocity   = v;
         n.velocity16 = velocity16(v);
         diff         = true;
+    }
+    if (diff) edited();
+}
+
+void GridModel::quantizeSelected() {
+    bool diff = false;
+    for (GridNote& n : notes) {
+        if (!n.selected) continue;
+        Tick s = nearestStep(n.start);
+        if (s + n.length > endTick()) s = std::max<Tick>(0, (endTick() - n.length) / kStep * kStep);
+        diff |= s != n.start;
+        n.start = s;
     }
     if (diff) edited();
 }
@@ -287,16 +303,17 @@ std::string GridModel::pendingChanges(std::vector<NoteChange>& out, std::vector<
     return std::string("Move note") + s;
 }
 
-bool GridModel::commit() {
+bool GridModel::commit(const std::string& name) {
     if (!editClip || !pending) return false;
     std::vector<NoteChange> changes;
     std::vector<NewNote>    added;
-    const std::string       label = pendingChanges(changes, added);
+    std::string             label = pendingChanges(changes, added);
     if (label.empty()) {   // back where it started
         pending = false;
         touch();
         return false;
     }
+    if (!name.empty()) label = name;
     // The selected notes stay selected in the new clip: the unchanged ones go
     // with the changes, as they are, so the edit says where they are now.
     std::vector<std::size_t> selectedChanges;   // into changes

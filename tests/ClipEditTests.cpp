@@ -281,7 +281,7 @@ int main() {
         m.select(0);
         m.toggle(1);
         m.beginDrag();
-        m.dragMove(S, 2, true);
+        m.dragMove(S, 2);
         check("a drag shows at once, but isn't the clip's until let go",
               m.notes[0].pitch == 62 && notesOf(current->events, current->length)[0].note == 60);
         check("let go, it's one command on the clip", m.commit() && labels.back() == "Move notes" && current->id == 8 &&
@@ -307,7 +307,7 @@ int main() {
               labels.back() == "Add note" && m.notes.size() == 3 && m.selectedNote() != nullptr &&
                   m.selectedNote()->pitch == 70 && m.selectedNote()->fromClip);
         m.beginDrag();
-        m.dragMove(0, 0, true);
+        m.dragMove(0, 0);
         const std::size_t count = labels.size();
         check("a drag that ends where it began makes no command", !m.commit() && labels.size() == count);
         m.select(0);
@@ -342,6 +342,33 @@ int main() {
         m.nudge(Q, 0);
         m.commit();
         check("then moved in time it keeps that pitch", notesOf(current->events, current->length)[1].pitch79 == step31(4));
+    }
+
+    {
+        // Quantize notes: the selected notes' starts onto the nearest sixteenth.
+        std::shared_ptr<const Clip> current =
+            clipOf({{S / 3, on(60)}, {S / 3 + S / 2, perNoteBend(60, 0x90000000)}, {S / 3 + S, off(60)},
+                    {Q + S / 2 + 5, on(64)}, {Q + 2 * S, off(64)}, {3 * Q + 7, on(67)}, {3 * Q + S, off(67)}},
+                   4 * Q);
+        std::string label;
+        GridModel   m;
+        m.showClip(current);
+        m.editClip = [&](const std::string& l, const std::vector<NoteChange>& c, const std::vector<NewNote>& a) {
+            EditedClip e = editNotes(*current, 9, c, a);
+            if (e.clip) current = e.clip, label = l;
+            return e;
+        };
+        m.select(0);
+        m.toggle(1);
+        m.quantizeSelected();
+        check("Quantize notes is one command, by that name", m.commit("Quantize notes") && label == "Quantize notes");
+        const auto n = notesOf(current->events, current->length);
+        check("the selected notes' starts on the nearest sixteenth, lengths kept, the rest alone",
+              n[0].start == 0 && n[0].length == S && n[1].start == Q + S && n[1].length == S + S / 2 - 5 && n[2].start == 3 * Q + 7);
+        check("per-note data moves with its note", find(*current, 60, ump::Status::PerNotePitchBend).at(0).tick == S / 2);
+        check("both still selected", m.selectionSize() == 2);
+        m.quantizeSelected();
+        check("quantizing notes on the grid already is no command", !m.commit("Quantize notes"));
     }
 
     // --- TrackController: commands, undo, references, files ---------------------------------

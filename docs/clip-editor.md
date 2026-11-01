@@ -23,28 +23,48 @@ Agreed with the author on 2026-11-01. They chose the recommended option in
 each case.
 
 - **Selecting.** A click on a note selects it. Shift+click adds a note to the
-  selection or takes it out. A drag that starts on empty grid draws a box
+  selection, or takes a selected one out (when let go without a drag: a
+  Shift+drag slides instead, below). A drag that starts on empty grid draws a box
   (the accent, faintly filled) and selects the notes it touches; with Shift
   it adds them. A click on empty grid, without a drag, still adds a note, as
   it always has. A click on a note in a selection, without a drag, selects
   only that note. Selected notes have an amber edge, and the focus note (the
   one the inspector shows) has a thicker one.
-- **Moving.** A drag moves the whole selection. It snaps to sixteenths: once
-  the pointer crosses a column, the focus note's start lands on the nearest
-  sixteenth and the rest move with it. A drag that only changes rows never
-  moves a recorded note in time. Shift moves freely, in ticks, as clip drags
-  on the lanes do. The selection stays inside the grid, as one block.
+- **Moving.** A drag moves the whole selection by whole sixteenths, the
+  columns the pointer crosses, and each note keeps its offset from the grid.
+  A recorded note moved in time keeps its feel: moving isn't quantizing
+  (decisions.md, "The clip editor"). Changed 2026-11-01 at the author's
+  request: at first the focus note's start landed on the nearest sixteenth.
+  A drag that only changes rows never moves a note in time. The selection
+  stays inside the grid, as one block. Two modifiers, agreed with the author
+  the same day:
+  - **Shift+drag slides freely**, in ticks, without reference to the grid
+    (as in DP, and as clip drags on the lanes). It works from the press: a
+    Shift press on a note that then drags slides it (and selects it if it
+    wasn't).
+  - **Ctrl+drag (Cmd on the Mac) puts it on the grid**: the focus note's
+    start lands on the nearest sixteenth and the rest of the selection moves
+    with it. That's quantizing chosen notes on purpose, which the rule
+    allows (decisions.md, "The clip editor").
 - **Resizing.** The last 5 px of a note (a third of it if it's short) grab its
-  end, and the pointer shows a left-right cursor there. The drag snaps the
-  focus note's end to the nearest sixteenth (Shift: freely), and the other
-  selected notes change length by the same amount. A snapped note is at
-  least a sixteenth long, a free one at least a tick.
+  end, and the pointer shows a left-right cursor there. The drag changes the
+  selected notes' lengths by whole sixteenths, so their ends keep their
+  offsets too. Shift: freely; Ctrl (Cmd): the focus note's end onto the
+  nearest sixteenth. A note is at least a sixteenth long (or as
+  long as it was, if shorter), and at least a tick when dragged freely.
 - **Keys.** Up and Down move the selection a row, and with Shift an octave
   (the EDO's rows). Left and Right move it a sixteenth. Delete or Backspace
   deletes it. Ctrl+Z undoes; Ctrl+Shift+Z or Ctrl+Y redoes (Cmd on the Mac).
   The undo is the session's, shared with the track view. Each key press is
   one command.
-- **Right-click** deletes the note, or the selection it's in.
+- **Quantize notes** (Edit menu, and Q; added 2026-11-01 at the author's
+  request): every selected note's start onto the nearest sixteenth, its
+  length kept and its per-note data moved with it, as one "Quantize notes"
+  command. That's quantizing chosen notes on purpose, as Ctrl+drag does for
+  one: printing it, which the rule allows. The quantize effect, with a
+  strength, is still to come (below).
+- **Deleting:** Delete or Backspace deletes the selection; right-click
+  deletes the note, or the selection it's in; and Edit > Delete notes.
 - **Scrolling** (added 2026-11-01, after the author found no way to scroll
   through time): the wheel scrolls the rows, and Shift+wheel or a sideways
   swipe scrolls through time, a beat a notch. That's the track view's rule,
@@ -54,7 +74,8 @@ each case.
   New clip is gone: the window is its clip's.
 - **The inspector.** The velocity knob sets every selected note's velocity.
   The Pitch, Start and Length sliders move or resize the focus note, and the
-  rest of the selection by as much. Start and Length are in sixteenths. Each
+  rest of the selection by as much. Start and Length show sixteenths and
+  change by whole ones, keeping the note's offset. Each
   control shows its change as it's dragged and makes one command when let
   go, as the Tuning sliders do. "n notes selected" shows when there's more
   than one.
@@ -177,7 +198,17 @@ On the Linux PC (GCC 15.2, X11), 2026-11-01:
 
 ## Not in it (later)
 
-- Copy, cut, paste and duplicate; quantize; select all.
+- Copy, cut, paste and duplicate; select all.
+- **Quantize** is an effect, not an edit (decisions.md, "The clip editor";
+  ideas.md, "Quantize as a plugin"). When it exists, the grid still edits
+  the recorded notes, shows that the effect is on (a badge), and marks where
+  each note will play. Printing it is an edit through `editNotes`, which
+  already moves a note's per-note data with it.
+- **The grid's divisions** (the author, 2026-11-01: not sure the grid should
+  always be sixteenths): to come back to. Choices include a note value per
+  window or per clip, triplets and other tuplets (40320 ticks divide them
+  exactly), and divisions that follow the zoom. Moves already keep offsets,
+  so a coarser or finer division changes only how far a step goes.
 - A velocity lane, and drawing per-note expression (ui-direction.md: only
   when the notes have it).
 - Moving a note's left edge (the start, keeping the end).

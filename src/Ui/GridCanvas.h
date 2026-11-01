@@ -80,6 +80,7 @@ private:
     double                  centrePitch = 60;
     Drag                    drag     = Drag::None;
     bool                    shiftAtPress = false;
+    bool                    toggleOff    = false;   // Shift+click on a selected note: out, unless dragged
     float                   pressX = 0, pressY = 0;   // logical
     float                   boxX = 0, boxY = 0;       // the box's other corner
     int                     grabStep = 0, grabPitch = 0;   // where the drag took the grid

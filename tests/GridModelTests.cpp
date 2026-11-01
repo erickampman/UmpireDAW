@@ -85,16 +85,23 @@ int main() {
         check("a Shift box adds", m.selectionSize() == 3);
         m.select(1);
         m.toggle(2);
+        m.nudge(kGridStep / 3, 0);   // off the grid, as played
         m.beginDrag();
-        m.dragMove(kGridStep / 3, 2, true);
-        check("a snapped drag less than half a sixteenth is no move in time",
-              m.notes[1].start == 4 * kGridStep && m.notes[1].pitch == 66 && m.notes[2].pitch == 69);
-        m.dragMove(kGridStep, 2, true);
-        check("then the focus lands on a sixteenth and the selection follows",
-              m.notes[2].start == 9 * kGridStep && m.notes[1].start == 5 * kGridStep && m.notes[0].start == 0);
-        m.dragMove(kGridStep / 3, 0, false);
-        check("Shift: freely", m.notes[2].start == 8 * kGridStep + kGridStep / 3);
-        m.dragMove(-100 * kGridStep, 500, false);
+        m.dragMove(0, 2);
+        check("a drag in pitch only is no move in time",
+              m.notes[1].start == 4 * kGridStep + kGridStep / 3 && m.notes[1].pitch == 66 && m.notes[2].pitch == 69);
+        m.dragMove(kGridStep, 2);
+        check("by whole sixteenths, each note keeps its offset from the grid (not quantized)",
+              m.notes[2].start == 9 * kGridStep + kGridStep / 3 && m.notes[1].start == 5 * kGridStep + kGridStep / 3 &&
+                  m.notes[0].start == 0);
+        m.dragMove(kGridStep / 3, 0);
+        check("Shift: freely", m.notes[2].start == 8 * kGridStep + 2 * kGridStep / 3);
+        m.dragMove(0, 0, true);
+        check("Ctrl: the focus note onto the nearest sixteenth, the selection with it",
+              m.notes[2].start == 8 * kGridStep && m.notes[1].start == 4 * kGridStep);
+        m.dragMove(kGridStep, 0, true);
+        check("and on by whole sixteenths", m.notes[2].start == 9 * kGridStep && m.notes[1].start == 5 * kGridStep);
+        m.dragMove(-100 * kGridStep, 500);
         check("the selection stays inside the grid, together",
               m.notes[1].start == 0 && m.notes[2].start == 4 * kGridStep && m.notes[2].pitch == 127 && m.notes[1].pitch == 124);
         m.beginDrag();

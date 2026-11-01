@@ -116,15 +116,18 @@ public:
     int  addNote(int pitch, int step, int lengthSteps = 2, int velocity = 100);
     void deleteSelected();
     void clear();   // every note
-    // A drag of the selection, from where it was at beginDrag(). `ticks` is
-    // how far in time: snapped, the focus note's start lands on the nearest
-    // sixteenth, and 0 leaves the time alone. The whole selection stays
-    // inside the grid.
+    // A drag of the selection, from where it was at beginDrag(), by `ticks`
+    // and `rows`. Snapped, the canvas gives whole sixteenths, so each note
+    // keeps its offset from the grid: moving a recorded note isn't
+    // quantizing it (decisions.md, "The clip editor"). `toGrid` (Ctrl+drag)
+    // puts the focus note's start on the nearest sixteenth, and the rest of
+    // the selection moves with it. The whole selection stays inside the grid.
     void beginDrag();
-    void dragMove(Tick ticks, int rows, bool snap);
-    // The same for the ends: snapped, the focus note's end lands on the
-    // nearest sixteenth. A note is at least a tick long (snapped: a sixteenth).
-    void dragResize(Tick ticks, bool snap);
+    void dragMove(Tick ticks, int rows, bool toGrid = false);
+    // The same for the ends (`toGrid`: the focus note's end on the nearest
+    // sixteenth). A note is at least a tick long (snapped: a sixteenth, or as
+    // long as it was if shorter).
+    void dragResize(Tick ticks, bool snap, bool toGrid = false);
     // The selection moved by `ticks` and `rows`, at once (the arrow keys).
     void nudge(Tick ticks, int rows);
     // The focus note's start (in ticks), row and length, and the selection
@@ -133,11 +136,17 @@ public:
     void transposeSelected(int by);
     void setSelectedLength(Tick length);
     void setSelectedVelocity(int velocity);   // every selected note's
+    // Every selected note's start onto the nearest sixteenth, its length kept
+    // (Edit > Quantize notes, Q): quantizing chosen notes on purpose, which
+    // is printing it (decisions.md, "The clip editor"). Commit it as
+    // "Quantize notes".
+    void quantizeSelected();
 
     // The edits since the clip was shown, as one command on it (named for
     // what they did), if editClip is set; then the new clip is shown. Without
     // editClip the edits stay. Returns whether a command was made.
-    bool commit();
+    // `name` names the command instead ("Quantize notes").
+    bool commit(const std::string& name = {});
     // The changes commit() would make, and its name ("" for none).
     std::string pendingChanges(std::vector<NoteChange>& changes, std::vector<NewNote>& added) const;
 
