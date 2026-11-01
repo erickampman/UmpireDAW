@@ -36,7 +36,7 @@ TrackController::TrackController(MidiInputs& in, MidiOutputs& out, AudioEngine& 
 }
 
 template <typename Change>
-void TrackController::command(const char* label, Change change) {
+void TrackController::command(const std::string& label, Change change) {
     Session before = doc;
     change(doc);
     if (doc == before) return;
@@ -170,9 +170,12 @@ ClipModel TrackController::clipModel(const ClipRef& ref) {
     c.start    = ref.start;
     c.length   = ref.clip->length;
     c.selected = ref.id == selectedRef;
-    auto& notes = clipNotes[ref.clip.get()];
-    if (!notes) notes = std::make_shared<const std::vector<NoteSpan>>(notesOf(ref.clip->events, ref.clip->length));
-    c.notes = notes;
+    ClipNotes& cached = clipNotes[ref.clip.get()];
+    if (!cached.notes || cached.clip.lock() != ref.clip) {
+        cached.clip  = ref.clip;
+        cached.notes = std::make_shared<const std::vector<NoteSpan>>(notesOf(ref.clip->events, ref.clip->length));
+    }
+    c.notes = cached.notes;
     return c;
 }
 
@@ -194,6 +197,7 @@ void TrackController::rebuild() {
         shownAt       = t;
     }
 
+    std::erase_if(clipNotes, [](const auto& entry) { return entry.second.clip.expired(); });
     TrackViewModel next;
     next.beatsPerBar = doc.beatsPerBar;
     next.rows.reserve(doc.tracks.size());
@@ -394,8 +398,33 @@ void TrackController::setClipScale(ClipRefId ref, const Scale& scale) {
     auto copy      = std::make_shared<Clip>(*old);
     copy->scale    = Scale{std::clamp(scale.edo, Scale::kMinEdo, Scale::kMaxEdo), std::clamp(scale.referenceNote, 0, 127)};
     copy->scaleFit = ScaleFit::Chosen;
-    const std::shared_ptr<const Clip> made = std::move(copy);
-    command("Set scale", [&](Session& s) {
+    replaceClip("Set scale", old, std::move(copy));
+}
+
+void TrackController::renameClip(ClipRefId ref, const std::string& name) {
+    const auto old = clip(ref);
+    if (!old || name.empty() || old->name == name) return;
+    auto copy  = std::make_shared<Clip>(*old);   // the same id: the music is the same
+    copy->name = name;
+    replaceClip("Rename clip", old, std::move(copy));
+}
+
+EditedClip TrackController::editNotes(ClipRefId ref, const std::string& label, const std::vector<NoteChange>& changes,
+                                      const std::vector<NewNote>& added) {
+    const auto old = clip(ref);
+    if (!old) return {};
+    // A new id: a clip's file (clip-<id>.midi2) is its music, which never
+    // changes once written (docs/clip-editor.md).
+    EditedClip edited = umpire::editNotes(*old, nextClip, changes, added);
+    if (!edited.clip) return {};
+    ++nextClip;
+    replaceClip(label, old, edited.clip);
+    return edited;
+}
+
+void TrackController::replaceClip(const std::string& label, const std::shared_ptr<const Clip>& old,
+                                  std::shared_ptr<const Clip> made) {
+    command(label, [&](Session& s) {
         for (Track& t : s.tracks)
             for (ClipRef& r : t.clips)
                 if (r.clip == old) r.clip = made;

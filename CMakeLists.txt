@@ -79,6 +79,7 @@ target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 add_library(umpire-app STATIC
     src/App/AudioEngine.cpp
     src/App/Clip.cpp
+    src/App/ClipEdit.cpp
     src/App/ClipFile.cpp
     src/App/GridModel.cpp
     src/App/Instruments.cpp
@@ -218,3 +219,4 @@ umpire_add_test(test-scale            tests/ScaleTests.cpp)
 umpire_add_test(test-playback         tests/PlaybackTests.cpp)
 umpire_add_test(test-audio-engine     tests/AudioEngineTests.cpp)
 umpire_add_test(test-files           tests/FileTests.cpp)
+umpire_add_test(test-clip-edit       tests/ClipEditTests.cpp)

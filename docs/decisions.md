@@ -486,6 +486,29 @@ was built.
   11", above). The grid's Ctrl+Q now goes through the same unsaved-changes
   prompt.
 
+## The clip editor (milestone 10, 2026-11-01)
+
+On the Linux PC ([clip-editor.md](clip-editor.md)). The UI (selection with
+a box and Shift+click, snapping to sixteenths with Shift for free, the right
+edge to resize, the grid's Edit menu and keys, the name as a command) was
+agreed with the author before it was built.
+- **Every grid edit is a command on the clip**: a new clip, for every
+  reference to the old one, named for what it did ("Move notes", "Set
+  velocity"). A gesture previews in the window and is one command when let
+  go.
+- **An edited clip gets a new id**, so a clip's file is always the same
+  music. A new scale or name keeps the id: those aren't in the file.
+- **Per-note data goes with its note**: the per-note messages for its key
+  during it, and those at its start just before it, moved and re-addressed
+  with it. A key's earlier Pitch 7.25 stays the key's.
+- **A pitch move writes the note's new pitch the way it came** (attribute,
+  Pitch 7.25 with the note, or a plain note number when that's exact and
+  free); otherwise a Pitch 7.9 attribute on the nearest free key, as
+  StageHand. Notes an edit didn't touch keep their pitch, by an attribute if
+  need be.
+- **The grid is in ticks**: recorded timing survives until a note is moved
+  in time, and moving only in pitch never quantizes.
+
 ## Plugin routing (proposed 2026-10-30, not yet decided)
 
 On the Linux PC, after the first plugin was heard there:

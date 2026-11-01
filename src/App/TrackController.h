@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "App/AudioEngine.h"
+#include "App/ClipEdit.h"
 #include "App/History.h"
 #include "App/MidiInputs.h"
 #include "App/MidiOutputs.h"
@@ -70,6 +71,13 @@ public:
     void    moveClip(ClipRefId ref, Tick start);
     // A new scale for the clip `ref` places, for every reference to it.
     void    setClipScale(ClipRefId ref, const Scale& scale);
+    void    renameClip(ClipRefId ref, const std::string& name);
+    // Edits the notes of the clip `ref` places (milestone 10, ClipEdit.h): a
+    // new clip, with a new id, for every reference to the old one, as the
+    // command `label`. Returns it and where the changed and added notes are
+    // in it; no clip if nothing changed.
+    EditedClip editNotes(ClipRefId ref, const std::string& label, const std::vector<NoteChange>& changes,
+                         const std::vector<NewNote>& added = {});
     void    deleteClip(ClipRefId ref);
     void    undo();
     void    redo();
@@ -125,7 +133,9 @@ private:
     // A change to the session, named for Edit > Undo: applied, and recorded
     // in the history if it changed anything.
     template <typename Change>
-    void command(const char* label, Change change);
+    void command(const std::string& label, Change change);
+    // Every reference to `old` places `made` instead, as the command `label`.
+    void replaceClip(const std::string& label, const std::shared_ptr<const Clip>& old, std::shared_ptr<const Clip> made);
 
     uw::Nanoseconds now() const { return clockFn(); }
     void   route(uw::MidiSourceHandle source, const uw::TimedMidiMessage& message);
@@ -147,7 +157,13 @@ private:
     std::vector<Take>                    takes;
     Player                               player;
     std::map<uw::MidiSourceHandle, std::unique_ptr<uw::ump::UpconvertState>> upconverters;   // by input
-    std::map<const Clip*, std::shared_ptr<const std::vector<NoteSpan>>>    clipNotes;      // the view's
+    // The view's notes, by clip: the weak pointer tells a clip from a later
+    // one at the same address, since edits make and drop clips.
+    struct ClipNotes {
+        std::weak_ptr<const Clip>                    clip;
+        std::shared_ptr<const std::vector<NoteSpan>> notes;
+    };
+    std::map<const Clip*, ClipNotes>     clipNotes;
     std::map<TrackId, uw::Nanoseconds>   lastActivity;
     TrackId                              nextId     = 1;
     int                                  nextNumber = 1;   // for "Track n"

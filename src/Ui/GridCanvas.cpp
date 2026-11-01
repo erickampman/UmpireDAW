@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <utility>
 
 #include "Ui/GridPanels.h"
 
@@ -70,6 +71,31 @@ int GridCanvas::pitchAt(float y) {
 }
 int GridCanvas::stepAt(float x) {
     return static_cast<int>(std::floor((x - gridX()) / kStepW));
+}
+Tick GridCanvas::tickAt(float x) {
+    return static_cast<Tick>(std::floor((x - gridX()) / kStepW * static_cast<float>(GridModel::kStep)));
+}
+float GridCanvas::tickX(Tick t) {
+    return static_cast<float>(static_cast<double>(t) / GridModel::kStep) * kStepW;
+}
+
+int GridCanvas::edgeAt(float x, float y) {
+    if (!inGrid(x, y)) return -1;
+    const int row = pitchAt(y);
+    for (int i = static_cast<int>(model.notes.size()) - 1; i >= 0; --i) {
+        const GridNote& n   = model.notes[static_cast<std::size_t>(i)];
+        const float     end = gridX() + tickX(n.start + n.length);
+        // A short note keeps most of itself for moving.
+        const float edge = std::min(kEdge, (tickX(n.length)) / 3);
+        if (n.pitch == row && x <= end && x >= end - edge) return i;
+    }
+    return -1;
+}
+
+void GridCanvas::setPointer(dgl::MouseCursor cursor) {
+    if (cursor == pointer) return;
+    pointer = cursor;
+    setCursor(cursor);
 }
 
 void GridCanvas::centreOn(int row) {
@@ -145,18 +171,27 @@ void GridCanvas::onNanoDisplay() {
     }
     for (std::size_t i = 0; i < model.notes.size(); ++i) {
         const GridNote& n = model.notes[i];
-        const float     x = gx + static_cast<float>(n.start) * kStepW, y = gy + rowY(n.pitch) - scrollY;
+        const float     x = gx + tickX(n.start), y = gy + rowY(n.pitch) - scrollY;
         // The notes' teal, brighter when louder.
         const float t = 0.45f + 0.55f * static_cast<float>(n.velocity) / GridModel::kMaxVelocity;
         beginPath();
-        roundedRect(x + 1, y + 1, static_cast<float>(n.length) * kStepW - 2, kRowH - 2, 3);
+        roundedRect(x + 1, y + 1, std::max(tickX(n.length) - 2, 2.0f), kRowH - 2, 3);
         fillColor(rgb(static_cast<int>(72 * t), static_cast<int>(182 * t), static_cast<int>(196 * t)));
         fill();
-        if (static_cast<int>(i) == model.selected) {
+        if (n.selected) {
             strokeColor(rgb(240, 170, 50));   // the accent's amber
-            strokeWidth(2);
+            strokeWidth(static_cast<int>(i) == model.focus ? 2.0f : 1.5f);
             stroke();
         }
+    }
+    if (drag == Drag::Box) {   // the selection box, in the accent
+        beginPath();
+        rect(std::min(pressX, boxX), std::min(pressY, boxY), std::abs(boxX - pressX), std::abs(boxY - pressY));
+        fillColor(dgl::Color(240, 170, 50, 0.12f));
+        fill();
+        strokeColor(rgb(240, 170, 50));
+        strokeWidth(1);
+        stroke();
     }
     restore();
 }
@@ -169,28 +204,48 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
     if (NanoTopLevelWidget::onMouse(ev)) return true;
     const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
     if (!ev.press) {
-        if (ev.button == dgl::kMouseButtonLeft && drag != Drag::None) {
-            drag = Drag::None;
-            repaint();
-            return true;
+        if (ev.button != dgl::kMouseButtonLeft || drag == Drag::None) return false;
+        const Drag was = std::exchange(drag, Drag::None);
+        if (was == Drag::Click) {   // a click on empty grid adds a note
+            if (model.addNote(pitchAt(pressY), stepAt(pressX)) >= 0) model.commit();
+        } else if (was == Drag::Move || was == Drag::Resize) {
+            // A click on a note of a selection, without a drag, selects only it.
+            if (!model.commit() && std::abs(x - pressX) < kSlop && std::abs(y - pressY) < kSlop)
+                model.select(model.focus);
         }
-        return false;
+        changed();
+        return true;
     }
     if (!inGrid(x, y)) return false;
-    int hit = model.noteAt(pitchAt(y), stepAt(x));
+    const bool shift = (ev.mod & dgl::kModifierShift) != 0;
+    const int  hit   = model.noteAt(pitchAt(y), tickAt(x));
+    const int  edge  = edgeAt(x, y);
     if (ev.button == dgl::kMouseButtonRight) {
-        if (hit >= 0) {
-            model.select(hit);
-            model.deleteSelected();
-        }
+        // Deletes the note, or the selection it's in.
+        if (hit < 0) return true;
+        if (!model.notes[static_cast<std::size_t>(hit)].selected) model.select(hit);
+        model.deleteSelected();
+        model.commit();
     } else if (ev.button == dgl::kMouseButtonLeft) {
-        if (hit < 0) hit = model.addNote(pitchAt(y), stepAt(x));
-        if (hit < 0) return true;   // past the clip's end
-        model.select(hit);
-        const GridNote& n = model.notes[static_cast<std::size_t>(hit)];
-        grabStep          = stepAt(x) - n.start;
-        grabPitch         = pitchAt(y) - n.pitch;
-        drag              = Drag::Move;
+        pressX = x, pressY = y, shiftAtPress = shift;
+        grabStep = stepAt(x), grabPitch = pitchAt(y), grabTick = tickAt(x);
+        const int note = edge >= 0 ? edge : hit;
+        if (note < 0) {
+            drag = Drag::Click;
+            if (shift) {
+                boxBase.clear();
+                for (const GridNote& n : model.notes) boxBase.push_back(n.selected);
+            } else {
+                model.select(-1);
+            }
+        } else if (shift) {
+            model.toggle(note);   // in or out of the selection; no drag
+        } else {
+            if (!model.notes[static_cast<std::size_t>(note)].selected) model.select(note);
+            else model.focus = note, model.touch();
+            model.beginDrag();
+            drag = edge >= 0 ? Drag::Resize : Drag::Move;
+        }
     }
     changed();
     return true;
@@ -204,14 +259,35 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
         hoverRow = row;
         repaint();
     }
-    if (taken) return true;
-    ++probe.canvasMotions;
-    if (drag == Drag::Move && model.selectedNote() != nullptr) {
-        model.moveSelected(stepAt(x) - grabStep, pitchAt(y) - grabPitch);
-        changed();
+    if (taken) {
+        setPointer(dgl::kMouseCursorArrow);
         return true;
     }
-    return false;
+    ++probe.canvasMotions;
+    // Snapped to sixteenths, by the columns the pointer crossed; Shift: freely.
+    const bool snap  = (ev.mod & dgl::kModifierShift) == 0;
+    const Tick ticks = snap ? (stepAt(x) - grabStep) * GridModel::kStep : tickAt(x) - grabTick;
+    switch (drag) {
+    case Drag::Move: model.dragMove(ticks, pitchAt(y) - grabPitch, snap); break;
+    case Drag::Resize: model.dragResize(ticks, snap); break;
+    case Drag::Click:
+        if (std::abs(x - pressX) < kSlop && std::abs(y - pressY) < kSlop) return true;
+        drag = Drag::Box;
+        [[fallthrough]];
+    case Drag::Box: {
+        boxX = x, boxY = y;
+        if (shiftAtPress && boxBase.size() == model.notes.size())
+            for (std::size_t i = 0; i < boxBase.size(); ++i) model.notes[i].selected = boxBase[i];
+        model.selectIn(pitchAt(pressY), pitchAt(y), tickAt(pressX), tickAt(x), shiftAtPress);
+        model.touch();
+        break;
+    }
+    case Drag::None:
+        setPointer(edgeAt(x, y) >= 0 ? dgl::kMouseCursorLeftRight : dgl::kMouseCursorArrow);
+        return false;
+    }
+    changed();
+    return true;
 }
 
 bool GridCanvas::onScroll(const ScrollEvent& ev) {
@@ -230,12 +306,25 @@ bool GridCanvas::onKeyboard(const KeyboardEvent& ev) {
 #else
     const bool command = (ev.mod & dgl::kModifierControl) != 0;
 #endif
+    const bool shift    = (ev.mod & dgl::kModifierShift) != 0;
+    const bool selected = model.selectionSize() > 0 && drag == Drag::None;
     if (command && ev.key == 'q') {
         imgui->quitRequested = true;
-    } else if ((ev.key == dgl::kKeyDelete || ev.key == dgl::kKeyBackspace) && model.selectedNote() != nullptr) {
+    } else if (command && ((ev.key == 'z' && shift) || ev.key == 'y')) {
+        if (model.redo) model.redo();
+    } else if (command && ev.key == 'z') {
+        if (model.undo) model.undo();
+    } else if ((ev.key == dgl::kKeyDelete || ev.key == dgl::kKeyBackspace) && selected) {
         model.deleteSelected();
-    } else if ((ev.key == dgl::kKeyUp || ev.key == dgl::kKeyDown) && model.selectedNote() != nullptr) {
-        model.transposeSelected(ev.key == dgl::kKeyUp ? 1 : -1);
+        model.commit();
+    } else if ((ev.key == dgl::kKeyUp || ev.key == dgl::kKeyDown) && selected) {
+        // A row, or with Shift an octave (the EDO's rows).
+        const int by = shift ? model.edo : 1;
+        model.nudge(0, ev.key == dgl::kKeyUp ? by : -by);
+        model.commit();
+    } else if ((ev.key == dgl::kKeyLeft || ev.key == dgl::kKeyRight) && selected) {
+        model.nudge(ev.key == dgl::kKeyRight ? GridModel::kStep : -GridModel::kStep, 0);
+        model.commit();
     } else {
         return false;
     }

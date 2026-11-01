@@ -14,6 +14,7 @@
 // reference's transforms (ideas.md, 9) and its own instrument
 // (ui-direction.md, "A clip can choose its own instrument").
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -70,7 +71,12 @@ struct NoteSpan {
     std::uint16_t pitch79  = 60 << 9;
     std::uint16_t velocity = 0;   // 16-bit
     PitchFrom     from     = PitchFrom::NoteNumber;
+    // Its note-on and note-off in the events (npos: none, a note held to the
+    // end), so an edit (ClipEdit.h) can find what it was sent as.
+    std::size_t   on  = npos;
+    std::size_t   off = npos;
 
+    static constexpr std::size_t npos = static_cast<std::size_t>(-1);
     bool operator==(const NoteSpan&) const = default;
 };
 

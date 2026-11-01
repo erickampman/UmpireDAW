@@ -88,14 +88,24 @@ void place(dgl::Window& window, const char* title, double w, double h) {
 
 } // namespace
 
-// A clip's grid window: milestone 4's grid, showing the clip's notes in its
-// scale. Edits stay in the window until milestone 10 makes the grid edit the
-// clip; the scale is the clip's, changed through the controller.
+// A clip's grid window (milestone 10, docs/clip-editor.md): the clip's notes
+// in its scale, edited through the controller's commands, so undo covers them
+// and every reference to the clip sees them. It follows the clip through
+// edits, which make new clips, and undo.
 struct GridWindow {
     GridWindow(dgl::Application& app, TrackController& controller, ClipRefId r, const std::shared_ptr<const Clip>& clip)
         : ref(r), seen(clip), window(app) {
         model.showClip(clip);
         model.chooseScale = [&controller, r](int edo, int reference) { controller.setClipScale(r, Scale{edo, reference}); };
+        model.editClip    = [this, &controller](const std::string& label, const std::vector<NoteChange>& changes,
+                                             const std::vector<NewNote>& added) {
+            EditedClip made = controller.editNotes(ref, label, changes, added);
+            if (made.clip) seen = made.clip;   // the model shows it itself
+            return made;
+        };
+        model.renameClip = [&controller, r](const std::string& name) { controller.renameClip(r, name); };
+        model.undo       = [&controller] { controller.undo(); };
+        model.redo       = [&controller] { controller.redo(); };
         {
             const dgl::Window::ScopedGraphicsContext context(window);
             canvas = std::make_unique<GridCanvas>(window, model, probe);
@@ -110,9 +120,14 @@ struct GridWindow {
     }
     bool closing() const { return window.closedByUser || canvas->panels().closeRequested; }
 
-    // The clip as the controller has it now: a new scale (or an undo) makes a
-    // new clip, which the window follows.
-    void follow(const std::shared_ptr<const Clip>& clip) {
+    // The clip as the controller has it now: an edit, a new scale or name
+    // (or an undo) makes a new clip, which the window follows.
+    void follow(const std::shared_ptr<const Clip>& clip, const TrackViewModel& view) {
+        if (model.undoLabel != view.undoLabel || model.redoLabel != view.redoLabel) {
+            model.undoLabel = view.undoLabel;
+            model.redoLabel = view.redoLabel;
+            canvas->panels().wake();
+        }
         if (!clip || clip == seen) return;
         seen = clip;
         if (model.showingClip()) {
@@ -171,7 +186,13 @@ struct MainWindow::Impl {
     UmpireApplication            app;
     Window                       window;
     std::unique_ptr<TrackCanvas> canvas;
-    std::map<ClipId, std::unique_ptr<GridWindow>> grids;   // by clip: one window each
+    std::vector<std::unique_ptr<GridWindow>> grids;   // one window per clip
+    // The window showing `clip`, or null.
+    GridWindow* gridFor(const std::shared_ptr<const Clip>& clip) {
+        for (auto& g : grids)
+            if (g->seen == clip) return g.get();
+        return nullptr;
+    }
     std::uint64_t                drawnVersion   = ~std::uint64_t{0};
     double                       secondStart    = 0;
     std::uint64_t                framesAtSecond = 0;
@@ -223,15 +244,14 @@ void MainWindow::idle() {
     TrackPanels& panels = m.canvas->panels();
     if (const ClipRefId ref = std::exchange(m.canvas->openRequested, 0); ref != 0) {
         if (const auto clip = m.controller.clip(ref)) {
-            auto& grid = m.grids[clip->id];
-            if (!grid) grid = std::make_unique<GridWindow>(m.app, m.controller, ref, clip);
-            else grid->window.focus();
+            if (GridWindow* grid = m.gridFor(clip)) grid->window.focus();
+            else m.grids.push_back(std::make_unique<GridWindow>(m.app, m.controller, ref, clip));
         }
     }
-    for (auto& [id, grid] : m.grids) grid->follow(m.controller.clip(grid->ref));
+    for (auto& grid : m.grids) grid->follow(m.controller.clip(grid->ref), m.controller.view());
     for (auto it = m.grids.begin(); it != m.grids.end();) {
-        if (std::exchange(it->second->canvas->panels().quitRequested, false)) m.fileAction(Impl::FileAction::Quit);
-        if (it->second->closing()) it = m.grids.erase(it);
+        if (std::exchange((*it)->canvas->panels().quitRequested, false)) m.fileAction(Impl::FileAction::Quit);
+        if ((*it)->closing()) it = m.grids.erase(it);
         else ++it;
     }
 
@@ -402,12 +422,12 @@ int MainWindow::selfTest(const std::string& dir) {
     }
     m.canvas->openRequested = ref;
     for (int i = 0; i < 10; ++i) pump();
-    const auto found = m.grids.find(clip->id);
-    if (found == m.grids.end()) {
+    GridWindow* const found = m.gridFor(clip);
+    if (found == nullptr) {
         std::puts("FAIL  a double click on a clip opens its grid");
         return 1;
     }
-    GridWindow& grid = *found->second;
+    GridWindow& grid = *found;
     const bool shows = grid.model.clipName == clip->name && !grid.model.notes.empty() &&
                        grid.model.notes.size() == notesOf(clip->events, clip->length).size();
     std::printf("%s  the clip's grid shows its notes: %zu\n", shows ? "PASS" : "FAIL", grid.model.notes.size());
@@ -442,10 +462,11 @@ int MainWindow::selfTest(const std::string& dir) {
     m.controller.undo();
     for (int i = 0; i < 5; ++i) pump();
     check("undo, and the grid follows back", grid.model.edo == clip->scale.edo && grid.model.scaleFit == ScaleFit::WorkedOut);
-    // The grid's own checks start from an empty grid: they're about input, not the clip.
+    // The grid's own checks start from the clip emptied: they're about input,
+    // and editing the clip through commands.
     grid.model.clear();
-    grid.model.clipName = "Untitled clip";
-    status |= runGridSelfTest(m.app, grid.window, *grid.canvas, grid.model, grid.probe, dir);
+    grid.model.commit();
+    status |= runGridSelfTest(pump, grid.window, *grid.canvas, grid.model, grid.probe, dir);
     grid.canvas->panels().closeRequested = true;
     pump();
     const bool gone = m.grids.empty();

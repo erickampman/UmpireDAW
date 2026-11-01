@@ -197,10 +197,13 @@ int main() {
         check("a note still held ends with the clip",
               ump::isNoteOn(e[4].message) && ump::isNoteOff(e[5].message) && ump::noteNumber(e[5].message) == 64 &&
                   e[5].tick == clip->length);
-        check("the grid model shows its notes in sixteenths", [&] {
+        check("the grid model shows its notes, in ticks as played", [&] {
             GridModel grid;
             grid.showClip(clip);
-            return grid.notes.size() == 2 && grid.notes[0].start == 4 && grid.notes[0].length == 2 &&
+            const auto spans = notesOf(clip->events, clip->length);
+            return grid.notes.size() == 2 && grid.notes[0].start == spans[0].start &&
+                   grid.notes[0].length == spans[0].length && (grid.notes[0].start + kGridStep / 2) / kGridStep == 4 &&
+                   (grid.notes[0].length + kGridStep / 2) / kGridStep == 2 &&
                    grid.notes[0].velocity == 100 && grid.steps == 16 && grid.clipName == "Track 1 1";
         }());
     }

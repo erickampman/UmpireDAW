@@ -52,6 +52,9 @@ Song.umpire/
 - **The tempo map is a list of tempos and a list of meters**, so the tempo
   map (MILESTONES.md, T1) changes no format. Umpire has one of each for now:
   it writes one and reads the first.
+- **A clip's file is named by its id**, and an edited clip gets a new id
+  (milestone 10, clip-editor.md), so a file is always the same music. A
+  new scale or name keeps the id: they're here, not in the file.
 - **A clip reference names its clip by its file.** Two references to one
   clip share one file, and the clip comes back shared, as it was.
 - **A clip's name and scale are in `session.json`**, not in its file. Its

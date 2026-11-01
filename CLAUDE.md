@@ -1,14 +1,14 @@
 # Umpire
 
 A DAW built on MIDI 2.0's Universal MIDI Packet (UMP) from the ground up.
-MIDI-only to start, Linux first. Milestones 4 to 9 and 11 are built (10 is
-not yet; 11 was done early, at the author's request): `umpire-daw` is the
-track view, which records and plays to MIDI devices or hosted CLAP
-instruments, their editor windows included, and saves and opens sessions;
-see [docs/recording.md](docs/recording.md), [docs/playback.md](docs/playback.md),
+MIDI-only to start, Linux first. Milestones 4 to 11 are built (11 was done
+early, at the author's request): `umpire-daw` is the track view, which
+records and plays to MIDI devices or hosted CLAP instruments, their editor
+windows included, edits clips in a grid, and saves and opens sessions; see
+[docs/recording.md](docs/recording.md), [docs/playback.md](docs/playback.md),
 [docs/plugins.md](docs/plugins.md),
-[docs/plugin-editors.md](docs/plugin-editors.md) and
-[docs/files.md](docs/files.md).
+[docs/plugin-editors.md](docs/plugin-editors.md),
+[docs/files.md](docs/files.md) and [docs/clip-editor.md](docs/clip-editor.md).
 
 ## Read first
 
@@ -31,6 +31,8 @@ see [docs/recording.md](docs/recording.md), [docs/playback.md](docs/playback.md)
    editor windows, moved into uw-core, opened from a track's row),
    [docs/files.md](docs/files.md) (milestone 9: the `.umpire` session
    bundle, MIDI Clip Files, the File menu),
+   [docs/clip-editor.md](docs/clip-editor.md) (milestone 10: the grid
+   edits its clip; selection, moves, per-note data, pitch on the EDO grid),
    [docs/plugin-routing.md](docs/plugin-routing.md) (proposed: the
    routing graph, MIDI and audio mixers, the track's plugin stack),
    [docs/stem-export.md](docs/stem-export.md) (proposed: stems and the

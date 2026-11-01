@@ -45,8 +45,11 @@ timeline. Linux first (decisions.md, "Scope").
    included -- built and tested on Linux 2026-11-01, and on the Mac the same
    day, with AppKit's panels as its dialogs; checking the menu, the prompt,
    the Mac's panels and a reopened session by ear are the author's
-10. [ ] Clip editor (piano roll): select, move, resize, delete, velocity,
-    undo; Pitch 7.9 on EDO grid
+10. [x] Clip editor (piano roll; docs/clip-editor.md): select, move,
+    resize, delete, velocity, undo; Pitch 7.9 on EDO grid; per-note data
+    kept; each edit a command making a new clip -- built and tested on
+    Linux 2026-11-01; checking it by eye and by ear, and the Mac build, are
+    the author's
 11. [x] Plugin editor windows (uw-core, then Umpire; docs/plugin-editors.md):
     `EditorWindow` moved from StageHand into uw-core (`uw::editor-window`,
     X11 and Cocoa), opened from a track's row -- built and self-tested on

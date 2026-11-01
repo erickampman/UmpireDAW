@@ -20,7 +20,7 @@ using Clock = std::chrono::steady_clock;
 // touch the window while it runs: real pointer motion or exposes add frames
 // and events.
 struct GridSelfTest {
-    dgl::Application& app;
+    const std::function<void()>& idle;
     dgl::Window&      window;
     GridCanvas&       canvas;
     GridPanels&           panels;
@@ -41,7 +41,7 @@ struct GridSelfTest {
         const auto end = Clock::now() + std::chrono::milliseconds(ms);
         while (Clock::now() < end) {
             const auto t0 = Clock::now();
-            app.idle();
+            idle();
             const double took = std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
             longestIdleMs     = std::max(longestIdleMs, took);
             std::this_thread::sleep_for(std::chrono::milliseconds(4));
@@ -57,28 +57,31 @@ struct GridSelfTest {
     }
 
     // --- synthetic events, delivered as the window delivers them
-    bool motion(double x, double y) {
+    bool motion(double x, double y, std::uint32_t mod = 0) {
         dgl::Widget::MotionEvent ev;
         ev.time = ++time;
+        ev.mod  = mod;
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
         return canvas.onMotion(ev);
     }
-    bool button(double x, double y, bool press, std::uint32_t which = dgl::kMouseButtonLeft) {
+    bool button(double x, double y, bool press, std::uint32_t which = dgl::kMouseButtonLeft, std::uint32_t mod = 0) {
         dgl::Widget::MouseEvent ev;
         ev.time   = ++time;
+        ev.mod    = mod;
         ev.button = which;
         ev.press  = press;
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
         return canvas.onMouse(ev);
     }
-    void click(double x, double y) {
-        motion(x, y);
-        button(x, y, true);
-        button(x, y, false);
+    void click(double x, double y, std::uint32_t mod = 0) {
+        motion(x, y, mod);
+        button(x, y, true, dgl::kMouseButtonLeft, mod);
+        button(x, y, false, dgl::kMouseButtonLeft, mod);
     }
-    bool key(std::uint32_t k, bool press) {
+    bool key(std::uint32_t k, bool press, std::uint32_t mod = 0) {
         dgl::Widget::KeyboardEvent ev;
         ev.time  = ++time;
+        ev.mod   = mod;
         ev.key   = k;
         ev.press = press;
         return canvas.onKeyboard(ev);
@@ -106,6 +109,16 @@ struct GridSelfTest {
         return (canvas.gridY() + canvas.rowY(pitch) - canvas.scrollY + GridCanvas::kRowH / 2) * canvas.sf();
     }
     double panelX() { return window.getWidth() - panels.panelWidth() / 2; }
+    void   press(std::uint32_t k, std::uint32_t mod = 0) {
+        key(k, true, mod);
+        key(k, false, mod);
+        pump(100);
+    }
+    // The clip's notes, as the controller has it now.
+    std::vector<NoteSpan> clipNotes() {
+        const auto& c = model.clip();
+        return c ? notesOf(c->events, c->length) : std::vector<NoteSpan>{};
+    }
 
     std::uint64_t framesDuring(int ms) {
         const std::uint64_t before = panels.framesDrawn();
@@ -134,6 +147,10 @@ struct GridSelfTest {
         pump(100);
         check("click on the grid goes to the canvas (adds a note)",
               model.notes.size() == 1 && probe.canvasPresses == 1 && probe.imguiPresses == 0);
+        check("the note is the clip's, an \"Add note\" command",
+              clipNotes().size() == 1 && clipNotes()[0].start == 4 * GridModel::kStep && model.undoLabel == "Add note",
+              "undo \"" + model.undoLabel + "\"");
+        const std::string name = model.clipName;
 
         // --- the text field: typing goes to ImGui, not the canvas's shortcuts
         click(panels.nameFieldRect.x1 - 4, panels.nameFieldRect.cy());
@@ -141,7 +158,8 @@ struct GridSelfTest {
         check("click on the text field goes to ImGui", probe.imguiPresses == 1 && panels.textActive());
         for (char c : std::string(" two")) type(c);
         pump(100);
-        check("typing edits the field", model.clipName == "Untitled clip two", "\"" + model.clipName + "\"");
+        check("typing edits the field, not yet the clip", panels.nameText() == name + " two" && model.clipName == name,
+              "\"" + panels.nameText() + "\"");
         key(dgl::kKeyDelete, true);
         key(dgl::kKeyDelete, false);
         pump(100);
@@ -152,11 +170,16 @@ struct GridSelfTest {
         click(cellX(4), cellY(67));
         pump(100);
         check("click on the canvas ends text editing", !panels.textActive() && probe.canvasPresses == 2 &&
-                                                            model.notes.size() == 1 && model.selected == 0);
+                                                            model.notes.size() == 1 && model.focus == 0);
+        check("and renames the clip, keeping the selection",
+              model.clipName == name + " two" && model.clip()->name == model.clipName && model.undoLabel == "Rename clip" &&
+                  model.notes[0].selected,
+              "\"" + model.clipName + "\"");
         key(dgl::kKeyDelete, true);
         key(dgl::kKeyDelete, false);
         pump(100);
         check("Delete then goes to the canvas", model.notes.empty() && probe.canvasKeys == 1);
+        check("and deletes the clip's note", clipNotes().empty() && model.undoLabel == "Delete note");
         // After a click on the panel's background, keys are still the canvas's.
         click(cellX(4), cellY(67));
         click(panelX(), window.getHeight() - 10.0);
@@ -166,6 +189,8 @@ struct GridSelfTest {
         pump(100);
         check("keys reach the canvas after a click on the panel",
               model.notes.size() == 1 && model.notes[0].pitch == 68);
+        check("Up moves the clip's note a row", clipNotes().size() == 1 &&
+                  clipNotes()[0].pitch79 == model.rowPitch79(68) && model.undoLabel == "Move note");
 
         // --- the menu, which opens over the canvas
         click(panels.editMenuRect.cx(), panels.editMenuRect.cy());
@@ -185,10 +210,13 @@ struct GridSelfTest {
             pump(150);
             check("a menu item over the canvas goes to the menu",
                   overCanvas && model.notes.empty() && probe.canvasPresses == presses && !panels.popupOpen());
+            check("Edit > Delete all notes empties the clip", clipNotes().empty() && model.undoLabel == "Delete note");
         }
 
-        // --- a canvas drag that ends over the panel
+        // --- a canvas drag that ends over the panel: a note moved as far as it goes
         {
+            click(cellX(4), cellY(67));
+            pump(100);
             const int imguiPresses = probe.imguiPresses;
             motion(cellX(4), cellY(67));
             button(cellX(4), cellY(67), true);
@@ -199,6 +227,8 @@ struct GridSelfTest {
             check("a canvas drag released over the panel ends the drag",
                   !canvas.dragging() && model.notes.size() == 1 &&
                       probe.imguiPresses == imguiPresses && !panels.textActive());
+            check("as one \"Move note\", to the grid's end", model.undoLabel == "Move note" && clipNotes().size() == 1 &&
+                      clipNotes()[0].start + clipNotes()[0].length == model.endTick());
         }
 
         // --- an ImGui drag (the velocity knob, turned down) that goes over the canvas
@@ -224,7 +254,64 @@ struct GridSelfTest {
                   probe.canvasMotions == motions && probe.canvasPresses == presses && hoverDuring == -1 &&
                       model.notes.size() == 1 && model.notes[0].velocity == GridModel::kMinVelocity,
                   "velocity " + std::to_string(model.notes[0].velocity));
+            check("letting go sets the clip's velocity, once", model.undoLabel == "Set velocity" &&
+                      clipNotes().size() == 1 && clipNotes()[0].velocity == (1 << 9));
             screenshot("04-knob.ppm");
+        }
+
+        // --- resizing, a box, Shift+click, Delete, undo and nudging
+        {
+            model.clear();
+            model.commit();
+            click(cellX(4), cellY(67));
+            click(cellX(8), cellY(64));
+            pump(100);
+            // The first note's right edge (two sixteenths long), dragged to column 9.
+            const double edgeX = (canvas.gridX() + 6 * GridCanvas::kStepW - 2) * canvas.sf();
+            motion(edgeX, cellY(67));
+            button(edgeX, cellY(67), true);
+            motion(cellX(7), cellY(67));
+            motion(cellX(9), cellY(67));
+            button(cellX(9), cellY(67), false);
+            pump(100);
+            const auto notes = clipNotes();
+            check("dragging a note's right edge resizes it, to a sixteenth",
+                  notes.size() == 2 && notes[0].start == 4 * GridModel::kStep && notes[0].length == 6 * GridModel::kStep &&
+                      model.undoLabel == "Resize note",
+                  notes.empty() ? "" : "length " + std::to_string(notes[0].length));
+            motion(cellX(2), cellY(70));
+            button(cellX(2), cellY(70), true);
+            motion(cellX(6), cellY(66));
+            motion(cellX(12), cellY(62));
+            screenshot("07-box.ppm");
+            button(cellX(12), cellY(62), false);
+            pump(100);
+            check("a drag on empty grid selects what its box touches", model.selectionSize() == 2 && model.notes.size() == 2);
+            press(dgl::kKeyDelete);
+            check("Delete deletes the selection, as one command", clipNotes().empty() && model.undoLabel == "Delete notes");
+#ifdef __APPLE__
+            const std::uint32_t command = dgl::kModifierSuper;
+#else
+            const std::uint32_t command = dgl::kModifierControl;
+#endif
+            press('z', command);
+            check("the undo key undoes it, and the grid follows",
+                  model.notes.size() == 2 && clipNotes().size() == 2 && model.redoLabel == "Delete notes");
+            click(cellX(4), cellY(67));
+            click(cellX(8), cellY(64), dgl::kModifierShift);
+            pump(100);
+            check("Shift+click adds to the selection", model.selectionSize() == 2);
+            press(dgl::kKeyRight);
+            const auto moved = clipNotes();
+            check("Right moves the selection a sixteenth, as one command",
+                  moved.size() == 2 && moved[0].start == 5 * GridModel::kStep && moved[1].start == 9 * GridModel::kStep &&
+                      model.undoLabel == "Move notes" && model.selectionSize() == 2);
+            press(dgl::kKeyUp, dgl::kModifierShift);
+            check("Shift+Up moves it an octave", clipNotes().size() == 2 && model.notes[0].pitch == 67 + model.edo);
+            press('z', command | dgl::kModifierShift);
+            check("the redo key with nothing to redo does nothing", model.notes[0].pitch == 67 + model.edo);
+            press('z', command);
+            check("undo puts it back", model.notes.size() == 2 && model.notes[0].pitch == 67);
         }
 
         // --- the wheel
@@ -267,9 +354,9 @@ struct GridSelfTest {
     }
 };
 
-int runGridSelfTest(dgl::Application& app, dgl::Window& window, GridCanvas& canvas, GridModel& model, Probe& probe,
-                const std::string& dir) {
-    GridSelfTest t{app, window, canvas, canvas.panels(), model, probe, dir};
+int runGridSelfTest(const std::function<void()>& idle, dgl::Window& window, GridCanvas& canvas, GridModel& model,
+                    Probe& probe, const std::string& dir) {
+    GridSelfTest t{idle, window, canvas, canvas.panels(), model, probe, dir};
     t.run();
     return t.failures == 0 ? 0 : 1;
 }

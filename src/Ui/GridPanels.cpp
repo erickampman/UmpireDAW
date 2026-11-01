@@ -52,8 +52,6 @@ void GridPanels::menuBar() {
     const char* quitKey = "Ctrl+Q";
 #endif
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("New clip")) model.newClip();
-        ImGui::Separator();
         if (ImGui::MenuItem("Close window")) closeRequested = true;
         if (ImGui::MenuItem("Quit", quitKey)) quitRequested = true;
         ImGui::EndMenu();
@@ -65,8 +63,28 @@ void GridPanels::menuBar() {
     }
     editMenuOpen = ImGui::BeginMenu("Edit");
     if (editMenuOpen) {
-        if (ImGui::MenuItem("Delete note", "Del", false, model.selectedNote() != nullptr)) model.deleteSelected();
-        if (ImGui::MenuItem("Clear all")) model.clear();
+        // The session's undo, as the track view's Edit menu.
+#ifdef __APPLE__
+        const char* undoKey = "Cmd+Z";
+        const char* redoKey = "Cmd+Shift+Z";
+#else
+        const char* undoKey = "Ctrl+Z";
+        const char* redoKey = "Ctrl+Shift+Z";
+#endif
+        const std::string undo = model.undoLabel.empty() ? "Undo" : "Undo " + model.undoLabel;
+        const std::string redo = model.redoLabel.empty() ? "Redo" : "Redo " + model.redoLabel;
+        if (ImGui::MenuItem(undo.c_str(), undoKey, false, model.undo && !model.undoLabel.empty())) model.undo();
+        if (ImGui::MenuItem(redo.c_str(), redoKey, false, model.redo && !model.redoLabel.empty())) model.redo();
+        ImGui::Separator();
+        const int selected = model.selectionSize();
+        if (ImGui::MenuItem(selected > 1 ? "Delete notes" : "Delete note", "Del", false, selected > 0)) {
+            model.deleteSelected();
+            model.commit();
+        }
+        if (ImGui::MenuItem("Delete all notes", nullptr, false, !model.notes.empty())) {
+            model.clear();
+            model.commit();
+        }
         clearAllItemRect = lastItem();
         ImGui::EndMenu();
     }
@@ -122,15 +140,14 @@ void GridPanels::inspector(float W, float H) {
     beginSection("Clip", colour::kAccent, false);
     if (!textActive()) std::snprintf(nameBuf, sizeof nameBuf, "%s", model.clipName.c_str());
     ImGui::SetNextItemWidth(-FLT_MIN);
-    if (ImGui::InputText("##name", nameBuf, sizeof nameBuf)) {
-        model.clipName = nameBuf;
-        model.touch();
-    }
+    // The clip's name, a command when Enter or a click elsewhere ends the edit.
+    ImGui::InputText("##name", nameBuf, sizeof nameBuf);
+    if (ImGui::IsItemDeactivatedAfterEdit()) model.setClipName(nameBuf);
     nameFieldRect = lastItem();
     endSection();
 
     // The tuning, as StageHand's sequence editor: the EDO and the note its
-    // step 0 sounds. Where a clip's tuning is kept is open (docs/recording.md).
+    // step 0 sounds: the clip's scale (decisions.md, "Time, clips and pitch").
     beginSection("Tuning", colour::kNote, false);
     {
         const float em = ImGui::GetFontSize();
@@ -166,6 +183,10 @@ void GridPanels::inspector(float W, float H) {
 
     beginSection("Note", colour::kNote, false);
     if (GridNote* n = model.selectedNote()) {
+        // Each control shows its change as it's dragged, on every selected
+        // note; letting go makes it one command on the clip.
+        const int selected = model.selectionSize();
+        if (selected > 1) ImGui::TextDisabled("%d notes selected", selected);
         // Velocity is a knob, the plugins' way: caption above, value below.
         const float em   = ImGui::GetFontSize();
         const float knobD = 3.2f * em;
@@ -175,25 +196,46 @@ void GridPanels::inspector(float W, float H) {
         ImGui::SetCursorPosX(x + (col - knobD) / 2);
         float v = static_cast<float>(n->velocity - GridModel::kMinVelocity) /
                   (GridModel::kMaxVelocity - GridModel::kMinVelocity);
-        if (knob("##velocity", v, 99.0f / 126, knobD, colour::kNote))
+        if (knob("##velocity", v, 99.0f / 126, knobD, colour::kNote)) {
             model.setSelectedVelocity(GridModel::kMinVelocity +
                                       static_cast<int>(std::lround(v * (GridModel::kMaxVelocity - GridModel::kMinVelocity))));
+            editPending = true;
+        }
         velocityRect = lastItem();
         ImGui::SetCursorPosX(x);
         valueBox("##velocityValue", std::to_string(model.selectedNote()->velocity), col);
 
+        // Start and length in sixteenths: a slider snaps to them.
+        constexpr Tick step = GridModel::kStep;
         ImGui::PushItemWidth(-4.5f * em);
-        int pitch = n->pitch, start = n->start, length = n->length;
-        if (sliderRow("Pitch", pitch, 0, model.rows() - 1, colour::kNote)) model.moveSelected(n->start, pitch);
-        if (sliderRow("Start", start, 0, model.steps - n->length, colour::kNote)) model.moveSelected(start, n->pitch);
-        if (sliderRow("Length", length, 1, model.steps - n->start, colour::kNote)) model.setSelectedLength(length);
+        int pitch = n->pitch, start = static_cast<int>((n->start + step / 2) / step);
+        int length = std::max(1, static_cast<int>((n->length + step / 2) / step));
+        if (sliderRow("Pitch", pitch, 0, model.rows() - 1, colour::kNote)) {
+            model.moveSelected(n->start, pitch);
+            editPending = true;
+        }
+        if (sliderRow("Start", start, 0, std::max(0, model.steps - length), colour::kNote)) {
+            model.moveSelected(start * step, model.selectedNote()->pitch);
+            editPending = true;
+        }
+        if (sliderRow("Length", length, 1, std::max(1, model.steps - start), colour::kNote)) {
+            model.setSelectedLength(length * step);
+            editPending = true;
+        }
         ImGui::PopItemWidth();
         notePitch(*model.selectedNote());
-        if (ImGui::Button("Delete note")) model.deleteSelected();
+        if (ImGui::Button(selected > 1 ? "Delete notes" : "Delete note")) {
+            model.deleteSelected();
+            model.commit();
+        }
     } else {
         ImGui::TextDisabled("No note selected.");
         ImGui::TextDisabled("Click the grid to add one.");
         velocityRect = {};
+    }
+    if (editPending && !ImGui::IsAnyItemActive()) {
+        editPending = false;
+        model.commit();
     }
     endSection();
 

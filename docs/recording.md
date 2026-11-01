@@ -129,8 +129,9 @@ build/umpire-daw --self-test /tmp/shots    # both windows, scripted (silent; don
 
 ### The grid's tuning
 
-The grid is still milestone 4's, in sixteenths, and its edits stay in the
-window: milestone 10 makes it edit the clip. What changed is pitch:
+The grid was still milestone 4's then, in sixteenths, with its edits kept
+in the window; milestone 10 made it edit the clip ([clip-editor.md](clip-editor.md)).
+What changed here is pitch:
 - **Rows are EDO steps**, as StageHand's sequence editor (its
   docs/sequences.md, "EDO pitch"): a tuning of an EDO (5 to 72) and the note
   step 0 sounds, set in the inspector's Tuning section. The rows cover the

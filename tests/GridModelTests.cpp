@@ -25,18 +25,22 @@ int main() {
         GridModel m;
         const auto v0 = m.version();
         const int  i  = m.addNote(67, 4);
-        check("adding a note selects it", i == 0 && m.selected == 0 && m.version() > v0);
-        check("noteAt finds it over its length", m.noteAt(67, 4) == 0 && m.noteAt(67, 5) == 0 && m.noteAt(67, 6) == -1);
+        constexpr auto S = GridModel::kStep;
+        check("adding a note selects it", i == 0 && m.focus == 0 && m.notes[0].selected && m.version() > v0);
+        check("noteAt finds it over its length",
+              m.noteAt(67, 4 * S) == 0 && m.noteAt(67, 6 * S - 1) == 0 && m.noteAt(67, 6 * S) == -1);
         check("a note past the clip's end isn't added", m.addNote(60, m.steps) == -1 && m.notes.size() == 1);
         m.addNote(60, m.steps - 1, 4);
-        check("a note at the end is kept inside the clip", m.notes[1].start == m.steps - 4);
-        check("the topmost note wins", (m.addNote(67, 4), m.noteAt(67, 4) == 2));
+        check("a note at the end is kept inside the clip", m.notes[1].start == (m.steps - 4) * S);
+        check("adding a note selects only it", m.selectionSize() == 1 && m.focus == 1);
+        check("the topmost note wins", (m.addNote(67, 4), m.noteAt(67, 4 * S) == 2));
     }
     {
         GridModel m;
         m.addNote(60, 0);
         m.moveSelected(-5, 200);
         check("moving keeps the note inside the grid", m.notes[0].start == 0 && m.notes[0].pitch == 127);
+        using umpire::kGridStep;
         m.transposeSelected(-2);
         check("transposing", m.notes[0].pitch == 125);
         m.setSelectedVelocity(0);
@@ -44,24 +48,68 @@ int main() {
         const auto v = m.version();
         m.setSelectedVelocity(1);
         check("an edit that changes nothing isn't a change", m.version() == v);
-        m.setSelectedLength(1000);
-        check("length stops at the clip's end", m.notes[0].length == m.steps);
+        m.setSelectedLength(1000 * kGridStep);
+        check("length stops at the clip's end", m.notes[0].length == m.endTick());
     }
     {
         GridModel m;
         m.addNote(60, 0);
         m.select(5);
-        check("selecting nothing that's there clears the selection", m.selected == -1 && m.selectedNote() == nullptr);
+        check("selecting nothing that's there clears the selection",
+              m.focus == -1 && m.selectedNote() == nullptr && m.selectionSize() == 0);
         m.transposeSelected(1);
         m.deleteSelected();
         check("edits without a selection do nothing", m.notes.size() == 1 && m.notes[0].pitch == 60);
         m.select(0);
         m.deleteSelected();
-        check("deleting the selected note", m.notes.empty() && m.selected == -1);
+        check("deleting the selected note", m.notes.empty() && m.focus == -1);
         m.clipName = "Take";
         m.addNote(60, 0);
         m.newClip();
         check("a new clip is empty and untitled", m.notes.empty() && m.clipName == "Untitled clip");
+    }
+    {
+        // Selecting several, and dragging them as one.
+        using umpire::kGridStep;
+        GridModel m;
+        m.addNote(60, 0);
+        m.addNote(64, 4);
+        m.addNote(67, 8);
+        m.selectIn(59, 65, 0, 5 * kGridStep, false);
+        check("a box selects the notes it touches", m.selectionSize() == 2 && m.notes[0].selected && m.notes[1].selected &&
+                                                        !m.notes[2].selected && m.focus == 1);
+        m.toggle(2);
+        m.toggle(0);
+        check("Shift+click adds and takes away", m.selectionSize() == 2 && !m.notes[0].selected && m.focus == 2);
+        m.selectIn(59, 61, 0, kGridStep, true);
+        check("a Shift box adds", m.selectionSize() == 3);
+        m.select(1);
+        m.toggle(2);
+        m.beginDrag();
+        m.dragMove(kGridStep / 3, 2, true);
+        check("a snapped drag less than half a sixteenth is no move in time",
+              m.notes[1].start == 4 * kGridStep && m.notes[1].pitch == 66 && m.notes[2].pitch == 69);
+        m.dragMove(kGridStep, 2, true);
+        check("then the focus lands on a sixteenth and the selection follows",
+              m.notes[2].start == 9 * kGridStep && m.notes[1].start == 5 * kGridStep && m.notes[0].start == 0);
+        m.dragMove(kGridStep / 3, 0, false);
+        check("Shift: freely", m.notes[2].start == 8 * kGridStep + kGridStep / 3);
+        m.dragMove(-100 * kGridStep, 500, false);
+        check("the selection stays inside the grid, together",
+              m.notes[1].start == 0 && m.notes[2].start == 4 * kGridStep && m.notes[2].pitch == 127 && m.notes[1].pitch == 124);
+        m.beginDrag();
+        m.dragResize(-10 * kGridStep, true);
+        check("a resize keeps a sixteenth at least, snapped", m.notes[1].length == kGridStep && m.notes[2].length == kGridStep);
+        m.dragResize(-10, false);
+        check("freely, a tick at least", m.notes[1].length == 2 * kGridStep - 10);
+        m.setSelectedVelocity(30);
+        check("velocity sets every selected note's", m.notes[1].velocity == 30 && m.notes[2].velocity == 30 &&
+                                                         m.notes[0].velocity == 100);
+        m.nudge(kGridStep, -1);
+        check("a nudge moves the selection", m.notes[1].start == kGridStep && m.notes[1].pitch == 123);
+        m.deleteSelected();
+        check("deleting the selection", m.notes.size() == 1 && m.focus == -1 && m.notes[0].pitch == 60);
+        check("without a clip, commit leaves edits in the window", !m.commit() && m.notes.size() == 1);
     }
 
     {
@@ -92,6 +140,13 @@ int main() {
                   m.notes[1].sentNote == (step31(1) >> 9) && m.notes[1].clipRow == m.notes[1].pitch);
         m.select(1);
         m.transposeSelected(1);
+        check("the change, for the clip: a pitch on its new row, the rest as sent", [&] {
+            std::vector<NoteChange> changes;
+            std::vector<NewNote>    added;
+            const std::string       label = m.pendingChanges(changes, added);
+            return label == "Move note" && changes.size() == 1 && added.empty() && changes[0].on == m.notes[1].on &&
+                   changes[0].pitch79 == step31(2) && changes[0].start == m.notes[1].start && changes[0].velocity == 0x8000;
+        }());
         m.setTuning(12, 60);
         check("edited, a new tuning keeps each note's pitch on the nearest row",
               m.notes[1].pitch == 61 && m.notes[0].pitch == 60 && m.notes[3].pitch == 72);

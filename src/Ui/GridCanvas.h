@@ -10,6 +10,7 @@
 // drawing (StageHand's convention). ImGui works in window pixels.
 
 #include <memory>
+#include <vector>
 
 #include "NanoVG.hpp"
 #include "Window.hpp"
@@ -27,7 +28,7 @@ public:
     ~GridCanvas() override;
 
     GridPanels& panels() noexcept { return *imgui; }
-    bool    dragging() const noexcept { return drag != Drag::None; }
+    bool    dragging() const noexcept { return drag != Drag::None && drag != Drag::Click; }
     int     hoverPitch() const noexcept { return hoverRow; }
 
 protected:
@@ -50,13 +51,22 @@ private:
     bool  inGrid(float x, float y);
     int   pitchAt(float y);
     int   stepAt(float x);
+    Tick  tickAt(float x);
+    float tickX(Tick t);   // logical, from the grid's left
+    // The note whose right edge is under (x, y): a press there resizes.
+    int   edgeAt(float x, float y);
+    void  setPointer(DGL_NAMESPACE::MouseCursor cursor);
     float rowY(int pitch);
     void  centreOn(int row);   // scrolls so `row` is in the middle
     void  changed();   // the model changed here: redraw, and the panels too
 
     static constexpr float kKeysW = 44, kRowH = 14, kStepW = 22;
+    static constexpr float kEdge = 5;    // how near a note's right end grabs it
+    static constexpr float kSlop = 4;    // how far a press goes before it's a drag
 
-    enum class Drag { None, Move };
+    // Click: a press on empty grid, a note added when let go, or a box once
+    // it moves.
+    enum class Drag { None, Click, Move, Resize, Box };
 
     GridModel&              model;
     Probe&                  probe;
@@ -67,7 +77,13 @@ private:
     int                     tunedEdo = 12, tunedReference = 60;
     double                  centrePitch = 60;
     Drag                    drag     = Drag::None;
-    int                     grabStep = 0, grabPitch = 0;   // where in the note the drag took it
+    bool                    shiftAtPress = false;
+    float                   pressX = 0, pressY = 0;   // logical
+    float                   boxX = 0, boxY = 0;       // the box's other corner
+    int                     grabStep = 0, grabPitch = 0;   // where the drag took the grid
+    Tick                    grabTick = 0;
+    std::vector<bool>       boxBase;   // the selection when a Shift box began
+    DGL_NAMESPACE::MouseCursor pointer = DGL_NAMESPACE::kMouseCursorArrow;
 };
 
 } // namespace umpire::ui

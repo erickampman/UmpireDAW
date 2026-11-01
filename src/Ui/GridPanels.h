@@ -4,6 +4,8 @@
 // inspector at the right, in the house widgets (Widgets.h). Umpire's ImGuiWidget does the
 // routing and the drawing on demand.
 
+#include <string>
+
 #include "App/GridModel.h"
 #include "Ui/ImGuiWidget.h"
 #include "Ui/Probe.h"
@@ -18,6 +20,7 @@ public:
     // left of the inspector. Known after the first frame.
     float menuBarHeight() const noexcept { return menuH; }
     float panelWidth() const noexcept { return panelW; }
+    std::string nameText() const { return nameBuf; }   // the name field, as typed
 
     bool quitRequested  = false;
     bool closeRequested = false;   // File > Close window
@@ -49,6 +52,7 @@ private:
     float      panelW = 0;
     char       nameBuf[128] = {};
     bool       tuningPending = false;   // a tuning dragged, for the clip when let go
+    bool       editPending   = false;   // a note control dragged, for the clip when let go
 };
 
 } // namespace umpire::ui
