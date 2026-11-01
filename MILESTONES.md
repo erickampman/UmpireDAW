@@ -38,8 +38,8 @@ timeline. Linux first (decisions.md, "Scope").
 8. [x] Hosting CLAP instruments (Umpire; docs/plugins.md): track output to
    a plugin, JACK (Linux) or CoreAudio (macOS) audio via uw-core,
    sample-accurate timing, offline-capable engine -- built and self-tested
-   on the Mac 2026-10-30; not yet built on Linux, and hearing a real CLAP
-   instrument is the author's
+   on the Mac 2026-10-30; built and tested on Linux (Umpire's and uw-core's
+   tests) and heard with PlainOldSynth 2026-11-01
 9. [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs
 10. [ ] Clip editor (piano roll): select, move, resize, delete, velocity,
     undo; Pitch 7.9 on EDO grid

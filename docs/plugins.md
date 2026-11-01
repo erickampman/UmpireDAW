@@ -4,9 +4,9 @@ A track's output can be a CLAP instrument instead of a MIDI device: its own
 hosted instance, fed the track's clips exactly as a MIDI device is (the same
 scheduling, the same lookahead), mixed into the platform's audio output
 (JACK on Linux, CoreAudio on macOS). Built and self-tested on the Mac
-(Apple Silicon, macOS 26, CoreAudio) on 2026-10-30; **not yet built on
-Linux**, and nothing has been heard yet: playing a real CLAP synth is the
-author's.
+(Apple Silicon, macOS 26, CoreAudio) on 2026-10-30; built on the Linux PC,
+with Umpire's `ctest` and uw-core's own tests passing there, and heard by
+the author with PlainOldSynth as a track's output, on 2026-11-01.
 
 Chosen for the Mac rather than JACK, which the Mac build doesn't have at
 all (BUILDING.md): uw-core's audio seam already carries both backends
@@ -199,12 +199,11 @@ On the Mac (Apple Silicon, macOS 26.2, CoreAudio), 2026-10-30:
 
 ## Still to do, by the author
 
-- **Linux**: build and `ctest` there (JackBackend, not exercised on this
-  Mac at all); `uw-core`'s own `ClapHostTests`/`BackendTests` against
-  whatever CLAP instruments and JACK/PipeWire setup is on that machine.
-- **Listen**: a real CLAP instrument (StruckSynth or another plugin module)
-  as a track's output, played and recorded as a MIDI device would be.
-- Whether the output combo reads right with instruments mixed in after the
+- [x] **Linux**: build and `ctest` there; `uw-core`'s own tests on that
+  machine (2026-11-01, all passing).
+- [x] **Listen**: a real CLAP instrument as a track's output (PlainOldSynth,
+  2026-11-01: works).
+- [ ] Whether the output combo reads right with instruments mixed in after the
   MIDI devices.
 
 ## Not in it (later)
