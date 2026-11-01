@@ -108,6 +108,20 @@ tempo map to line up with them.
 - Later: the tempo map as MIDI 2.0 Flex Data (or in a MIDI Clip File),
   once another DAW imports it
 
+## Proposed: zoom (not yet scheduled)
+
+Asked for 2026-11-01: Umpire has no zoom yet; the track view's beat
+(`TrackCanvas::kBeatW`) and the grid's step and row (`GridCanvas::kStepW`,
+`kRowH`) are fixed.
+
+- Z1. [ ] Horizontal zoom in the track view and the grid, about the
+  pointer, as StageHand's sequence editor (Cmd-wheel on the Mac, Ctrl-wheel
+  on Linux); a two-finger pinch on a Mac trackpad zooms too, which needs
+  the pugl fork to pass on `magnifyWithEvent:` (today `mac.m` only has
+  `scrollWheel:`), pushed before Umpire's pin moves
+- Later: the zoom levels of ui-direction.md ("Zoom replaces opening
+  things": Sections, Bars, Notes, Expression), editing notes in the lane
+
 ## After the first useful version: audio
 
 Decided 2026-10-14 (decisions.md, "Audio: printing, mixdown, playback").
