@@ -203,8 +203,8 @@ On the Mac (Apple Silicon, macOS 26.2, CoreAudio), 2026-10-30:
   machine (2026-11-01, all passing).
 - [x] **Listen**: a real CLAP instrument as a track's output (PlainOldSynth,
   2026-11-01: works).
-- [ ] Whether the output combo reads right with instruments mixed in after the
-  MIDI devices.
+- [x] Whether the output combo reads right with instruments mixed in after the
+  MIDI devices (2026-11-01: it does).
 
 ## Not in it (later)
 
