@@ -141,7 +141,7 @@ void TrackPanels::menuBar() {
         const TransportModel& tr = view.transport;
         if (ImGui::MenuItem(tr.playing ? "Stop" : "Play", "Space")) tr.playing ? controller.stop() : controller.play();
         if (ImGui::MenuItem(tr.recording ? "Stop recording" : "Record", kRecKey)) controller.record();
-        if (ImGui::MenuItem("Go to start", "Home")) controller.locate(0);
+        if (ImGui::MenuItem("Go to start", "Home")) canvas.goToStart();
         ImGui::Separator();
         if (ImGui::MenuItem("Loop", "L", tr.looping)) controller.setLooping(!tr.looping);
         ImGui::EndMenu();
@@ -168,7 +168,7 @@ void TrackPanels::transport() {
     const TransportModel& tr = controller.view().transport;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + em, TrackCanvas::kHeaderW * sf));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(gap, 0));
-    if (transportButton("##start", Glyph::ToStart, false, colour::kSlate, ImVec2(btn, btn))) controller.locate(0);
+    if (transportButton("##start", Glyph::ToStart, false, colour::kSlate, ImVec2(btn, btn))) canvas.goToStart();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Go to start (Home)");
     ImGui::SameLine();
     if (transportButton("##stop", Glyph::Stop, false, colour::kSlate, ImVec2(btn, btn))) controller.stop();

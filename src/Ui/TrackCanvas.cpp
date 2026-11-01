@@ -65,16 +65,27 @@ void TrackCanvas::scrollBy(float rows) {
 }
 
 void TrackCanvas::refresh() {
-    // Playing past the right edge turns the page.
+    // Playing past the right edge turns the page. A jump back past the left
+    // edge (a locate, the loop wrapping) scrolls back to show it, two beats
+    // in; scrolling ahead of the playhead by hand stays where it's put.
     const TransportModel& tr = controller.view().transport;
     const float laneW = static_cast<float>(getWidth()) / sf() - kHeaderW;
     if (tr.playing && laneW > kBeatW * 4 && tickX(tr.position) > kHeaderW + laneW - kBeatW)
         scrollX += laneW - kBeatW * 2;
+    if (tr.position < lastPosition && tickX(tr.position) < kHeaderW)
+        scrollX = static_cast<float>(tr.position) / kTicksPerQuarter * kBeatW - kBeatW * 2;
+    lastPosition = tr.position;
     clampScroll();
     // While playing the view changes about 30 times a second (the playhead):
     // one frame each is enough, not the few ImGui is owed after input.
     imgui->wake(tr.playing ? 1 : 3);
     repaint();
+}
+
+void TrackCanvas::goToStart() {
+    controller.locate(0);
+    scrollX = 0;
+    refresh();
 }
 
 // --- drawing --------------------------------------------------------------------------
@@ -410,7 +421,7 @@ bool TrackCanvas::onKeyboard(const KeyboardEvent& ev) {
     } else if (ev.key == ' ') {
         view.transport.playing ? controller.stop() : controller.play();
     } else if (ev.key == dgl::kKeyHome) {
-        controller.locate(0);
+        goToStart();
     } else if (ev.key == 'l' && !command) {
         controller.setLooping(!view.transport.looping);
     } else if ((ev.key == dgl::kKeyDelete || ev.key == dgl::kKeyBackspace) && controller.selectedClip() != 0) {

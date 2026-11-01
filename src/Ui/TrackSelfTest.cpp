@@ -294,6 +294,18 @@ struct TrackSelfTest {
         check("Space plays", view().transport.playing && view().transport.position > kTicksPerQuarter * 8);
         tap(' ');
         check("and stops", !view().transport.playing);
+        canvas.scrollX = TrackCanvas::kBeatW * 40;   // as dragged or played well along
+        canvas.refresh();
+        tap(dgl::kKeyHome);
+        check("Home goes to the start and scrolls the lanes back to show it",
+              view().transport.position == 0 && canvas.scrollX == 0);
+        canvas.scrollX = TrackCanvas::kBeatW * 40;
+        canvas.refresh();
+        click((canvas.tickX(kTicksPerQuarter * 44) + 3) * sf(), (canvas.rulerY() + TrackCanvas::kRulerH / 2) * sf());
+        controller.locate(kTicksPerQuarter * 8);   // a jump back, as the loop's wrap is
+        pump(50);
+        check("a jump back past the left edge scrolls back, two beats in",
+              view().transport.position == kTicksPerQuarter * 8 && canvas.scrollX == TrackCanvas::kBeatW * 6);
         tap(dgl::kKeyHome);
 
         // --- the loop: a drag along the ruler, the L key, the button

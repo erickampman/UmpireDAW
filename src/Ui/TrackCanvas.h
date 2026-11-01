@@ -62,6 +62,9 @@ public:
 
     // The view model changed: draw again.
     void refresh();
+    // Home, the to-start button and Transport > Go to start: the playhead to
+    // the start, and the lanes scrolled back to bar 1 to show it.
+    void goToStart();
 
 protected:
     void onNanoDisplay() override;
@@ -82,6 +85,7 @@ private:
     std::unique_ptr<TrackPanels> imgui;
     float                        scrollY = 0;   // logical pixels from the first row
     float                        scrollX = 0;   // logical pixels from bar 1
+    Tick                         lastPosition = 0;   // the playhead, as refresh() last saw it
     // A clip being dragged: where it was grabbed, and where it would go.
     ClipRefId                    dragRef = 0;
     Tick                         dragGrab = 0, dragOrigin = 0, dragTo = 0;
