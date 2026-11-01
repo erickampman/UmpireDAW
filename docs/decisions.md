@@ -478,8 +478,10 @@ was built.
   is activated, and kept for a plugin that isn't installed.
 - **Modified follows undo**, through `History::state()`.
 - **StageHand's `FileDialog` is copied** (zenity or kdialog), not shared,
-  as the widgets were. The Mac's dialogs are open: StageHand's DPF file
-  browser is the likely path.
+  as the widgets were. On the Mac (2026-11-01) the same class is AppKit's
+  NSOpenPanel and NSSavePanel, begun modeless, not DPF's file browser:
+  they're native, choose a folder and suggest a name, and the main loop
+  already hands AppKit every event.
 - Still true: plugin editor windows don't offer Quit or Save ("Milestone
   11", above). The grid's Ctrl+Q now goes through the same unsaved-changes
   prompt.

@@ -145,7 +145,9 @@ int main() {
     using namespace umpire;
     namespace cf = umpire::clipfile;
 
-    const fs::path dir = fs::temp_directory_path() / ("umpire-file-tests-" + std::to_string(getpid()));
+    // Canonical, as the paths SessionFile returns are: macOS's temp folder is
+    // under /var, a symlink to /private/var.
+    const fs::path dir = fs::weakly_canonical(fs::temp_directory_path()) / ("umpire-file-tests-" + std::to_string(getpid()));
     fs::remove_all(dir);
     fs::create_directories(dir);
 

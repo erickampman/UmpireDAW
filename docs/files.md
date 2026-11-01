@@ -4,15 +4,17 @@ A session saves as a folder, `Name.umpire`, and opens again as it was: the
 tracks, their clips (each a standard MIDI Clip File), the outputs, each
 plugin output's state, the tempo, meter and loop. File has New, Open...,
 Save and Save As..., and before New, Open or Quit drops unsaved changes it
-asks first. Built and tested on the Linux PC on 2026-11-01. Not yet built on
-the Mac, where the file dialogs don't work yet ("Not in it"). The author
+asks first. Built and tested on the Linux PC on 2026-11-01; built and
+tested on the Mac on 2026-11-01, with AppKit's own panels as its file
+dialogs (checking them is the author's: ctest can't show a panel). The author
 checks the menu, the prompt and the title by eye, and that a saved
 session plays the same, plugins included, after reopening.
 
 ## Building and running
 
 As before ([BUILDING.md](../BUILDING.md)). The file dialogs are the
-desktop's own: zenity (`sudo apt install zenity`), or kdialog on KDE.
+desktop's own: on Linux zenity (`sudo apt install zenity`), or kdialog on
+KDE; on the Mac, AppKit's open and save panels, with nothing to install.
 
 ```bash
 ctest --test-dir build                      # silent; test-files saves and opens in a temporary folder
@@ -144,11 +146,14 @@ Agreed with the author before it was built, 2026-11-01.
   close button and Ctrl+Q in a grid window are Quit too.
 - **The dialogs** are StageHand's `FileDialog`, copied as the widgets were
   (decisions.md, "Milestone 4"): zenity or kdialog as a separate process,
-  so the main loop never waits. Open chooses a `.umpire` folder, or the
+  so the main loop never waits. On the Mac the same class is AppKit's
+  NSOpenPanel and NSSavePanel (`FileDialogMac.mm`), begun modeless, so the
+  loop goes on there too. Open chooses a `.umpire` folder, or the
   `session.json` inside it. Save As suggests `Name.umpire` beside the
   session and adds `.umpire` if it's left off. If there's already a session
   with that name, it asks before replacing it ("Replace it?"). Anything else
-  already there is never replaced.
+  already there is never replaced. The Mac's save panel asks about a name
+  that's already there itself, so replacing a session there asks twice.
 - **Errors** (no dialog tool, a broken file, a full disk) are said in the
   same prompt, with OK.
 
@@ -163,7 +168,7 @@ Agreed with the author before it was built, 2026-11-01.
 | `PluginState`; `AudioEngine::open(id, state)`, `saveState` | `src/App/Session.h`, `src/App/AudioEngine.*` | no |
 | `Player::restore`/`closeAll`/`pluginState` | `src/App/Player.*` | no |
 | `TrackController::save`/`open`/`newSession`/`modified`; the view's `sessionName`/`modified` | `src/App/TrackController.*`, `src/App/TrackViewModel.h` | no |
-| `FileDialog`, copied from StageHand | `src/App/FileDialog.{h,cpp}` | no |
+| `FileDialog`, copied from StageHand; AppKit's panels on the Mac | `src/App/FileDialog.{h,cpp}`, `src/App/FileDialogMac.mm` | no (AppKit on the Mac, as `MainLoop`) |
 | File menu, keys, the prompt | `src/Ui/TrackPanels.*`, `src/Ui/TrackCanvas.cpp` | ImGui, DGL |
 | The actions, the dialogs, the title, the close button as Quit | `src/Ui/MainWindow.cpp` | DGL |
 | `umpire-daw SESSION` | `src/App/main.cpp` | no |
@@ -171,11 +176,10 @@ Agreed with the author before it was built, 2026-11-01.
 
 ## Not in it (later)
 
-- **The Mac's file dialogs**: zenity and kdialog aren't there, so Open and
-  Save As say "Can't show a file dialog". StageHand's Mac path, DPF's file
-  browser (its docs/macos.md, decision 10, and `Ui/FileChooser`), is the
-  likely way, once it can choose a `.umpire` folder. Until then the
-  command line (`umpire-daw SESSION`) opens a session on the Mac.
+- **A `.umpire` bundle as a Mac package**: Finder and the panels show it
+  as a folder. Declaring it a document package in the app's Info.plist
+  would show it as one file, and Open would then choose files, not
+  folders.
 - **Importing and exporting a single clip** (`.midi2` to or from a track)
   is not in the menus yet. `ClipFile` already reads other apps' files.
 - **Recent sessions, autosave, and remembering the last folder between

@@ -48,6 +48,8 @@ FileDialog::~FileDialog() {
     if (output >= 0) ::close(output);
 }
 
+bool FileDialog::running() const noexcept { return child > 0; }
+
 std::string FileDialog::tool() {
     const bool zenity = onPath("zenity"), kdialog = onPath("kdialog");
     if (kdialog && (onKde() || !zenity)) return "kdialog";

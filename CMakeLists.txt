@@ -80,7 +80,6 @@ add_library(umpire-app STATIC
     src/App/AudioEngine.cpp
     src/App/Clip.cpp
     src/App/ClipFile.cpp
-    src/App/FileDialog.cpp
     src/App/GridModel.cpp
     src/App/Instruments.cpp
     src/App/MidiDescribe.cpp
@@ -91,11 +90,11 @@ add_library(umpire-app STATIC
     src/App/SessionFile.cpp
     src/App/TrackController.cpp)
 if(APPLE)
-    target_sources(umpire-app PRIVATE src/App/MainLoopMac.mm)
-    set_source_files_properties(src/App/MainLoopMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
-    target_link_libraries(umpire-app PUBLIC "-framework AppKit")
+    target_sources(umpire-app PRIVATE src/App/MainLoopMac.mm src/App/FileDialogMac.mm)
+    set_source_files_properties(src/App/MainLoopMac.mm src/App/FileDialogMac.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    target_link_libraries(umpire-app PUBLIC "-framework AppKit" "-framework UniformTypeIdentifiers")
 else()
-    target_sources(umpire-app PRIVATE src/App/MainLoop.cpp)
+    target_sources(umpire-app PRIVATE src/App/MainLoop.cpp src/App/FileDialog.cpp)
 endif()
 target_include_directories(umpire-app PUBLIC src)
 # nlohmann/json 3.11.3, vendored (external/nlohmann/README.md): session.json only.

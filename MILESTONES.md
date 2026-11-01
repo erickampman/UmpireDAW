@@ -42,9 +42,9 @@ timeline. Linux first (decisions.md, "Scope").
    tests) and heard with PlainOldSynth 2026-11-01
 9. [x] Files (docs/files.md): MIDI Clip Files (M2-116-U), session JSON,
    open/save dialogs; a session is a `.umpire` folder, plugin states
-   included -- built and tested on Linux 2026-11-01; checking the menu, the
-   prompt and a reopened session by ear, and the Mac build (whose dialogs
-   don't work yet), are the author's
+   included -- built and tested on Linux 2026-11-01, and on the Mac the same
+   day, with AppKit's panels as its dialogs; checking the menu, the prompt,
+   the Mac's panels and a reopened session by ear are the author's
 10. [ ] Clip editor (piano roll): select, move, resize, delete, velocity,
     undo; Pitch 7.9 on EDO grid
 11. [x] Plugin editor windows (uw-core, then Umpire; docs/plugin-editors.md):
