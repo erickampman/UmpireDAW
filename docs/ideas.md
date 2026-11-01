@@ -375,8 +375,9 @@ when a device doesn't answer.
 - MIDI 2.0 channel voice is 64 bits (8 bytes). MIDI 1.0 channel voice in UMP
   is 32 bits (4 bytes), against 3 bytes in MIDI 1.0 byte streams.
 - **Delta Clockstamp:** a 20-bit tick delta. **DCTPQ** (ticks per quarter
-  note) is 16 bits, so the maximum is 65,535 PPQ. Check whether consecutive
-  Delta Clockstamps add up (if they do, there is no limit on gaps).
+  note) is 16 bits, so the maximum is 65,535 PPQ. A longer gap is restarted
+  with a Null message after a full Delta Clockstamp (M2-116-U, 3.2.2), so
+  there's no limit on gaps (docs/files.md).
 - A 16-bit PPQ can handle tuplets: 36036 = 4 × 9009 divides by 2, 3, 4, 6, 7,
   9, 11, 12 and 13 (but not by 5 or 8).
 - **Jitter Reduction timestamps** are 16-bit, in units of 1/31250 s, and wrap
@@ -419,6 +420,7 @@ when a device doesn't answer.
 - UMP and MIDI 2.0 Protocol, M2-104-UM:
   [AMEI copy](https://amei-music.github.io/midi2.0-docs/amei-pdf/M2-104-UM_v1-1-2_UMP_and_MIDI_2-0_Protocol_Specification.pdf)
 - MIDI Clip File, M2-116-U:
+  [AMEI copy](https://amei-music.github.io/midi2.0-docs/amei-pdf/M2-116-U_v1-0_MIDI_Clip_File_Specification.pdf),
   [midi.org](https://midi.org/midi-clip-file-specification-smf-midi-2-0),
   [IANA](https://www.iana.org/assignments/media-types/audio/midi-clip)
 - [ktmidi notes on MIDI 2.0 formats](https://github.com/atsushieno/ktmidi/blob/main/docs/MIDI2_FORMATS.md)

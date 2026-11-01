@@ -390,8 +390,15 @@ bool TrackCanvas::onKeyboard(const KeyboardEvent& ev) {
     int touched = -1;
     for (std::size_t i = 0; i < view.rows.size(); ++i)
         if (view.rows[i].touched) touched = static_cast<int>(i);
+    using FileAction = TrackPanels::FileAction;
     if (command && ev.key == 'q') {
-        imgui->quitRequested = true;
+        imgui->fileRequested = FileAction::Quit;
+    } else if (command && ev.key == 'n') {
+        imgui->fileRequested = FileAction::New;
+    } else if (command && ev.key == 'o') {
+        imgui->fileRequested = FileAction::Open;
+    } else if (command && (ev.key == 's' || ev.key == 'S')) {
+        imgui->fileRequested = shift ? FileAction::SaveAs : FileAction::Save;
     } else if (command && ev.key == 't') {
         controller.addTrack();
     } else if (command && ev.key == 'z') {

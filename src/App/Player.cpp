@@ -63,10 +63,16 @@ Player::~Player() {
 
 // --- dispatch: a MIDI device or a plugin voice, by the stream's device id ------------
 
-void Player::openStream(Stream& s) {
+void Player::openStream(TrackId track, Stream& s) {
     s.plugin = Instruments::isPluginOutput(s.device);
-    if (s.plugin) s.pluginVoice = engine.open(s.device);
-    else s.midiHandle = outputs.open(s.device);
+    if (!s.plugin) {
+        s.midiHandle = outputs.open(s.device);
+        return;
+    }
+    const auto saved = restoring.find(track);
+    const bool mine  = saved != restoring.end() && saved->second.device == s.device;
+    s.pluginVoice    = engine.open(s.device, mine ? &saved->second.data : nullptr);
+    if (mine && s.pluginVoice != kInvalidVoice) restoring.erase(saved);
 }
 
 void Player::closeStream(Stream& s) {
@@ -177,7 +183,7 @@ void Player::follow(const Session& session, const Transport& transport, uw::Nano
         }
         bool fresh = false;
         if (!streamOpen(s) && retry) {
-            openStream(s);
+            openStream(t.id, s);
             fresh = streamOpen(s);
         }
 
@@ -373,6 +379,29 @@ std::string Player::outputLabel(const Session& session, TrackId track, bool* con
     }
     if (Instruments::isPluginOutput(*device)) return engine.label(*device, connected);
     return outputs.label(*device, connected);
+}
+
+void Player::restore(std::map<TrackId, PluginState> states) { restoring = std::move(states); }
+
+void Player::closeAll(uw::Nanoseconds now) {
+    for (auto& [id, s] : streams) {
+        silence(s, now);
+        thruOff(id);
+        closeStream(s);
+    }
+    streams.clear();
+}
+
+bool Player::pluginState(TrackId track, PluginState& out) const {
+    const auto it = streams.find(track);
+    if (it != streams.end() && it->second.plugin && engine.saveState(it->second.pluginVoice, out.data)) {
+        out.device = it->second.device;
+        return true;
+    }
+    const auto saved = restoring.find(track);
+    if (saved == restoring.end()) return false;
+    out = saved->second;
+    return true;
 }
 
 bool Player::openEditor(TrackId track, const std::string& title, std::function<void()> requestQuit) {

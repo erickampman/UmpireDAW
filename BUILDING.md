@@ -53,6 +53,7 @@ Build from `main`.
 | `libgl-dev` | OpenGL, for NanoVG and Dear ImGui |
 | `libxcursor-dev`, `libxext-dev`, `libxrandr-dev` (optional) | pugl uses them when present: cursors, the X extensions, monitor geometry |
 | `libdbus-1-dev` (optional) | DGL uses it when present |
+| `zenity`, or `kdialog` on KDE (at run time, not to build) | File's Open and Save As dialogs (docs/files.md) |
 
 ```bash
 sudo apt install g++ cmake ninja-build pkg-config libasound2-dev libjack-jackd2-dev libx11-dev libgl-dev libxcursor-dev libxext-dev libxrandr-dev

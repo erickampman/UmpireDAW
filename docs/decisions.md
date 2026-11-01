@@ -453,6 +453,37 @@ done out of order (before 9 and 10) at the author's request.
   doesn't apply until milestone 9 gives Umpire something to save, so
   `TrackController` doesn't supply either callback yet.
 
+## Files (milestone 9, 2026-11-01)
+
+On the Linux PC ([files.md](files.md)). The UI (File's menu items and keys,
+the title, the unsaved-changes prompt) was agreed with the author before it
+was built.
+- **A session is a folder, `Name.umpire`**: `session.json`, a MIDI Clip
+  File per clip (`clips/clip-<id>.midi2`), a state file per plugin output.
+  As StageHand's `.rack` bundles, and where printed audio will go too
+  ("Audio: printing, mixdown, playback": "in the session's folder, beside
+  its MIDI Clip Files").
+- **The clip files are authoritative for the music** (ideas.md, "Decide
+  explicitly which format is authoritative"): notes, timing and length are
+  only in them. `session.json` has what isn't the music, a clip's name and
+  scale included.
+- **Clip files are written at Umpire's own 40320 ticks to a quarter**, so
+  they round-trip exactly. They carry the session's tempo and meter for
+  other apps, which reading ignores.
+- **The tempo map is stored as lists already**, one entry each until T1,
+  so T1 doesn't change the format.
+- **A save writes the whole bundle and swaps it in**, as StageHand does.
+  Writing only new clips is left until sizes call for it.
+- **Plugin state is saved with the session**, restored before the plugin
+  is activated, and kept for a plugin that isn't installed.
+- **Modified follows undo**, through `History::state()`.
+- **StageHand's `FileDialog` is copied** (zenity or kdialog), not shared,
+  as the widgets were. The Mac's dialogs are open: StageHand's DPF file
+  browser is the likely path.
+- Still true: plugin editor windows don't offer Quit or Save ("Milestone
+  11", above). The grid's Ctrl+Q now goes through the same unsaved-changes
+  prompt.
+
 ## Plugin routing (proposed 2026-10-30, not yet decided)
 
 On the Linux PC, after the first plugin was heard there:

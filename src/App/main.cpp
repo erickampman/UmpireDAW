@@ -4,7 +4,8 @@
 // plays them to the platform's MIDI outputs or to hosted CLAP instruments;
 // driven by the main loop.
 //
-//   umpire-daw                   the window
+//   umpire-daw                   the window, with a new session
+//   umpire-daw SESSION           ... with a saved one open (X.umpire; milestone 9, docs/files.md)
 //   umpire-daw --log-frames      ... printing frames drawn per second
 //   umpire-daw --self-test DIR   scripted input, checks, screenshots in DIR
 
@@ -26,6 +27,7 @@
 #include "App/MainLoop.h"
 #include "App/MidiInputs.h"
 #include "App/PlatformAudioBackend.h"
+#include "App/SessionFile.h"
 #include "App/TrackController.h"
 #include "Ui/MainWindow.h"
 #include "uw/clap/ClapPluginFactory.h"
@@ -70,13 +72,16 @@ void restartUnderPwJackIfNeeded(int argc, char** argv) {
 int main(int argc, char** argv) {
     umpire::ui::MainWindow::Options options;
     const char*                     testDir = nullptr;
+    const char*                     session = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--log-frames") == 0) {
             options.logFrames = true;
         } else if (std::strcmp(argv[i], "--self-test") == 0 && i + 1 < argc) {
             testDir = argv[++i];
+        } else if (argv[i][0] != '-' && session == nullptr) {
+            session = argv[i];
         } else {
-            std::fprintf(stderr, "usage: %s [--log-frames] [--self-test DIR]\n", argv[0]);
+            std::fprintf(stderr, "usage: %s [--log-frames] [--self-test DIR] [SESSION.umpire]\n", argv[0]);
             return 2;
         }
     }
@@ -127,6 +132,13 @@ int main(int argc, char** argv) {
     // Best-effort: silence, not a hard failure, if it can't; but said, since
     // every plugin output is then silent.
     if (!engine.start()) std::fputs("No audio output: CLAP instruments will be silent.\n", stderr);
+    // After the scan, so its plugin outputs find their plugins.
+    if (session != nullptr) {
+        const std::string bundle = umpire::sessionBundleOf(session);
+        const umpire::SessionFileResult opened =
+            bundle.empty() ? umpire::SessionFileResult{false, "not an Umpire session"} : controller.open(bundle);
+        if (!opened.ok) std::fprintf(stderr, "Couldn't open %s: %s\n", session, opened.error.c_str());
+    }
 
     // The controller's tick, then the windows' events and drawing, as StageHand
     // drives its rack window.

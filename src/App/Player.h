@@ -56,6 +56,17 @@ public:
     // changed since.
     void thru(TrackId track, const uw::MidiMessage* messages, std::size_t count);
 
+    // A saved session's plugin states (milestone 9): each track's plugin
+    // opens with its own, if its output is still that plugin. Taken when the
+    // plugin opens; one never opened (not installed) stays kept.
+    void restore(std::map<TrackId, PluginState> states);
+    // Every stream closed, as for a session just opened: the next tick opens
+    // them again from the session.
+    void closeAll(uw::Nanoseconds now);
+    // A track's plugin state as it is now, or the restored one still waiting
+    // for its plugin to open; false if it has neither.
+    bool pluginState(TrackId track, PluginState& out) const;
+
     // A track's output, for its row: the device's name and whether it's there.
     std::string outputLabel(const Session& session, TrackId track, bool* connected) const;
 
@@ -96,7 +107,7 @@ private:
 
     // Dispatch to `outputs` or `engine`, by whether the stream's device names
     // a plugin (Instruments::isPluginOutput): the only places that know it.
-    void              openStream(Stream& s);
+    void              openStream(TrackId track, Stream& s);
     void              closeStream(Stream& s);
     bool              streamOpen(const Stream& s) const;
     bool              streamSchedules(const Stream& s) const;
@@ -108,6 +119,7 @@ private:
     AudioEngine&               engine;
     std::map<TrackId, Stream>  streams;
     std::map<int, TrackId>     thruHeld;   // live notes on, by key: the track they went to
+    std::map<TrackId, PluginState> restoring;   // restore()'s, until each plugin opens
     std::uint64_t              seenAnchor     = 0;
     std::uint64_t              seenGeneration = 0;
     bool                       wasPlaying     = false;

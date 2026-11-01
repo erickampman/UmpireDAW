@@ -25,6 +25,7 @@
 #include "App/MidiOutputs.h"
 #include "App/Player.h"
 #include "App/Session.h"
+#include "App/SessionFile.h"
 #include "App/TrackViewModel.h"
 #include "App/Transport.h"
 #include "uw/ump/Ump.h"
@@ -88,6 +89,18 @@ public:
     void openEditor(TrackId id);
     void closeEditor(TrackId id);
 
+    // --- files (milestone 9, docs/files.md) ---
+    // Save the session as the bundle `bundlePath`, which becomes its file.
+    // A take still recording isn't in it (it isn't a clip yet).
+    SessionFileResult save(const std::string& bundlePath);
+    // Replace the session with the bundle's: stopped, at the start, nothing
+    // to undo. On failure nothing changes.
+    SessionFileResult open(const std::string& bundlePath);
+    // An empty, untitled session, as at launch.
+    void newSession();
+    const std::string& path() const noexcept { return sessionPath; }   // "" until saved or opened
+    bool               modified() const noexcept { return history.state() != savedState; }
+
     const Session&              session() const noexcept { return doc; }
     const std::vector<Track>&   tracks() const noexcept { return doc.tracks; }
     TrackId                     selected() const noexcept { return selectedId; }
@@ -122,6 +135,7 @@ private:
     void   rebuild();
     ClipModel clipModel(const ClipRef& ref);
     void   changed() { ++changes; }
+    void   replace(SavedSession saved);
 
     MidiInputs&                          inputs;
     MidiOutputs&                         outputs;
@@ -139,6 +153,8 @@ private:
     int                                  nextNumber = 1;   // for "Track n"
     ClipRefId                            nextRef    = 1;
     ClipId                               nextClip   = 1;
+    std::string                          sessionPath;
+    std::uint64_t                        savedState = 0;   // history.state() when last saved or opened
     TrackId                              selectedId  = 0;
     ClipRefId                            selectedRef = 0;
     uw::Nanoseconds                      shownAt      = 0;   // when the view's position was last updated

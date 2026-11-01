@@ -9,6 +9,8 @@
 
 #include <array>
 #include <map>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "App/TrackController.h"
@@ -28,7 +30,23 @@ public:
     float statusHeight() const noexcept { return statusH; }
     float monitorHeight() const noexcept { return showMonitor ? monitorH : 0; }
 
-    bool quitRequested = false;
+    // File's commands (milestone 9, docs/files.md), from the menu or the
+    // keys, for MainWindow to carry out: it asks first if there's something
+    // unsaved, and runs the file dialogs.
+    enum class FileAction { None, New, Open, Save, SaveAs, Quit };
+    FileAction fileRequested = FileAction::None;
+
+    // A question over the window ("Save changes to "Song"?"), its buttons in
+    // order, the first the default (Enter), the last Cancel (Escape) when
+    // there's more than one. Set by MainWindow; once a button is pressed,
+    // `promptAnswer` is its index and `prompt` is cleared.
+    struct Prompt {
+        std::string              text;
+        std::vector<std::string> buttons;
+    };
+    std::optional<Prompt> prompt;
+    int                   promptAnswer = -1;
+
     bool showMonitor   = true;
     bool showDiagnostics = false;
     bool showDemo      = false;
@@ -59,6 +77,7 @@ private:
     void row(const TrackRowModel& row, float x, float y, float w);
     void status();
     void monitor();
+    void promptPopup();
 
     TrackCanvas&                              canvas;
     TrackController&                          controller;

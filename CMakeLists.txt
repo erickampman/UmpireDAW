@@ -79,6 +79,8 @@ target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 add_library(umpire-app STATIC
     src/App/AudioEngine.cpp
     src/App/Clip.cpp
+    src/App/ClipFile.cpp
+    src/App/FileDialog.cpp
     src/App/GridModel.cpp
     src/App/Instruments.cpp
     src/App/MidiDescribe.cpp
@@ -86,6 +88,7 @@ add_library(umpire-app STATIC
     src/App/MidiOutputs.cpp
     src/App/Player.cpp
     src/App/Scale.cpp
+    src/App/SessionFile.cpp
     src/App/TrackController.cpp)
 if(APPLE)
     target_sources(umpire-app PRIVATE src/App/MainLoopMac.mm)
@@ -95,6 +98,8 @@ else()
     target_sources(umpire-app PRIVATE src/App/MainLoop.cpp)
 endif()
 target_include_directories(umpire-app PUBLIC src)
+# nlohmann/json 3.11.3, vendored (external/nlohmann/README.md): session.json only.
+target_include_directories(umpire-app SYSTEM PRIVATE external)
 target_link_libraries(umpire-app PUBLIC uw::base uw::plugin uw::clap-host uw::editor-window uw::audio PRIVATE umpire-warnings)
 
 # --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library sees the toolkit.
@@ -213,3 +218,4 @@ umpire_add_test(test-track-controller tests/TrackControllerTests.cpp)
 umpire_add_test(test-scale            tests/ScaleTests.cpp)
 umpire_add_test(test-playback         tests/PlaybackTests.cpp)
 umpire_add_test(test-audio-engine     tests/AudioEngineTests.cpp)
+umpire_add_test(test-files           tests/FileTests.cpp)

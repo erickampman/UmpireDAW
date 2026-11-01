@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <thread>
 #include <utility>
@@ -11,6 +12,8 @@
 #include "Application.hpp"
 #include "Window.hpp"
 
+#include "App/FileDialog.h"
+#include "App/SessionFile.h"
 #include "Ui/GridCanvas.h"
 #include "Ui/GridPanels.h"
 #include "Ui/GridSelfTest.h"
@@ -46,11 +49,14 @@ public:
     explicit Window(dgl::Application& app) : dgl::Window(app) {}
     ImGuiWidget* panels       = nullptr;
     bool         closedByUser = false;
+    // The main window's: closing it is a Quit, which asks first if there's
+    // something unsaved, so the window stays until the app quits.
+    bool         askFirst     = false;
 
 protected:
     bool onClose() override {
         closedByUser = true;
-        return true;
+        return !askFirst;
     }
     void onScaleFactorChanged(double) override {
         if (panels != nullptr) panels->rescale();
@@ -132,6 +138,33 @@ struct GridWindow {
 struct MainWindow::Impl {
     Impl(TrackController& c, Options o) : controller(c), options(o), window(app) {}
 
+    using FileAction = TrackPanels::FileAction;
+
+    // --- File (milestone 9, docs/files.md) ---
+    // An action from the menu, the keys or closing the window: New, Open and
+    // Quit ask to save first if anything is unsaved.
+    void fileAction(FileAction action);
+    // The action an unsaved session was asked about, once it's settled.
+    void proceed(FileAction action);
+    void save(FileAction then);
+    void saveAs(FileAction then);
+    void saveTo(const std::string& bundle, FileAction then);
+    void chose(const std::string& path);   // the file dialog closed
+    void answered(int button);             // the prompt's
+    void ask(std::string text, std::vector<std::string> buttons);
+    void tell(const std::string& text) { ask(text, {"OK"}); }
+    std::string startFolder() const;
+    void        updateTitle();
+
+    enum class Asking { Nothing, SaveChanges, Replace, Told };
+    FileDialog  dialog;
+    FileAction  dialogFor = FileAction::None;   // Open, or SaveAs
+    FileAction  afterSave = FileAction::None;   // what a save makes way for
+    Asking      asking    = Asking::Nothing;
+    std::string replacing;                      // the bundle Replace asks about
+    std::string lastFolder;
+    std::string shownTitle;
+
     TrackController&             controller;
     Options                      options;
     Probe                        probe;
@@ -157,7 +190,8 @@ std::unique_ptr<MainWindow> MainWindow::open(TrackController& controller, Option
         const dgl::Window::ScopedGraphicsContext context(impl->window);
         impl->canvas = std::make_unique<TrackCanvas>(impl->window, controller, impl->probe);
     }
-    impl->window.panels = &impl->canvas->panels();
+    impl->window.panels   = &impl->canvas->panels();
+    impl->window.askFirst = true;
     place(impl->window, "Umpire", 1200, 760);
     impl->window.show();
     return std::unique_ptr<MainWindow>(new MainWindow(std::move(impl)));
@@ -196,10 +230,19 @@ void MainWindow::idle() {
     }
     for (auto& [id, grid] : m.grids) grid->follow(m.controller.clip(grid->ref));
     for (auto it = m.grids.begin(); it != m.grids.end();) {
-        if (it->second->canvas->panels().quitRequested) m.quit = true;
+        if (std::exchange(it->second->canvas->panels().quitRequested, false)) m.fileAction(Impl::FileAction::Quit);
         if (it->second->closing()) it = m.grids.erase(it);
         else ++it;
     }
+
+    // File: the window's close button is Quit; then the menu's and the keys'
+    // actions, the prompt's answer and the file dialog's choice.
+    if (std::exchange(m.window.closedByUser, false)) m.fileAction(Impl::FileAction::Quit);
+    if (const auto action = std::exchange(panels.fileRequested, Impl::FileAction::None); action != Impl::FileAction::None)
+        m.fileAction(action);
+    if (const int answer = std::exchange(panels.promptAnswer, -1); answer >= 0) m.answered(answer);
+    if (std::string chosen; m.dialog.poll(chosen)) m.chose(chosen);
+    m.updateTitle();
 
     const double now = m.app.getTime();
     if (now - m.secondStart >= 1.0) {
@@ -214,8 +257,130 @@ void MainWindow::idle() {
     }
 }
 
-bool MainWindow::closed() const {
-    return impl->quit || impl->window.closedByUser || impl->canvas->panels().quitRequested;
+bool MainWindow::closed() const { return impl->quit; }
+
+// --- File -------------------------------------------------------------------------------
+
+void MainWindow::Impl::fileAction(FileAction action) {
+    // One at a time: a dialog or a question already up waits for its answer.
+    if (dialog.running() || canvas->panels().prompt) return;
+    if (action == FileAction::Save) return save(FileAction::None);
+    if (action == FileAction::SaveAs) return saveAs(FileAction::None);
+    if (!controller.modified()) return proceed(action);
+    afterSave = action;
+    asking    = Asking::SaveChanges;
+    ask("Save changes to \"" + controller.view().sessionName + "\" first?", {"Save", "Don't save", "Cancel"});
+}
+
+void MainWindow::Impl::proceed(FileAction action) {
+    afterSave = FileAction::None;
+    switch (action) {
+        case FileAction::New:
+            grids.clear();   // their clips go with the session
+            controller.newSession();
+            break;
+        case FileAction::Open: {
+            std::string problem;
+            if (dialog.start(FileDialog::Mode::OpenFolder, "Open a session (a .umpire folder)", startFolder(), "", problem))
+                dialogFor = FileAction::Open;
+            else
+                tell("Can't show a file dialog: " + problem + ".");
+            break;
+        }
+        case FileAction::Quit: quit = true; break;
+        default: break;
+    }
+}
+
+void MainWindow::Impl::save(FileAction then) {
+    if (controller.path().empty()) return saveAs(then);
+    saveTo(controller.path(), then);
+}
+
+void MainWindow::Impl::saveAs(FileAction then) {
+    std::string problem;
+    const std::string name = controller.view().sessionName + kSessionExtension;
+    if (!dialog.start(FileDialog::Mode::Save, "Save the session as", startFolder(), name, problem))
+        return tell("Can't show a file dialog: " + problem + ".");
+    dialogFor = FileAction::SaveAs;
+    afterSave = then;
+}
+
+void MainWindow::Impl::saveTo(const std::string& bundle, FileAction then) {
+    const SessionFileResult result = controller.save(bundle);
+    if (!result.ok) {
+        afterSave = FileAction::None;
+        return tell("Couldn't save " + bundle + ": " + result.error);
+    }
+    lastFolder = std::filesystem::path(bundle).parent_path().string();
+    if (then != FileAction::None) proceed(then);
+}
+
+void MainWindow::Impl::chose(const std::string& path) {
+    const FileAction what = std::exchange(dialogFor, FileAction::None);
+    if (path.empty()) {   // cancelled: whatever was waiting on it is too
+        afterSave = FileAction::None;
+        return;
+    }
+    if (what == FileAction::Open) {
+        const std::string bundle = sessionBundleOf(path);
+        if (bundle.empty()) return tell(path + " isn't an Umpire session (a .umpire folder holding session.json).");
+        const SessionFileResult result = controller.open(bundle);
+        if (!result.ok) return tell("Couldn't open " + bundle + ": " + result.error);
+        grids.clear();
+        lastFolder = std::filesystem::path(bundle).parent_path().string();
+        return;
+    }
+    // Save As: the bundle, checked before anything is replaced.
+    const std::string bundle = saveAsPath(path);
+    switch (classifySaveTarget(bundle, controller.path())) {
+        case SaveTarget::New:
+        case SaveTarget::Current: return saveTo(bundle, afterSave);
+        case SaveTarget::OtherSession:
+            replacing = bundle;
+            asking    = Asking::Replace;
+            return ask("There's already a session called \"" + sessionNameOf(bundle) + "\" there. Replace it?",
+                       {"Replace", "Cancel"});
+        case SaveTarget::NotASession:
+            afterSave = FileAction::None;
+            return tell(bundle + " is already there and isn't an Umpire session, so it won't be replaced.");
+    }
+}
+
+void MainWindow::Impl::answered(int button) {
+    const Asking was = std::exchange(asking, Asking::Nothing);
+    if (was == Asking::SaveChanges) {
+        if (button == 0) save(afterSave);
+        else if (button == 1) proceed(afterSave);
+        else afterSave = FileAction::None;
+    } else if (was == Asking::Replace) {
+        if (button == 0) saveTo(replacing, afterSave);
+        else afterSave = FileAction::None;
+    }
+}
+
+void MainWindow::Impl::ask(std::string text, std::vector<std::string> buttons) {
+    if (buttons.size() == 1 && asking == Asking::Nothing) asking = Asking::Told;
+    canvas->panels().prompt = TrackPanels::Prompt{std::move(text), std::move(buttons)};
+    canvas->panels().wake();
+}
+
+// Where the dialogs start: beside the session, else where the last one was
+// chosen, else home.
+std::string MainWindow::Impl::startFolder() const {
+    if (!controller.path().empty()) return std::filesystem::path(controller.path()).parent_path().string();
+    if (!lastFolder.empty()) return lastFolder;
+    const char* home = std::getenv("HOME");
+    return home != nullptr ? home : ".";
+}
+
+// "Song • — Umpire" while there's something unsaved.
+void MainWindow::Impl::updateTitle() {
+    const TrackViewModel& view  = controller.view();
+    const std::string     title = view.sessionName + (view.modified ? " \u2022" : "") + " \u2014 Umpire";
+    if (title == shownTitle) return;
+    shownTitle = title;
+    window.setTitle(title.c_str());
 }
 
 int MainWindow::selfTest(const std::string& dir) {

@@ -277,6 +277,8 @@ void TrackController::rebuild() {
     for (const Instruments::Choice& c : engine.instruments().choices()) next.outputs.push_back(OutputChoice{c.label, c.id, false});
     next.undoLabel    = history.undoLabel();
     next.redoLabel    = history.redoLabel();
+    next.sessionName  = sessionPath.empty() ? "Untitled" : sessionNameOf(sessionPath);
+    next.modified     = modified();
     next.midiBackend  = inputs.backendName();
     next.midiDropped  = inputs.dropped();
     next.monitor.assign(monitor.begin(), monitor.end());
@@ -485,6 +487,65 @@ void TrackController::openEditor(TrackId id) {
 void TrackController::closeEditor(TrackId id) {
     player.closeEditor(id);
     rebuild();
+}
+
+// --- files ----------------------------------------------------------------------------
+
+SessionFileResult TrackController::save(const std::string& bundlePath) {
+    SavedSession saved;
+    saved.session  = doc;
+    saved.counters = SessionCounters{nextId, nextNumber, nextRef, nextClip};
+    for (const Output& o : doc.outputs) {
+        if (!Instruments::isPluginOutput(o.device)) continue;
+        PluginState state;
+        if (player.pluginState(o.track, state) && state.device == o.device) saved.pluginStates[o.track] = std::move(state);
+    }
+    SessionFileResult result = saveSession(bundlePath, saved);
+    if (result.ok) {
+        sessionPath = bundlePath;
+        savedState  = history.state();
+        rebuild();
+    }
+    return result;
+}
+
+SessionFileResult TrackController::open(const std::string& bundlePath) {
+    SavedSession      saved;
+    SessionFileResult result = loadSession(bundlePath, saved);
+    if (!result.ok) return result;
+    replace(std::move(saved));
+    sessionPath = bundlePath;
+    rebuild();
+    return result;
+}
+
+void TrackController::newSession() {
+    replace(SavedSession{});
+    sessionPath.clear();
+    rebuild();
+}
+
+// The session, the counters and the plugins' states swapped for `saved`'s:
+// the transport stopped and at the start, every output reopened (its plugin
+// with its saved state), and nothing to undo.
+void TrackController::replace(SavedSession saved) {
+    takes.clear();   // what was recording goes with the session it was in
+    transportState.stop(now());
+    player.stopped(transportState, now());
+    player.closeAll(now());
+    player.restore(std::move(saved.pluginStates));
+    transportState.locate(0, now());
+    doc        = std::move(saved.session);
+    nextId     = saved.counters.nextTrack;
+    nextNumber = saved.counters.nextNumber;
+    nextRef    = saved.counters.nextRef;
+    nextClip   = saved.counters.nextClip;
+    history    = History{};
+    savedState = history.state();
+    selectedId  = doc.tracks.empty() ? 0 : doc.tracks.front().id;
+    selectedRef = 0;
+    clipNotes.clear();
+    lastActivity.clear();
 }
 
 } // namespace umpire

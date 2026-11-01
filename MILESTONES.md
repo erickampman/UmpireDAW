@@ -40,7 +40,11 @@ timeline. Linux first (decisions.md, "Scope").
    sample-accurate timing, offline-capable engine -- built and self-tested
    on the Mac 2026-10-30; built and tested on Linux (Umpire's and uw-core's
    tests) and heard with PlainOldSynth 2026-11-01
-9. [ ] Files: MIDI Clip Files (M2-116-U), session JSON, open/save dialogs
+9. [x] Files (docs/files.md): MIDI Clip Files (M2-116-U), session JSON,
+   open/save dialogs; a session is a `.umpire` folder, plugin states
+   included -- built and tested on Linux 2026-11-01; checking the menu, the
+   prompt and a reopened session by ear, and the Mac build (whose dialogs
+   don't work yet), are the author's
 10. [ ] Clip editor (piano roll): select, move, resize, delete, velocity,
     undo; Pitch 7.9 on EDO grid
 11. [x] Plugin editor windows (uw-core, then Umpire; docs/plugin-editors.md):
@@ -89,7 +93,8 @@ tempo map to line up with them.
 
 - T1. [ ] The tempo map: tempo changes (sudden or ramped) and meters at
   ticks, used by the scheduler, recording, loop and locate, the ruler and
-  the render; before or with milestone 9, so the session file stores it
+  the render; the session file already stores tempos and meters as lists
+  (docs/files.md), so it needs no format change
 - S1. [ ] Stem export, after milestone 14: one render pass tapping every
   track, a WAV per track (same length, from zero, `bext` time stamps), the
   tempo map as a tempo-only Standard MIDI File, a REAPER `.RPP`, a

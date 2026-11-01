@@ -12,7 +12,9 @@
 // track: a MIDI device (milestone 7) or a CLAP instrument (milestone 8,
 // App/Instruments.h), named by the same opaque id either way.
 
+#include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -42,6 +44,17 @@ struct Output {
     std::string device;
 
     bool operator==(const Output&) const = default;
+};
+
+// A plugin output's state (its CLAP state extension, opaque), as a saved
+// session keeps it (milestone 9, docs/files.md): for the track's plugin, while
+// its output is still `device`. Beside the session, not in it: the plugin
+// owns it, and undo doesn't cover it.
+struct PluginState {
+    std::string            device;
+    std::vector<std::byte> data;
+
+    bool operator==(const PluginState&) const = default;
 };
 
 struct Session {

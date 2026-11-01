@@ -35,6 +35,7 @@
 // (a plugin editor has no event loop of its own), and openEditor() opens an
 // EditorWindow (uw-core's, moved from StageHand) for it, on that same loop.
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -85,10 +86,14 @@ public:
 
     // A new instance of the plugin `outputId` names (Instruments::outputId),
     // or kInvalidVoice if it isn't a known plugin, or it won't load or
-    // activate.
-    VoiceHandle open(const std::string& outputId);
+    // activate. `state`, given, is what saveState() gave for it (a saved
+    // session's, milestone 9), restored before it's activated.
+    VoiceHandle open(const std::string& outputId, const std::vector<std::byte>* state = nullptr);
     void        close(VoiceHandle voice);
     bool        connected(VoiceHandle voice) const;
+    // The plugin's state, as it is now (its CLAP state extension), into
+    // `out`: false if the voice is unknown or the plugin wouldn't say.
+    bool        saveState(VoiceHandle voice, std::vector<std::byte>& out) const;
 
     // Mirrors MidiOutputs' shape, so Player can treat a voice like a MIDI
     // stream (App/Player.cpp): a voice's queue holds what's sent to its

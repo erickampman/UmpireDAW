@@ -95,6 +95,11 @@ struct TrackViewModel {
 
     std::string undoLabel, redoLabel;   // "" when there's nothing to undo or redo
 
+    // The session's file (milestone 9): its name, "Untitled" before it's
+    // saved, and whether anything changed since it was last saved or opened.
+    std::string sessionName = "Untitled";
+    bool        modified    = false;
+
     std::string   midiBackend;   // "ALSA sequencer", "CoreMIDI", "no MIDI"
     std::uint64_t midiDropped = 0;
 

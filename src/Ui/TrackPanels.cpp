@@ -21,12 +21,20 @@ TrackPanels::Rect lastItem() {
 }
 
 #ifdef __APPLE__
+constexpr const char* kNewKey    = "Cmd+N";
+constexpr const char* kOpenKey   = "Cmd+O";
+constexpr const char* kSaveKey   = "Cmd+S";
+constexpr const char* kSaveAsKey = "Cmd+Shift+S";
 constexpr const char* kQuitKey = "Cmd+Q";
 constexpr const char* kAddKey  = "Cmd+T";
 constexpr const char* kUndoKey = "Cmd+Z";
 constexpr const char* kRedoKey = "Cmd+Shift+Z";
 constexpr const char* kRecKey  = "Cmd+R";
 #else
+constexpr const char* kNewKey    = "Ctrl+N";
+constexpr const char* kOpenKey   = "Ctrl+O";
+constexpr const char* kSaveKey   = "Ctrl+S";
+constexpr const char* kSaveAsKey = "Ctrl+Shift+S";
 constexpr const char* kQuitKey = "Ctrl+Q";
 constexpr const char* kAddKey  = "Ctrl+T";
 constexpr const char* kUndoKey = "Ctrl+Z";
@@ -62,6 +70,36 @@ void TrackPanels::onImGuiDisplay() {
     status();
     if (showMonitor) monitor();
     if (showDemo) ImGui::ShowDemoWindow(&showDemo);
+    promptPopup();
+}
+
+// MainWindow's question, as a modal: Enter takes the first button, Escape the
+// last when there's a choice.
+void TrackPanels::promptPopup() {
+    constexpr const char* kId = "##prompt";
+    if (!prompt) return;
+    if (!ImGui::IsPopupOpen(kId)) ImGui::OpenPopup(kId);
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal(kId, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar |
+                                                  ImGuiWindowFlags_NoMove)) return;
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28);
+    ImGui::TextUnformatted(prompt->text.c_str());
+    ImGui::PopTextWrapPos();
+    ImGui::Spacing();
+    const std::size_t count  = prompt->buttons.size();
+    int               chosen = -1;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (i > 0) ImGui::SameLine();
+        if (ImGui::Button(prompt->buttons[i].c_str(), ImVec2(ImGui::GetFontSize() * 6, 0))) chosen = static_cast<int>(i);
+    }
+    if (chosen < 0 && (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))) chosen = 0;
+    if (chosen < 0 && ImGui::IsKeyPressed(ImGuiKey_Escape)) chosen = static_cast<int>(count) - 1;
+    if (chosen >= 0) {
+        promptAnswer = chosen;
+        prompt.reset();
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
 }
 
 void TrackPanels::menuBar() {
@@ -72,7 +110,12 @@ void TrackPanels::menuBar() {
         return Rect{p.x, 0, p.x + w, ImGui::GetFrameHeight()};
     };
     if (ImGui::BeginMenu("File")) {
-        if (ImGui::MenuItem("Quit", kQuitKey)) quitRequested = true;
+        if (ImGui::MenuItem("New", kNewKey)) fileRequested = FileAction::New;
+        if (ImGui::MenuItem("Open...", kOpenKey)) fileRequested = FileAction::Open;
+        if (ImGui::MenuItem("Save", kSaveKey)) fileRequested = FileAction::Save;
+        if (ImGui::MenuItem("Save As...", kSaveAsKey)) fileRequested = FileAction::SaveAs;
+        ImGui::Separator();
+        if (ImGui::MenuItem("Quit", kQuitKey)) fileRequested = FileAction::Quit;
         ImGui::EndMenu();
     }
     const TrackViewModel& view = controller.view();

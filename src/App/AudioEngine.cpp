@@ -144,7 +144,7 @@ void AudioEngine::stop() {
         if (voice->activated) voice->plugin->stopProcessing();
 }
 
-VoiceHandle AudioEngine::open(const std::string& outputId) {
+VoiceHandle AudioEngine::open(const std::string& outputId, const std::vector<std::byte>* state) {
     const uw::PluginDescriptor* desc = instrumentList.find(outputId);
     if (desc == nullptr) return kInvalidVoice;
 
@@ -153,6 +153,10 @@ VoiceHandle AudioEngine::open(const std::string& outputId) {
     voice->host     = std::make_unique<VoiceHost>(desc->name, mainLoop);
     voice->plugin   = factory.create(*desc, *voice->host);
     if (!voice->plugin) return kInvalidVoice;
+    // Before activate(), as HostedPlugin asks. A state it refuses leaves it
+    // at its defaults, which is what it would have had anyway.
+    if (state != nullptr && !state->empty() && !voice->plugin->loadState(state->data(), state->size()))
+        std::fprintf(stderr, "%s: couldn't restore its saved state\n", desc->name.c_str());
 
     activate(*voice, started ? liveSampleRate : 48000.0);
     if (!voice->activated) return kInvalidVoice;
@@ -180,6 +184,13 @@ void AudioEngine::close(VoiceHandle handle) {
         v.plugin->deactivate();
     }
     voices.erase(it);
+}
+
+bool AudioEngine::saveState(VoiceHandle handle, std::vector<std::byte>& out) const {
+    const auto it = voices.find(handle);
+    if (it == voices.end() || !it->second->plugin) return false;
+    out.clear();
+    return it->second->plugin->saveState(out);
 }
 
 bool AudioEngine::connected(VoiceHandle handle) const {
