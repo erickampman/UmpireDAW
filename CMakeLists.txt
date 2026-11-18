@@ -16,6 +16,10 @@ endif()
 
 find_package(Threads REQUIRED)
 
+# The plugin (src/Plugin, milestone P1) links umpire-clip and uw-core into a
+# shared module, so everything is position-independent.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # --- uw-core (git submodule, external/uw-core): the code Umpire shares with StageHand.
 # Its backends: MIDI input since milestone 5 (ALSA sequencer UMP on Linux,
 # CoreMIDI on macOS); audio (JACK, CoreAudio) is built with them, used from 8.
@@ -72,22 +76,30 @@ endif()
 add_library(umpire-warnings INTERFACE)
 target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 
+# --- umpire-clip: the clip model and MIDI Clip Files, which need only uw::ump.
+# Shared by the app and the plugin (docs/plugin-version.md, "What carries over").
+add_library(umpire-clip STATIC
+    src/App/Clip.cpp
+    src/App/ClipFile.cpp
+    src/App/Scale.cpp)
+target_include_directories(umpire-clip PUBLIC src)
+target_link_libraries(umpire-clip PUBLIC uw::ump PRIVATE umpire-warnings)
+# Hidden, as uw-core's: linked into the plugin, it mustn't bind to another plugin's copy.
+set_target_properties(umpire-clip PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+
 # --- umpire-app: the tracks, their controller and view models, MIDI input, and
 # the main loop. No DGL or ImGui: their headers aren't on its include path
 # (decisions.md: only the drawing layer sees the toolkit). It sees uw-core's
 # MidiInput seam, not a platform's: main.cpp makes that.
 add_library(umpire-app STATIC
     src/App/AudioEngine.cpp
-    src/App/Clip.cpp
     src/App/ClipEdit.cpp
-    src/App/ClipFile.cpp
     src/App/GridModel.cpp
     src/App/Instruments.cpp
     src/App/MidiDescribe.cpp
     src/App/MidiInputs.cpp
     src/App/MidiOutputs.cpp
     src/App/Player.cpp
-    src/App/Scale.cpp
     src/App/SessionFile.cpp
     src/App/TrackController.cpp)
 if(APPLE)
@@ -100,7 +112,7 @@ endif()
 target_include_directories(umpire-app PUBLIC src)
 # nlohmann/json 3.11.3, vendored (external/nlohmann/README.md): session.json only.
 target_include_directories(umpire-app SYSTEM PRIVATE external)
-target_link_libraries(umpire-app PUBLIC uw::base uw::plugin uw::clap-host uw::editor-window uw::audio PRIVATE umpire-warnings)
+target_link_libraries(umpire-app PUBLIC umpire-clip uw::base uw::plugin uw::clap-host uw::editor-window uw::audio PRIVATE umpire-warnings)
 
 # --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library sees the toolkit.
 add_library(umpire-ui STATIC
@@ -204,6 +216,99 @@ if(APPLE)
          PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 endif()
 
+# --- Umpire as a plugin: the spike (milestone P1, docs/plugin-version.md) ---------
+# A CLAP instrument with its own entry point, as Retune's (~/Dev-MIDI/Retune):
+# it opens its own MIDI input and hosts a CLAP synth through uw-core, so the
+# notes never pass through the host. No DPF: it has no editor of its own (the
+# synth's is embedded). clap-wrapper (Unlikelyware's fork, `unlikelyware`, as
+# Retune pins it) makes the VST3, for Ardour.
+option(UMPIRE_BUILD_PLUGIN "Build Umpire.clap (the P1 spike)" ON)
+option(UMPIRE_BUILD_VST3 "Build Umpire.vst3 via clap-wrapper" ON)
+
+if(UMPIRE_BUILD_PLUGIN)
+    # The engine and the setup, without CLAP: the tests drive them directly.
+    add_library(umpire-plugin-core STATIC src/Plugin/SpikeEngine.cpp src/Plugin/PluginSetup.cpp)
+    target_link_libraries(umpire-plugin-core PUBLIC umpire-clip uw::plugin PRIVATE umpire-warnings)
+    set_target_properties(umpire-plugin-core PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+
+    # The plugin's own sources, compiled into each binary: the .clap and the .vst3.
+    function(umpire_add_plugin_sources TARGET_NAME)
+        target_sources(${TARGET_NAME} PRIVATE src/Plugin/UmpirePlugin.cpp)
+        target_link_libraries(${TARGET_NAME} PRIVATE umpire-plugin-core uw::clap-host uw::midi umpire-warnings)
+        target_compile_definitions(${TARGET_NAME} PRIVATE UMPIRE_VERSION_STRING="${PROJECT_VERSION}")
+        set_target_properties(${TARGET_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+    endfunction()
+
+    add_library(umpire-clap MODULE)
+    umpire_add_plugin_sources(umpire-clap)
+    # clap_entry is the only export: another plugin's uw-core in the same host can't bind to ours.
+    if(APPLE)
+        target_link_options(umpire-clap PRIVATE "LINKER:-exported_symbol,_clap_entry")
+        set_target_properties(umpire-clap PROPERTIES
+            OUTPUT_NAME                        Umpire
+            BUNDLE                             TRUE
+            BUNDLE_EXTENSION                   clap
+            MACOSX_BUNDLE_INFO_PLIST           "${CMAKE_SOURCE_DIR}/cmake/clap-Info.plist.in"
+            MACOSX_BUNDLE_GUI_IDENTIFIER       com.unlikelyware.umpire.clap
+            MACOSX_BUNDLE_BUNDLE_NAME          Umpire
+            MACOSX_BUNDLE_BUNDLE_VERSION       "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+        set(UMPIRE_CLAP_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/CLAP")
+        set(UMPIRE_CLAP_ARTIFACT "$<TARGET_BUNDLE_DIR:umpire-clap>")
+    else()
+        file(WRITE "${CMAKE_BINARY_DIR}/clap-exports.map" "{ global: clap_entry; local: *; };\n")
+        target_link_options(umpire-clap PRIVATE "LINKER:--version-script=${CMAKE_BINARY_DIR}/clap-exports.map")
+        set_target_properties(umpire-clap PROPERTIES OUTPUT_NAME Umpire PREFIX "" SUFFIX ".clap")
+        set(UMPIRE_CLAP_DIR "$ENV{HOME}/.clap")
+        set(UMPIRE_CLAP_ARTIFACT "$<TARGET_FILE:umpire-clap>")
+    endif()
+    # A separate target, as Retune's, so a build never writes outside the build tree.
+    add_custom_target(install-clap
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${UMPIRE_CLAP_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${UMPIRE_CLAP_DIR}/Umpire.clap"
+        COMMAND ${CMAKE_COMMAND} -E create_symlink "${UMPIRE_CLAP_ARTIFACT}" "${UMPIRE_CLAP_DIR}/Umpire.clap"
+        DEPENDS umpire-clap
+        VERBATIM
+        COMMENT "Symlinking Umpire.clap into ${UMPIRE_CLAP_DIR}")
+
+    if(UMPIRE_BUILD_VST3)
+        if(APPLE)
+            enable_language(OBJC)   # the wrapper's Objective-C sources
+        endif()
+        set(CLAP_SDK_ROOT "${CMAKE_SOURCE_DIR}/external/uw-core/external/clap" CACHE PATH "" FORCE)
+        set(VST3_SDK_ROOT "${CMAKE_SOURCE_DIR}/external/vst3sdk" CACHE PATH "" FORCE)
+        if(UNIX AND NOT APPLE)
+            set(TCLP_RESOURCE_DIRECTORY "")   # clap-wrapper's Linux branch tests a misspelled name (as Retune)
+        endif()
+        add_subdirectory(external/clap-wrapper EXCLUDE_FROM_ALL)
+        add_library(umpire-vst3 MODULE)
+        umpire_add_plugin_sources(umpire-vst3)
+        target_add_vst3_wrapper(
+            TARGET            umpire-vst3
+            OUTPUT_NAME       "Umpire"
+            BUNDLE_IDENTIFIER "com.unlikelyware.umpire.vst3"
+            BUNDLE_VERSION    "${PROJECT_VERSION}")
+        if(TARGET base-sdk-vst3)
+            target_compile_options(base-sdk-vst3 PRIVATE -Wno-deprecated-declarations)   # std::wstring_convert
+        endif()
+        if(APPLE)
+            set(UMPIRE_VST3_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3")
+            set(UMPIRE_VST3_ARTIFACT "$<TARGET_BUNDLE_DIR:umpire-vst3>")
+        else()
+            set(UMPIRE_VST3_DIR "$ENV{HOME}/.vst3")
+            # The bundle folder, which clap-wrapper puts in Debug/ or Release/ (as Retune).
+            set(UMPIRE_VST3_ARTIFACT "${CMAKE_BINARY_DIR}/$<IF:$<CONFIG:Debug>,Debug,Release>/Umpire.vst3")
+        endif()
+        add_custom_target(install-vst3
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${UMPIRE_VST3_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "${UMPIRE_VST3_DIR}/Umpire.vst3"
+            COMMAND ${CMAKE_COMMAND} -E create_symlink "${UMPIRE_VST3_ARTIFACT}" "${UMPIRE_VST3_DIR}/Umpire.vst3"
+            DEPENDS umpire-vst3
+            VERBATIM
+            COMMENT "Symlinking Umpire.vst3 into ${UMPIRE_VST3_DIR}")
+    endif()
+endif()
+
 # --- Tests (silent; one executable per suite) ---------------------------------
 # The window's own check, `umpire-daw --self-test DIR`, opens a window, so it
 # isn't one of these (docs/skeleton.md).
@@ -220,3 +325,30 @@ umpire_add_test(test-playback         tests/PlaybackTests.cpp)
 umpire_add_test(test-audio-engine     tests/AudioEngineTests.cpp)
 umpire_add_test(test-files           tests/FileTests.cpp)
 umpire_add_test(test-clip-edit       tests/ClipEditTests.cpp)
+
+if(UMPIRE_BUILD_PLUGIN)
+    add_executable(test-plugin-engine tests/PluginEngineTests.cpp)
+    target_link_libraries(test-plugin-engine PRIVATE umpire-plugin-core umpire-warnings)
+    add_test(NAME test-plugin-engine COMMAND test-plugin-engine)
+
+    # The built .clap, loaded through uw-core's CLAP host as a host would: no
+    # synth and no MIDI input (its setup file says none), so silent.
+    add_executable(test-plugin-clap tests/PluginClapTests.cpp)
+    target_link_libraries(test-plugin-clap PRIVATE umpire-plugin-core uw::clap-host umpire-warnings)
+    add_dependencies(test-plugin-clap umpire-clap)
+    add_test(NAME test-plugin-clap COMMAND test-plugin-clap "${UMPIRE_CLAP_ARTIFACT}")
+    file(WRITE "${CMAKE_BINARY_DIR}/test-plugin.conf" "input = none\nsynth = none\n")
+    set_tests_properties(test-plugin-clap PROPERTIES ENVIRONMENT
+        "UMPIRE_PLUGIN_CONF=${CMAKE_BINARY_DIR}/test-plugin.conf;UMPIRE_PLUGIN_LOG=none")
+endif()
+if(UMPIRE_BUILD_PLUGIN)
+    # The built .clap hosting PlainOldSynth, rendering into buffers only, so
+    # silent; skipped (77) where PlainOldSynth isn't installed.
+    add_executable(test-plugin-render tests/PluginRenderTests.cpp)
+    target_link_libraries(test-plugin-render PRIVATE umpire-plugin-core uw::clap-host umpire-warnings)
+    add_dependencies(test-plugin-render umpire-clap)
+    add_test(NAME test-plugin-render COMMAND test-plugin-render "${UMPIRE_CLAP_ARTIFACT}")
+    file(WRITE "${CMAKE_BINARY_DIR}/test-plugin-render.conf" "input = none\nsynth = PlainOldSynth\n")
+    set_tests_properties(test-plugin-render PROPERTIES SKIP_RETURN_CODE 77 ENVIRONMENT
+        "UMPIRE_PLUGIN_CONF=${CMAKE_BINARY_DIR}/test-plugin-render.conf;UMPIRE_PLUGIN_LOG=none")
+endif()

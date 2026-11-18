@@ -1,6 +1,7 @@
 # Building Umpire
 
-How to build `umpire-daw` and run its tests on Linux and macOS. Linux comes
+How to build `umpire-daw`, and the plugin spike (`Umpire.clap`, `Umpire.vst3`;
+milestone P1, docs/plugin-version.md), and run the tests on Linux and macOS. Linux comes
 first (decisions.md, "Platform"); the Mac builds the same app over CoreMIDI.
 There are no CI builds yet, so this page is the reference.
 
@@ -13,6 +14,8 @@ StageHand and KeyboardEDO where noted:
 | `external/uw-core` | the code shared with StageHand: UMP, the clock and queues, the plugin seam and CLAP host, the MIDI and audio backends (namespace `uw`); brings the CLAP SDK as its own submodule | private (`erickampman/uw-core`) |
 | `external/dpf` | the DPF fork, for DGL (windows, NanoVG); pins the pugl fork as its own submodule | private (`erickampman/DPF`, `erickampman/pugl`) |
 | `external/DPF-Widgets` | only for Dear ImGui's sources (1.91.9b) and DPF's patch to them | public (DISTRHO) |
+| `external/clap-wrapper` | the plugin's VST3 build: Unlikelyware's fork, branch `unlikelyware` (v0.16.0 and its AUv2 changes), pinned at `a436757` as in Retune | public (`erickampman/clap-wrapper`) |
+| `external/vst3sdk` | Steinberg's VST3 SDK for clap-wrapper, pinned as in Retune; only its `base`, `cmake`, `pluginterfaces` and `public.sdk` are fetched | public (Steinberg) |
 
 Everything else is a system library. While uw-core, DPF and pugl are
 private, cloning needs access to all three (the same GitHub credentials as
@@ -81,6 +84,22 @@ The same three commands on both platforms. Everything goes in `build/`
 `build/compile_commands.json` is there for clangd. The `ctest` suites are
 silent and need no display, MIDI or audio: they drive the view models and
 the track controller headless, with a fake MIDI input.
+
+The same build makes the plugin spike: `build/Umpire.clap`, and through
+clap-wrapper `build/Umpire.vst3` (on Linux, in `build/Release/`, or
+`build/Debug/`). `-DUMPIRE_BUILD_VST3=OFF` leaves the VST3 out,
+`-DUMPIRE_BUILD_PLUGIN=OFF` both. Its tests (`test-plugin-*`) load the built
+`.clap` and, if PlainOldSynth is installed, host it, rendering into buffers
+only; without PlainOldSynth that one is skipped. To try it in a host, link
+the bundles into the user's plugin folders (`~/Library/Audio/Plug-Ins/CLAP`
+and `VST3` on the Mac, `~/.clap` and `~/.vst3` on Linux):
+
+```bash
+cmake --build build --target install-clap install-vst3
+```
+
+docs/plugin-version.md ("The spike, built") says how it's set up and where
+it logs.
 
 GCC 15 warns about `<cstdbool>` in pugl's headers; the build quiets that for
 DGL only. Umpire's own code builds with `-Wall -Wextra -Wpedantic` and

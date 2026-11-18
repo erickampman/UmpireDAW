@@ -119,7 +119,12 @@ R1 to R6.
 - P1. [ ] The spike: one input, one hosted synth, one clip recorded with
   the host and played back from its position, saved in the state; checked
   in REAPER and Bitwig, and in Ardour (open source) through the VST3 build,
-  on the Mac and Linux
+  on the Mac and Linux. *Built 2026-11-18 on the Mac (`Umpire.clap`,
+  `Umpire.vst3`; plugin-version.md, "The spike, built"). Checked headless:
+  the tests, clap-validator, Steinberg's VST3 validator, and renders through
+  PlainOldSynth (per-note pitch whole, onsets on the beat at two tempos,
+  offline = real time, state, two instances). Left: the checks in REAPER,
+  Bitwig and Ardour, by hand (the author's), and the Linux build.*
 - P2. [ ] Recording and playback on the clip model, driven by the host's
   position; the chase on jumps; latency reported
 - P3. [ ] The editor: a lane in time with the host, and the grid

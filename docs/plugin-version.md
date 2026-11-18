@@ -1,6 +1,8 @@
 # Umpire as a plugin
 
-**A proposal, 2026-11-18, on the Mac; not yet decided.** What's left of the
+**A proposal, 2026-11-18, on the Mac; not yet decided.** The spike (P1)
+is built and checked headless on the Mac. Its checks in hosts, which
+decide this, are the author's ("The spike, built", below). What's left of the
 standalone plan (milestones 12 to 18, the tempo map and stem export, plugin
 routing) is most of a DAW, and the author has to build it alone. This
 proposes a smaller route to the same goal: put Umpire inside a host that
@@ -213,6 +215,157 @@ Findings go here. If any of 1 to 5 fails in REAPER and Bitwig without a
 workaround, the standalone plan goes on as it was. If only Ardour fails,
 the plugin can still go ahead, with the open-source question left open
 (Qtractor, Carla, Zrythm next).
+
+## The spike, built (P1, 2026-11-18, on the Mac)
+
+Built and checked headless on the Mac. The checks in hosts are still to do,
+and they're the author's, since they're listened to. Not built on Linux
+yet.
+
+### What's built
+
+- **`src/Plugin/`**: `UmpirePlugin.cpp` is the CLAP entry point and the glue;
+  `SpikeEngine` is what runs in `process()`, with no CLAP in it, so the
+  tests drive it directly; `PluginSetup` holds the setup file, the choice of
+  input, and the state's format. The clip model and MIDI Clip Files come
+  from `src/App` through a new library, `umpire-clip` (`Clip`, `ClipFile`,
+  `Scale`), which `umpire-app` now links too.
+- **Targets**: `umpire-clap` makes `build/Umpire.clap` (CLAP id
+  `com.unlikelyware.umpire`, an instrument), and `umpire-vst3` makes
+  `build/Umpire.vst3` through clap-wrapper. Both are built as Retune builds
+  them: the CLAP entry point is ours, `clap_entry` is the only export, and
+  uw-core is linked in with hidden symbols. New submodules
+  `external/clap-wrapper` (the fork, `unlikelyware`, at `a436757`) and
+  `external/vst3sdk` are pinned as in Retune. The CLAP SDK is uw-core's. No
+  AUv2 yet. `install-clap` and `install-vst3` link the bundles into the
+  user's plugin folders (BUILDING.md).
+- **No editor of its own.** The plugin's editor is the hosted synth's,
+  embedded in the host's plugin window: the CLAP gui calls go on to
+  `uw::HostedPlugin::openEditor`. So the host's own "show plugin" button
+  opens PlainOldSynth's editor, which is check 5. There's no record light;
+  the log stands in for one.
+- **The setup file** says what to open, since there's no editor to choose
+  it in. It lives at `~/Library/Application Support/Umpire/plugin.conf` on
+  the Mac, `~/.config/umpire/plugin.conf` on Linux, or wherever
+  `UMPIRE_PLUGIN_CONF` points:
+  ```
+  input = KeyboardEDO      # part of a source's name or id; "none"; left out, it chooses
+  synth = PlainOldSynth    # a .clap's name in CLAP's folders, or a path; "none"
+  ```
+  Left out, the input is KeyboardEDO's if there is one, else the first MIDI
+  2.0 source, else the first hardware one. With nothing found it tries again
+  every 2 s, and it follows a device that goes and comes back (uw-core's
+  `sync()`).
+- **The log**: `~/Library/Logs/Umpire/plugin.log` on the Mac,
+  `~/.local/state/umpire/plugin.log` on Linux, or wherever
+  `UMPIRE_PLUGIN_LOG` points ("none" turns it off). One line per event, each
+  with its instance number. It logs the host and what it offers
+  (timer-support, posix-fd-support, gui); the synth and the input opened;
+  activation, and whether the synth takes MIDI 2.0; "recording" and
+  "recording stopped"; each take (notes, length); saves and loads; render
+  mode; the editor opening and closing; and every 10 s a heartbeat, with
+  the host timer ticks, the main-thread callbacks and the synth's own timer
+  ticks since the last one, whether the editor is open, and the live
+  input's timing (capture to block: mean, smallest, largest, and how many
+  arrived more than a block late). `tail -f` it while checking.
+
+### How it behaves
+
+- **Input**: uw-core's `CoreMidiInput` / `AlsaSeqInput`, a client named
+  "Umpire" for each instance. Messages go to the audio thread through a
+  `SpscQueue`. Each is placed at a sample offset from its capture time: the
+  block is taken to cover the block's length of time just before
+  `process()` was called. So the delay is about one block and steady, and
+  the jitter is the host's callback jitter, not a whole block. MIDI 1.0 is
+  upconverted first, as in the app. The host's MIDI isn't used: the plugin
+  has no note ports.
+- **The synth** runs in the same `process()`, events at their offsets, in
+  MIDI 2.0 if its note port supports it (PlainOldSynth's does; the log says),
+  otherwise downconverted. Its transport is the host's.
+- **Recording** follows `CLAP_TRANSPORT_IS_RECORDING` (not during pre-roll).
+  Ticks come from `song_pos_beats` at the block's start plus the offset at
+  the block's tempo. A take replaces the clip; the spike keeps one. The clip
+  starts at the song's beat 0, so its ticks are the song's. Notes still held
+  when recording stops end there. While recording, the clip doesn't play.
+  An offline render never records.
+- **Playback**: each block plays the clip's events from the host's position
+  to the block's end. A jump is more than half a block away from where the
+  last block ended: a locate, a loop wrap, or a new clip. On a jump the
+  notes sounding end and Pitch 7.25 is chased, as playback.md does; on stop
+  the notes end.
+- **State**: `"UMPP"`, a version, the clip as a MIDI Clip File (M2-116-U,
+  `src/App/ClipFile.h`), then the synth's id and its own state. The synth's
+  state is loaded only if the id matches.
+- **Host services**: the synth's `timer-support` and `posix-fd-support`
+  requests (through `uw::HostServices`) go on to the host's own; the
+  host's `on_timer` and `on_fd` come back to the synth. The plugin also
+  registers a 50 ms timer of its own (the heartbeat counts it), and asks
+  for a main-thread callback every 50 ms of audio from `process()`. That way
+  the synth's main-thread work and finished takes are seen to even on a
+  host without timer-support. Instances share one `ClapPluginFactory`, so
+  two instances load PlainOldSynth's module once, and the first to close
+  doesn't deinit it under the second.
+- **Render**: the `render` extension's offline mode drops live input; the
+  rest runs as in real time.
+
+### The checks: what's checked here, what's left
+
+Checked headless on the Mac (silent: buffers only, nothing reaches an audio
+device):
+
+- **Builds**: `Umpire.clap`, `Umpire.vst3` and `umpire-daw`, no warnings in
+  our code. `ninja -C build && ctest --test-dir build --output-on-failure`:
+  10 of 10 pass. The new suites are `test-plugin-engine` (the engine with a
+  fake synth), `test-plugin-clap` (the built `.clap` through uw-core's CLAP
+  host, no synth) and `test-plugin-render` (the built `.clap` hosting the
+  installed PlainOldSynth over the CLAP C API; skipped without it).
+- **clap-validator 0.4.1**: 20 passed, 0 failed, 24 skipped (those need
+  params or note ports, which the plugin doesn't have), both with no synth
+  and hosting PlainOldSynth.
+- **Steinberg's VST3 validator** (built from `external/vst3sdk` into a
+  scratch folder, not part of the build) on `Umpire.vst3` hosting
+  PlainOldSynth: 47 passed, 0 failed.
+
+| Check | Checked here | Left for the author, by hand |
+|---|---|---|
+| 1. Per-note pitch whole; delay and jitter | Rendered through PlainOldSynth, pitch measured: a Pitch 7.25 to 64.5 sounds 338.1 Hz (329.6 untuned), a Pitch 7.9 attribute to 67.5 sounds 402.1 Hz (392.0 untuned). All notes read about 0.3% low against 12-TET A440, the plain ones too, so that's constant. Live messages are placed at offsets from their capture times (test). | Play KeyboardEDO into it in REAPER, Bitwig and Ardour; the heartbeat's "live input" line gives delay and jitter. |
+| 2. In time with the grid, through a tempo change | Recording ticks and playback offsets (test); rendered onsets on beat 1 at 120 bpm (frame 24004) and at 90 (32004), 4 frames being the synth's attack. | Record a take and play it back against the host's grid, with a tempo change. |
+| 3. Offline render = real time | Hosting PlainOldSynth, a render with the render extension offline matches real time sample for sample. | Render, freeze or bounce in each host and compare with playback. |
+| 4. Save, close, reopen | The clip goes in through the state and comes back byte for byte; the synth's id and state are saved. | Save, close and reopen a project in each host; the take and the synth's patch come back. |
+| 5. The synth's editor; Bitwig's sandboxing | No window here. | Open the plugin's window (PlainOldSynth's editor) in each host; in Bitwig, try each hosting mode and look for "input:" in the log. |
+| 6. Two instances, one input | Two instances host PlainOldSynth at once from one module; when the first closes, the second plays on, the same samples. | Two tracks, each with Umpire, both playing from KeyboardEDO. |
+| 7. Ardour: record button; timers with the editor closed | The VST3 builds and validates. The fork's `kRecording` mapping isn't exercised here. | Record in Ardour (a take shows in the log). Then close the plugin's window and watch the heartbeat: do the timer ticks keep coming? (On Linux; IRunLoop is Linux's.) |
+
+Before trying it in a host: run `install-clap` and `install-vst3`, and
+write the setup file if KeyboardEDO isn't what you want. Then
+`tail -f` the log. **It makes sound** as soon as KeyboardEDO plays into
+it, or the host plays a take.
+
+### Found so far
+
+- **PlainOldSynth keeps Pitch 7.25 only for the sounding note**
+  (PlainOldSynth's `src/Module/PitchBendConverterModule.cpp` says so: "NOT
+  implemented"). A Pitch 7.25 sent before its note-on is dropped, and the
+  next note-on resets it. playback.md assumes "the synths keep it as a
+  tuning table", so for PlainOldSynth the chase on a jump does nothing,
+  though it does no harm. A Pitch 7.25 sent after its note-on, as
+  KeyboardEDO's glide sends it, is recorded and played back in that order,
+  and works. A per-key tuning sent ahead of its notes (a tuning table) would
+  be lost live as well as on playback. To decide: whether that's the synth's
+  to change (the spec makes it persistent) or the chase's to drop.
+- **Latency isn't reported.** `uw::HostedPlugin` has no latency, so the
+  plugin can't pass on the synth's. P2 needs uw-core to expose it.
+- **The transport is read once a block.** A tempo change inside a block (a
+  CLAP transport event in the block's events) isn't followed until the next
+  block. Fine for the spike; P2 could split blocks at them.
+- **Every instance records whenever the host records**, armed or not. CLAP's
+  transport says nothing about arming, so the open question below ("an arm
+  of its own") is real.
+- **Likely in REAPER**: anticipative FX processing renders tracks ahead of
+  time, which would delay live input by up to its lookahead. Arming the
+  track with monitoring on (REAPER then processes it in real time), or
+  turning anticipative processing off for the track, should fix it. To
+  confirm in check 1.
 
 ## If it works
 

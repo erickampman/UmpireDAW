@@ -39,7 +39,8 @@ windows included, edits clips in a grid, and saves and opens sessions; see
    tempo map for other DAWs),
    [docs/plugin-version.md](docs/plugin-version.md) (proposed: Umpire as a
    CLAP instrument in REAPER or Bitwig, opening the MIDI 2.0 input and
-   hosting the synth itself; would replace much of the above),
+   hosting the synth itself; would replace much of the above; its spike,
+   P1, is built in `src/Plugin`, its host checks still to do),
    [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
    you need; read before any UI work).
 

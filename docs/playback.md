@@ -100,6 +100,11 @@ the message until then:
 
 ### Chasing Pitch 7.25
 
+*Found 2026-11-18 (P1, plugin-version.md, "Found so far"): PlainOldSynth
+doesn't keep Pitch 7.25 as a tuning table. It keeps it for the sounding note
+only, and drops one sent before the note-on. So for PlainOldSynth this chase
+does nothing, though it does no harm. What follows is the spec's behaviour.*
+
 The synths keep each key's Pitch 7.25 as a tuning table: it lasts until
 changed or reset, whether or not a note is playing. So playing from anywhere
 but the start would use whatever tuning was sent last. On play, a locate, and
