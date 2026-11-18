@@ -363,8 +363,13 @@ it, or the host plays a take.
   hosted inside the plugin, before the synth.
 - REAPER saves the plugin's state very often (undo points, probably), so
   the log's "saved" lines are noise there.
-- Still to try in REAPER: recording a take (check 2), a render (3), and
-  save and reopen with a take (4).
+- **Check 2: passes.** A take recorded with REAPER's record button plays
+  back in time with REAPER's grid.
+- For a render (check 3) in REAPER, the take isn't a REAPER item, so
+  REAPER may see the project as empty: render a time selection that covers
+  the take (and its tail).
+- Still to try in REAPER: a render (check 3), and save and reopen with a
+  take (4).
 
 ### Found so far
 
