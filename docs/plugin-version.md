@@ -365,11 +365,13 @@ it, or the host plays a take.
   the log's "saved" lines are noise there.
 - **Check 2: passes.** A take recorded with REAPER's record button plays
   back in time with REAPER's grid.
-- For a render (check 3) in REAPER, the take isn't a REAPER item, so
-  REAPER may see the project as empty: render a time selection that covers
-  the take (and its tail).
-- Still to try in REAPER: a render (check 3), and save and reopen with a
-  take (4).
+- **Check 3: passes.** File → Render (full-speed offline) reproduces the
+  take as it plays in real time. REAPER uses CLAP's render extension: the
+  log shows "render: offline", then "render: real time" 0.12 s later. The
+  take isn't a REAPER item, so if REAPER sees the project as empty, render
+  a time selection that covers the take and its tail. For one track,
+  choose "Selected tracks (stems)" as the Render dialog's source.
+- Still to try in REAPER: save and reopen with a take (check 4), and 5 to 6.
 
 ### Found so far
 
