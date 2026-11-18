@@ -382,9 +382,9 @@ it, or the host plays a take.
 **Bitwig Studio 6.1.4, Mac, CLAP (2026-11-18, the author):**
 - **Check 5: passes.** PlainOldSynth's editor opens as the plugin's window,
   and the plugin opens KeyboardEDO's port from inside Bitwig's plugin host
-  process. That held in each of three runs: two instances sharing one
-  process, then a fresh process (a hosting mode changed, perhaps; the log
-  doesn't say which modes were tried).
+  process. It did both times the project was opened: two instances sharing
+  one process, then a fresh process when the project was reopened (check 4).
+  The log doesn't say which hosting modes were tried.
 - **Check 6: passes.** Two instances, each with its own PlainOldSynth, both
   play from KeyboardEDO at once. Each logs the same live input (60
   messages per 10 s), all within a block, none dropped.
@@ -394,12 +394,22 @@ it, or the host plays a take.
   what keeps the plugin's main-thread work going there (finished takes,
   the synth's callbacks). PlainOldSynth's editor doesn't need host timers
   on the Mac.
+- **Check 4: passes.** Saved, closed and reopened, both instances came back
+  with their take and the synth's state ("loaded: clip of 28 events to beat
+  16.96; synth state loaded"). Both had the same take: recording in Bitwig
+  recorded on both tracks at once, which is the finding below that every
+  instance records whenever the host records.
 - A take recorded, and a render went through the render extension. Bitwig
   deactivates and reactivates the plugin around each change of render mode.
 - Live timing as in REAPER: 0 to 11.6 ms from capture to block at 44.1 kHz
   and 512 frames, never over a block late.
 - The browser lists Umpire twice, the CLAP and the VST3; the FORMAT column
   tells them apart.
+
+**Ardour on the Mac: not tried.** The author's Ardour on the Mac isn't an
+arm64 build, and Umpire is built for arm64 only (as StageHand and Retune
+are), so it can't load the plugin. Ardour, check 7, waits for Linux, where
+the timer question belongs anyway.
 
 ### Found so far
 
