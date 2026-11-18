@@ -341,6 +341,31 @@ write the setup file if KeyboardEDO isn't what you want. Then
 `tail -f` the log. **It makes sound** as soon as KeyboardEDO plays into
 it, or the host plays a take.
 
+### In hosts
+
+**REAPER 7.79, Mac, CLAP (2026-11-18, the author):**
+- **Check 1, pitch: passes.** Non-12-EDO from KeyboardEDO plays correctly
+  through PlainOldSynth. The log shows KeyboardEDO's port opened as MIDI
+  2.0, and the synth taking MIDI 2.0.
+- **Check 1, timing:** at 44.1 kHz and blocks of up to 512 frames
+  (11.6 ms), every live message reached the block that played it 0 to
+  11.4 ms after capture (mean about 5.5 ms). None was over a block late and
+  none was dropped. So the delay is a steady block plus REAPER's output
+  latency, not a block of jitter. Whether that's playable is the author's
+  call; it wasn't remarked on.
+- **Timers:** REAPER gives timer-support but not posix-fd-support (none is
+  needed on the Mac). The plugin's own 50 ms timer kept ticking (about 17 a
+  second) with the editor open and closed. PlainOldSynth registered a 16 ms
+  timer while its editor was open, which REAPER served.
+- **Host note effects don't reach it**: EDOSpread12 in front of Umpire in
+  REAPER's chain does nothing. That's by design, since Umpire takes no MIDI
+  from the host (see "What's given up"). Note effects would have to be
+  hosted inside the plugin, before the synth.
+- REAPER saves the plugin's state very often (undo points, probably), so
+  the log's "saved" lines are noise there.
+- Still to try in REAPER: recording a take (check 2), a render (3), and
+  save and reopen with a take (4).
+
 ### Found so far
 
 - **PlainOldSynth keeps Pitch 7.25 only for the sounding note**
