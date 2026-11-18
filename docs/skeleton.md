@@ -45,6 +45,15 @@ Dear ImGui's sources only). `UMPIRE_DPF_DIR` is gone. On the Mac,
   `idle()` (DGL's events and drawing), as StageHand's rack window runs from
   one. SIGINT and SIGTERM quit. It may move into uw-core with the plugin
   editor windows (milestone 11), since it serves them in StageHand.
+  On the Mac the timer fires inside AppKit's own loops too (a live resize,
+  a title-bar drag, a menu), and there it skips the window's `idle()`
+  (`MainLoop::systemTracking()`): pugl's `puglUpdate` takes events off the
+  queue, and taking the resize loop's drag and mouse-up events crashed
+  AppKit while resizing a window (found 2026-11-18; StageHand had the same
+  crash and fix, cb90fbb, 2026-11-09, after Umpire copied its loop). The
+  controller's `tick()` still runs, so playback and recording carry on.
+  Fixes to StageHand's `MainLoop` don't reach Umpire's copy by themselves;
+  check StageHand's `src/App/MainLoop*` when touching this one.
 - **The view model** (`ViewModel`) is still the spike's note grid: a clip of
   notes in sixteenths, with the edits both layers make (add, select, move,
   transpose, velocity, length, delete) and a version count. Milestone 6's

@@ -144,6 +144,9 @@ int main(int argc, char** argv) {
     // drives its rack window.
     loop.addTimer(10, [&] {
         controller.tick();
+        // Not inside AppKit's resize or menu loop: idle() takes events off
+        // the queue (pugl's puglUpdate), and those are AppKit's then.
+        if (umpire::MainLoop::systemTracking()) return;
         window->idle();
         if (window->closed()) loop.requestQuit();
     });
