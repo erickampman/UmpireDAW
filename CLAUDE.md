@@ -37,6 +37,9 @@ windows included, edits clips in a grid, and saves and opens sessions; see
    routing graph, MIDI and audio mixers, the track's plugin stack),
    [docs/stem-export.md](docs/stem-export.md) (proposed: stems and the
    tempo map for other DAWs),
+   [docs/plugin-version.md](docs/plugin-version.md) (proposed: Umpire as a
+   CLAP instrument in REAPER or Bitwig, opening the MIDI 2.0 input and
+   hosting the synth itself; would replace much of the above),
    [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
    you need; read before any UI work).
 

@@ -108,6 +108,26 @@ tempo map to line up with them.
 - Later: the tempo map as MIDI 2.0 Flex Data (or in a MIDI Clip File),
   once another DAW imports it
 
+## Proposed: Umpire as a plugin (not yet decided)
+
+Proposed 2026-11-18 (docs/plugin-version.md; decisions.md, "Umpire as a
+plugin"): Umpire as a CLAP instrument in REAPER or Bitwig, opening the MIDI
+2.0 input and hosting the synth itself, so the notes never pass through the
+host. If the spike works, it replaces milestones 13 to 18, T1, S1, S2 and
+R1 to R6.
+
+- P1. [ ] The spike: one input, one hosted synth, one clip recorded with
+  the host and played back from its position, saved in the state; checked
+  in REAPER and Bitwig, and in Ardour (open source) through the VST3 build,
+  on the Mac and Linux
+- P2. [ ] Recording and playback on the clip model, driven by the host's
+  position; the chase on jumps; latency reported
+- P3. [ ] The editor: a lane in time with the host, and the grid
+- P4. [ ] State and files: clips as MIDI Clip Files in the state, the
+  synth's state, clip export
+- P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms; the
+  other open-source hosts (Qtractor, Carla, Zrythm)
+
 ## Proposed: zoom (not yet scheduled)
 
 Asked for 2026-11-01: Umpire has no zoom yet; the track view's beat

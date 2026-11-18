@@ -556,6 +556,29 @@ On the Linux PC: [stem-export.md](stem-export.md). In short:
   dry, both, or through a chosen slot), and the manifest names what
   wasn't printed.
 
+## Umpire as a plugin (proposed 2026-11-18, not yet decided)
+
+On the Mac: [plugin-version.md](plugin-version.md). The rest of the
+standalone plan is most of a DAW. In short:
+- **Umpire becomes a CLAP instrument** (VST3 and AUv2 through clap-wrapper)
+  in REAPER or Bitwig, which do the transport, tempo map, mixing, saving
+  and stems.
+- **The notes never pass through the host**, since REAPER and Bitwig send
+  plugins MIDI 1.0 (ReleaseUMP R2-7): the plugin opens the MIDI 2.0 input
+  itself and hosts the synth itself, through uw-core. The host sees only
+  audio.
+- **What carries over:** the clip model, recording, `Player`, the grid,
+  MIDI Clip Files. What it would replace: milestones 13 to 18, the tempo map
+  and stem export, and plugin routing.
+- **The cost:** the host's timeline doesn't show the clips, and notes can't
+  go on to the host's note effects.
+- **Not tied to a closed host:** the plugin is MIT and the host only
+  supplies transport, mixing, saving and rendering. Ardour (open source)
+  might host the VST3 build; Qtractor, Carla and Zrythm are to check.
+- **First a one-day spike** (P1), checked in REAPER, Bitwig and Ardour on
+  both platforms. If it fails in REAPER and Bitwig, the standalone plan
+  goes on.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such
