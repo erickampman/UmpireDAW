@@ -376,7 +376,30 @@ it, or the host plays a take.
   synth state loaded" is the take recorded before.
 - Check 5 in part: PlainOldSynth's editor opens as the plugin's window
   (the log shows it opening and closing). Bitwig's sandboxing is for Bitwig.
-- Still to try in REAPER: two instances (check 6).
+- Still to try in REAPER: two instances (check 6). Check 6 passed in
+  Bitwig (below).
+
+**Bitwig Studio 6.1.4, Mac, CLAP (2026-11-18, the author):**
+- **Check 5: passes.** PlainOldSynth's editor opens as the plugin's window,
+  and the plugin opens KeyboardEDO's port from inside Bitwig's plugin host
+  process. That held in each of three runs: two instances sharing one
+  process, then a fresh process (a hosting mode changed, perhaps; the log
+  doesn't say which modes were tried).
+- **Check 6: passes.** Two instances, each with its own PlainOldSynth, both
+  play from KeyboardEDO at once. Each logs the same live input (60
+  messages per 10 s), all within a block, none dropped.
+- **Bitwig gives no timer-support on the Mac** (and no posix-fd-support):
+  the heartbeat shows 0 timer ticks and 173 main-thread callbacks per
+  10 s. The main-thread callback that `process()` asks for every 50 ms is
+  what keeps the plugin's main-thread work going there (finished takes,
+  the synth's callbacks). PlainOldSynth's editor doesn't need host timers
+  on the Mac.
+- A take recorded, and a render went through the render extension. Bitwig
+  deactivates and reactivates the plugin around each change of render mode.
+- Live timing as in REAPER: 0 to 11.6 ms from capture to block at 44.1 kHz
+  and 512 frames, never over a block late.
+- The browser lists Umpire twice, the CLAP and the VST3; the FORMAT column
+  tells them apart.
 
 ### Found so far
 
