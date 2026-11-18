@@ -371,7 +371,12 @@ it, or the host plays a take.
   take isn't a REAPER item, so if REAPER sees the project as empty, render
   a time selection that covers the take and its tail. For one track,
   choose "Selected tracks (stems)" as the Render dialog's source.
-- Still to try in REAPER: save and reopen with a take (check 4), and 5 to 6.
+- **Check 4: passes.** After saving, closing and reopening the project,
+  the take plays again. The log's "loaded: clip of 23 events to beat 21.02;
+  synth state loaded" is the take recorded before.
+- Check 5 in part: PlainOldSynth's editor opens as the plugin's window
+  (the log shows it opening and closing). Bitwig's sandboxing is for Bitwig.
+- Still to try in REAPER: two instances (check 6).
 
 ### Found so far
 
