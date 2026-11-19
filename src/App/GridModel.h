@@ -73,6 +73,15 @@ public:
     std::function<void()> undo, redo;
     std::string           undoLabel, redoLabel;
 
+    // Where the clip's tick 0 is on the grid, in ticks (0 in the app). The
+    // plugin's grid is in the song's time, from the bar its take starts in,
+    // so its columns and bar lines are the host's (milestone P3): there
+    // `origin` is the take's start less that bar's. A note's start here is
+    // in the grid's ticks; what commit() gives `editClip` is in the clip's,
+    // so a note moved before `origin` has a negative start. Set it before
+    // showClip().
+    Tick origin = 0;
+
     std::vector<GridNote> notes;
     int                   focus = -1;   // the note the inspector shows (one of the selected), or -1
     int                   steps = 64;   // the grid's columns: four bars of sixteenths
@@ -159,6 +168,9 @@ public:
     // clip) chooses it otherwise.
     void showClip(std::shared_ptr<const Clip> clip, const std::vector<std::size_t>* select = nullptr);
     void newClip();   // empty and untitled, the window's own
+    // Shows no clip: no notes, and the grid's length forgotten, so the next
+    // clip shown sets it (the plugin's window, choosing another take).
+    void release();
 
 private:
     // The shown clip's notes, in the current tuning, those with these note-ons

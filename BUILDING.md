@@ -85,7 +85,7 @@ The same three commands on both platforms. Everything goes in `build/`
 silent and need no display, MIDI or audio: they drive the view models and
 the track controller headless, with a fake MIDI input.
 
-The same build makes the plugin spike: `build/Umpire.clap`, and through
+The same build makes the plugin: `build/Umpire.clap`, and through
 clap-wrapper `build/Umpire.vst3` (on Linux, in `build/Release/`, or
 `build/Debug/`). `-DUMPIRE_BUILD_VST3=OFF` leaves the VST3 out,
 `-DUMPIRE_BUILD_PLUGIN=OFF` both. Its tests (`test-plugin-*`) load the built
@@ -99,7 +99,10 @@ cmake --build build --target install-clap install-vst3
 ```
 
 docs/plugin-version.md ("The spike, built") says how it's set up and where
-it logs.
+it logs. Its window (P3) uses DGL and Dear ImGui, as the app's grid does.
+On the Mac, `ninja -C build umpire-plugin-window-check` builds a small
+host that opens the window and clicks in it (MILESTONES.md, "Tests"; it
+opens a window, so it isn't a `ctest` suite).
 
 GCC 15 warns about `<cstdbool>` in pugl's headers; the build quiets that for
 DGL only. Umpire's own code builds with `-Wall -Wextra -Wpedantic` and

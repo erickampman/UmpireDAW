@@ -8,6 +8,11 @@
 // from a jump while recording, two take buffers, a tempo change inside a
 // block, the lane (src/Plugin/Lane.h: the newest take plays where takes
 // overlap) and the lane thread (src/Plugin/LaneKeeper.h), state version 2.
+// P3: the editor's side of the lane (testEditor): a take's notes edited
+// through LaneKeeper and heard, a note moved before the take, delete and
+// bring to front, undo and redo of each and of a recorded take, the covered
+// spans the lane draws, the grid in song time (GridModel's origin), and the
+// host's position for the playhead.
 // Silent: no MIDI hardware, no audio, no window.
 
 #include <chrono>
@@ -18,6 +23,7 @@
 #include <vector>
 
 #include "App/ClipFile.h"
+#include "App/GridModel.h"
 #include "Plugin/Lane.h"
 #include "Plugin/LaneKeeper.h"
 #include "Plugin/PluginEngine.h"
@@ -657,6 +663,117 @@ void testArm() {
     check("and ends where it was disarmed", take.clip.length == beats(4.1) - beats(4.07), std::to_string(take.clip.length));
 }
 
+// P3: what the plugin's window does to the lane, without the window.
+void testEditor() {
+    FakeSynth    synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    Host       host(engine);
+    LaneKeeper keeper(engine);
+
+    // Two takes: Take 1 at beat 4, beats 4 to 8, a note 60 at its beat 1;
+    // Take 2 at beat 6, beats 6 to 7, a note 62.
+    ClipRef one, two;
+    one.start = beats(4);
+    one.clip  = std::make_shared<Clip>(clipOf(beats(4), {{beats(1), ump::midi2NoteOn(0, 0, 60, 0x8000)},
+                                                          {beats(1.5), ump::midi2NoteOff(0, 0, 60)}}));
+    two.start = beats(6);
+    two.clip  = std::make_shared<Clip>(clipOf(beats(1), {{0, ump::midi2NoteOn(0, 0, 62, 0x8000)},
+                                                          {beats(0.5), ump::midi2NoteOff(0, 0, 62)}}));
+    keeper.setTakes({one, two});
+    LaneKeeper::View v = keeper.view();
+    check("a loaded lane has nothing to undo", v.undoLabel.empty() && v.redoLabel.empty() && v.takes.size() == 2);
+    const ClipRefId first = v.takes[0].id, second = v.takes[1].id;
+
+    // What's heard of Take 1 and what's covered: beats 4 to 6 and 7 to 8.
+    const auto spans = visibleSpans(v.takes, 0);
+    check("an older take's heard spans skip the newer one",
+          spans.size() == 2 && spans[0].start == beats(4) && spans[0].end == beats(6) && spans[1].start == beats(7) &&
+              spans[1].end == beats(8));
+    check("the newest is heard whole", visibleSpans(v.takes, 1).size() == 1);
+
+    // The grid in song time: Take 1 starts on bar 2 (beat 4), so origin 0
+    // from there; a take at beat 5.5 sits 1.5 beats into its bar.
+    GridModel grid;
+    grid.origin = beats(5.5) - beats(4);
+    grid.showClip(v.takes[0].clip);
+    check("the grid shows a note at its song beat", grid.notes.size() == 1 && grid.notes[0].start == beats(1) + beats(1.5));
+    check("and is long enough for the take from its bar", grid.endTick() >= beats(1.5) + beats(4));
+
+    // An edit through the grid: the note a beat earlier (a beat of
+    // sixteenths), to beat 4, given to the lane as the window does.
+    const std::uint64_t before = keeper.version();
+    grid.release();
+    grid.origin = 0;
+    grid.showClip(v.takes[0].clip);
+    grid.editClip = [&](const std::string& label, const std::vector<NoteChange>& changes, const std::vector<NewNote>& added) {
+        return keeper.editTake(first, label, changes, added).edit;
+    };
+    grid.select(0);
+    grid.nudge(-GridModel::kStep * 4, 0);
+    check("the grid commits the move to the lane", grid.commit());
+    v = keeper.view();
+    check("as one step, Move note", v.undoLabel == "Move note" && keeper.version() != before, v.undoLabel);
+    check("the take's clip is new, its id kept", v.takes[0].id == first && v.takes[0].clip != one.clip &&
+                                                    v.takes[0].clip->name == "Take 1");
+    check("and the host's state is dirty", keeper.takeDirty());
+    keeper.pump();   // the engine takes what plays
+    synth.blocks.clear();
+    host.play(3.98);
+    host.block();
+    host.block();
+    bool heard = false;
+    for (const auto& block : synth.blocks)
+        for (const auto& g : block) heard |= ump::isNoteOn(g.message) && ump::noteNumber(g.message) == 60;
+    check("the moved note is heard at beat 4", heard);
+
+    // A note moved before the take (the grid's origin reaches back): the
+    // take starts earlier, the note where it was put.
+    const auto early = keeper.editTake(first, "Move note", {{0, false, -beats(1), beats(0.5), 60 << 9, 0x8000}}, {});
+    v                = keeper.view();
+    check("a note before the take moves the take's start", early.edit.clip && early.start == beats(3) &&
+                                                               v.takes[0].start == beats(3),
+          std::to_string(early.start));
+    const auto notes = early.edit.clip ? notesOf(early.edit.clip->events, early.edit.clip->length) : std::vector<NoteSpan>{};
+    check("and the note is at beat 3 of the song", notes.size() == 1 && v.takes[0].start + notes[0].start == beats(3));
+
+    // Undo and redo.
+    check("undo", keeper.undo());
+    v = keeper.view();
+    check("brings back the take's start and clip", v.takes[0].start == beats(4) && v.redoLabel == "Move note");
+    check("redo", keeper.redo() && keeper.view().takes[0].start == beats(3));
+
+    // Bring to front, delete.
+    check("bring an older take to the front", keeper.bringToFront(first));
+    v = keeper.view();
+    check("it's the newest now", v.takes.back().id == first && v.undoLabel == "Bring to front");
+    check("the newest can't be brought to the front", !keeper.bringToFront(first));
+    check("delete a take", keeper.deleteTake(second) && keeper.view().takes.size() == 1);
+    check("undo the delete", keeper.undo() && keeper.view().takes.size() == 2 && keeper.view().takes[0].id == second);
+
+    // A recorded take is an undo step too.
+    host.play(10.0, true);
+    engine.onMidi(1, at(host.now - 5'000'000, ump::midi2NoteOn(0, 0, 64, 0x8000)));
+    host.block();
+    host.transport.recording = false;
+    host.block();
+    keeper.pump();
+    v = keeper.view();
+    check("a recorded take is a step", v.takes.size() == 3 && v.undoLabel == "Record take", v.undoLabel);
+    check("which undoes", keeper.undo() && keeper.view().takes.size() == 2);
+
+    // The playhead: where the host is.
+    host.play(2.0);
+    host.block();
+    check("the engine says where the host is, and that it plays", engine.hostPlaying() &&
+                                                                       std::llabs(engine.position() - beats(2.02)) <= 1,
+          std::to_string(engine.position()));
+    host.transport.playing = false;
+    host.block();
+    check("stopped", !engine.hostPlaying());
+}
+
 int main() {
     testLiveInput();
     testMidi1Synth();
@@ -669,6 +786,7 @@ int main() {
     testLane();
     testLaneKeeper();
     testArm();
+    testEditor();
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

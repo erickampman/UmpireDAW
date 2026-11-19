@@ -51,13 +51,22 @@ GridCanvas::~GridCanvas() = default;
 float GridCanvas::sf() {
     return static_cast<float>(getWindow().getScaleFactor());
 }
+float GridCanvas::bandY() {
+    return imgui->menuBarHeight() / sf();
+}
+float GridCanvas::bandH() {
+    if (band == nullptr) return 0;
+    const float available = std::max(0.0f, static_cast<float>(getHeight()) / sf() - bandY());
+    return band->gridShown() ? std::min(band->height(available), available) : available;
+}
 float GridCanvas::gridY() {
-    return imgui->menuBarHeight() / sf() + 20;   // a strip for the clip name
+    return bandY() + bandH() + 20;   // a strip for the clip name
 }
 float GridCanvas::gridW() {
     return std::max(0.0f, (static_cast<float>(getWidth()) - imgui->panelWidth()) / sf() - gridX());
 }
 float GridCanvas::gridH() {
+    if (band != nullptr && !band->gridShown()) return 0;
     return std::max(0.0f, static_cast<float>(getHeight()) / sf() - gridY());
 }
 bool GridCanvas::inGrid(float x, float y) {
@@ -129,6 +138,28 @@ void GridCanvas::onNanoDisplay() {
     fillColor(rgb(17, 18, 22));   // the wells' graphite
     fill();
 
+    if (band != nullptr) {
+        // Paging: while the playhead moves through the clip, the grid keeps
+        // it in view, unless scrolled by hand since the play began.
+        const bool playing = band->playing();
+        if (playing && !wasPlaying) handScrolled = false;
+        wasPlaying = playing;
+        if (const Tick ph = band->playhead(); playing && ph >= 0 && ph < model.endTick() && !handScrolled && gw > 0) {
+            const float x = tickX(ph);
+            if (x < scrollX || x >= scrollX + gw) {
+                scrollX = x - kStepW;
+                clampScrollX();
+            }
+        }
+        const float by = bandY(), bh = bandH();
+        save();
+        scissor(0, by, W, bh);
+        translate(0, by);
+        band->draw(*this, W, bh);
+        restore();
+        if (!band->gridShown()) return;
+    }
+
     fontSize(13);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
     fillColor(rgb(150, 156, 170));
@@ -188,6 +219,17 @@ void GridCanvas::onNanoDisplay() {
             stroke();
         }
     }
+    if (band != nullptr) {   // the host's playhead, in the accent
+        if (const Tick ph = band->playhead(); ph >= 0) {
+            const float x = gx + tickX(ph) - scrollX;
+            beginPath();
+            moveTo(x, gy);
+            lineTo(x, gy + gh);
+            strokeWidth(1.5f);
+            strokeColor(rgb(240, 170, 50));
+            stroke();
+        }
+    }
     if (drag == Drag::Box) {   // the selection box, in the accent
         beginPath();
         rect(std::min(pressX, boxX), std::min(pressY, boxY), std::abs(boxX - pressX), std::abs(boxY - pressY));
@@ -207,6 +249,16 @@ void GridCanvas::onNanoDisplay() {
 bool GridCanvas::onMouse(const MouseEvent& ev) {
     if (NanoTopLevelWidget::onMouse(ev)) return true;
     const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
+    if (band != nullptr) {   // the band keeps what it took until the button's up
+        const bool inBand = y >= bandY() && y < bandY() + bandH();
+        if (ev.press && inBand && drag == Drag::None) bandPressed = true;
+        if (bandPressed) {
+            if (!ev.press) bandPressed = false;
+            const bool taken = band->mouse(ev, x, y - bandY());
+            if (taken) changed();
+            return taken;
+        }
+    }
     if (!ev.press) {
         if (ev.button != dgl::kMouseButtonLeft || drag == Drag::None) return false;
         const Drag was = std::exchange(drag, Drag::None);
@@ -265,6 +317,15 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
 bool GridCanvas::onMotion(const MotionEvent& ev) {
     const bool  taken = NanoTopLevelWidget::onMotion(ev);
     const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
+    if (band != nullptr && !taken && (bandPressed || (drag == Drag::None && y >= bandY() && y < bandY() + bandH()))) {
+        if (hoverRow != -1) {
+            hoverRow = -1;
+            repaint();
+        }
+        setPointer(dgl::kMouseCursorArrow);
+        if (band->motion(ev, x, y - bandY())) changed();
+        return true;
+    }
     const int   row = !taken && inGrid(x, y) ? pitchAt(y) : -1;
     if (row != hoverRow) {
         hoverRow = row;
@@ -311,8 +372,17 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
 // rows; Shift+wheel, or a sideways swipe, scrolls through time, a beat a notch.
 bool GridCanvas::onScroll(const ScrollEvent& ev) {
     if (NanoTopLevelWidget::onScroll(ev)) return true;
+    if (band != nullptr) {
+        const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
+        if (y >= bandY() && y < bandY() + bandH()) {
+            if (band->scroll(ev, x, y - bandY())) changed();
+            return true;
+        }
+        if (gridH() <= 0) return false;
+    }
     const bool sideways = (ev.mod & dgl::kModifierShift) != 0 || ev.delta.getX() != 0;
     if (sideways) {
+        handScrolled = true;
         const double d = ev.delta.getX() != 0 ? ev.delta.getX() : ev.delta.getY();
         scrollX -= static_cast<float>(d) * kStepW * 4;
         clampScrollX();

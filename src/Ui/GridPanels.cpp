@@ -38,9 +38,11 @@ void GridPanels::routed(Input input, bool toImGui) {
 
 void GridPanels::onImGuiDisplay() {
     menuBar();
-    const float sf = static_cast<float>(getWindow().getScaleFactor());
-    panelW         = std::round(280.0f * sf);
-    inspector(static_cast<float>(getWidth()), static_cast<float>(getHeight()));
+    const float sf    = static_cast<float>(getWindow().getScaleFactor());
+    const bool  shown = !hooks.inspectorShown || hooks.inspectorShown();
+    panelW            = shown ? std::round(280.0f * sf) : 0;
+    if (shown) inspector(static_cast<float>(getWidth()), static_cast<float>(getHeight()));
+    if (hooks.frame) hooks.frame();
     if (showDemo) ImGui::ShowDemoWindow(&showDemo);
 }
 
@@ -51,11 +53,12 @@ void GridPanels::menuBar() {
 #else
     const char* quitKey = "Ctrl+Q";
 #endif
-    if (ImGui::BeginMenu("File")) {
+    if (hooks.fileMenu && ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("Close window")) closeRequested = true;
         if (ImGui::MenuItem("Quit", quitKey)) quitRequested = true;
         ImGui::EndMenu();
     }
+    if (hooks.menuBarStart) hooks.menuBarStart();
     {
         const ImVec2 p = ImGui::GetCursorScreenPos();
         const float  w = ImGui::CalcTextSize("Edit").x + ImGui::GetStyle().ItemSpacing.x * 2;
@@ -90,13 +93,15 @@ void GridPanels::menuBar() {
             model.commit();
         }
         clearAllItemRect = lastItem();
+        if (hooks.editMenuEnd) hooks.editMenuEnd();
         ImGui::EndMenu();
     }
-    if (ImGui::BeginMenu("View")) {
+    if (hooks.fileMenu && ImGui::BeginMenu("View")) {
         ImGui::MenuItem("Diagnostics", nullptr, &showDiagnostics);
         ImGui::MenuItem("Dear ImGui demo window", nullptr, &showDemo);
         ImGui::EndMenu();
     }
+    if (hooks.menuBarEnd) hooks.menuBarEnd();
     menuH = ImGui::GetWindowSize().y;
     ImGui::EndMainMenuBar();
 }
@@ -145,7 +150,7 @@ void GridPanels::inspector(float W, float H) {
     if (!textActive()) std::snprintf(nameBuf, sizeof nameBuf, "%s", model.clipName.c_str());
     ImGui::SetNextItemWidth(-FLT_MIN);
     // The clip's name, a command when Enter or a click elsewhere ends the edit.
-    ImGui::InputText("##name", nameBuf, sizeof nameBuf);
+    ImGui::InputText("##name", nameBuf, sizeof nameBuf, hooks.nameEditable ? 0 : ImGuiInputTextFlags_ReadOnly);
     if (ImGui::IsItemDeactivatedAfterEdit()) model.setClipName(nameBuf);
     nameFieldRect = lastItem();
     endSection();

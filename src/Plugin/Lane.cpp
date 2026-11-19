@@ -41,12 +41,7 @@ uw::MidiMessage resetKey(int key) {
     return m;
 }
 
-Tick spanEnd(const ClipRef& take) {
-    Tick end = take.end();
-    if (take.clip)   // a clip whose events run past its length still plays them
-        for (const ClipEvent& e : take.clip->events) end = std::max(end, take.start + e.tick);
-    return end;
-}
+Tick spanEnd(const ClipRef& take) { return takeEnd(take); }
 
 struct Piece {
     Tick a = 0, b = 0;
@@ -81,6 +76,60 @@ struct Placed {
 };
 
 } // namespace
+
+Tick takeEnd(const ClipRef& take) {
+    Tick end = take.end();
+    if (take.clip)   // a clip whose events run past its length still plays them
+        for (const ClipEvent& e : take.clip->events) end = std::max(end, take.start + e.tick);
+    return end;
+}
+
+std::vector<Span> visibleSpans(const std::vector<ClipRef>& takes, std::size_t index) {
+    if (index >= takes.size() || !takes[index].clip) return {};
+    std::vector<std::pair<Tick, Tick>> newer;
+    for (std::size_t j = index + 1; j < takes.size(); ++j)
+        if (takes[j].clip) newer.emplace_back(takes[j].start, spanEnd(takes[j]));
+    std::vector<Span> spans;
+    for (const Piece& p : visiblePieces(takes[index].start, spanEnd(takes[index]), newer))
+        if (p.b > p.a) spans.push_back({p.a, p.b});
+    return spans;
+}
+
+const ClipRef* Lane::find(ClipRefId ref) const {
+    for (const ClipRef& t : all)
+        if (t.id == ref) return &t;
+    return nullptr;
+}
+
+bool Lane::replace(ClipRefId ref, Tick start, std::shared_ptr<const Clip> clip) {
+    for (ClipRef& t : all)
+        if (t.id == ref && clip) {
+            t.start = start;
+            t.clip  = std::move(clip);
+            return true;
+        }
+    return false;
+}
+
+bool Lane::remove(ClipRefId ref) {
+    return std::erase_if(all, [ref](const ClipRef& t) { return t.id == ref; }) > 0;
+}
+
+bool Lane::bringToFront(ClipRefId ref) {
+    const auto it = std::find_if(all.begin(), all.end(), [ref](const ClipRef& t) { return t.id == ref; });
+    if (it == all.end()) return false;
+    if (it + 1 == all.end()) return true;   // already the newest
+    std::rotate(it, it + 1, all.end());
+    return true;
+}
+
+void Lane::restore(std::vector<ClipRef> takes) {
+    all = std::move(takes);
+    for (const ClipRef& t : all) {   // ids are never reused
+        nextRef = std::max(nextRef, t.id + 1);
+        if (t.clip) nextClip = std::max(nextClip, t.clip->id + 1);
+    }
+}
 
 bool Lane::addTake(Tick start, Clip clip) {
     if (clip.events.empty()) return false;

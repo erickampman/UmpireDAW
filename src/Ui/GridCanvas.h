@@ -22,12 +22,40 @@ namespace umpire::ui {
 
 class GridPanels;
 
+// What a window shows above the grid, between the menu bar and the grid: the
+// plugin's lane (milestone P3, docs/plugin-version.md). The app's grid
+// windows have none. Coordinates are logical pixels from the band's top left;
+// drawing has the window's scale applied.
+class GridBand {
+public:
+    virtual ~GridBand() = default;
+    // Its height, given the height below the menu bar.
+    virtual float height(float available) = 0;
+    virtual void  draw(DGL_NAMESPACE::NanoVG& vg, float width, float height) = 0;
+    // A press in the band, and the motion and release that follow it; the
+    // wheel over it. True if taken.
+    virtual bool mouse(const DGL_NAMESPACE::Widget::MouseEvent&, float /*x*/, float /*y*/) { return false; }
+    virtual bool motion(const DGL_NAMESPACE::Widget::MotionEvent&, float /*x*/, float /*y*/) { return false; }
+    virtual bool scroll(const DGL_NAMESPACE::Widget::ScrollEvent&, float /*x*/, float /*y*/) { return false; }
+    // Whether the grid shows (false: no clip; the band has the window).
+    virtual bool gridShown() { return true; }
+    // The playhead on the grid, in its ticks (-1: none), and whether it's
+    // moving: while it is, the grid pages to keep it in view, until the
+    // grid is scrolled by hand.
+    virtual Tick playhead() { return -1; }
+    virtual bool playing() { return false; }
+};
+
 class GridCanvas final : public DGL_NAMESPACE::NanoTopLevelWidget {
 public:
     GridCanvas(DGL_NAMESPACE::Window& window, GridModel& model, Probe& probe);
     ~GridCanvas() override;
 
     GridPanels& panels() noexcept { return *imgui; }
+    // The band above the grid (not owned; null: none, as in the app).
+    void        setBand(GridBand* b) noexcept { band = b; }
+    // Scroll to the grid's start (another clip shown).
+    void        scrollHome() noexcept { scrollX = 0; }
     bool    dragging() const noexcept { return drag != Drag::None && drag != Drag::Click; }
     int     hoverPitch() const noexcept { return hoverRow; }
 
@@ -45,6 +73,8 @@ private:
     float sf();
     // The grid's area (logical): below ImGui's menu bar, left of its panel.
     float gridX() { return kKeysW; }
+    float bandY();   // the band's top: below the menu bar
+    float bandH();
     float gridY();
     float gridW();
     float gridH();
@@ -87,6 +117,10 @@ private:
     Tick                    grabTick = 0;
     std::vector<bool>       boxBase;   // the selection when a Shift box began
     DGL_NAMESPACE::MouseCursor pointer = DGL_NAMESPACE::kMouseCursorArrow;
+    GridBand*               band = nullptr;
+    bool                    bandPressed  = false;   // the band took the press
+    bool                    handScrolled = false;   // scrolled while playing: no paging until the next play
+    bool                    wasPlaying   = false;
 };
 
 } // namespace umpire::ui

@@ -587,6 +587,30 @@ most of a DAW. In short:
   is, as the test bed for the clip model and the grid, sharing `src/App`
   with the plugin. Ardour (Linux) is the open-source host that works so
   far.
+
+## The plugin's window (milestone P3, decided 2026-11-19)
+
+Proposed with a mockup on the Mac and agreed with the author before it was
+built ([plugin-version.md](plugin-version.md), "P3"). The author chose the
+recommended option each time, and "bring it back" for older takes:
+- **The host's plugin window is Umpire's**: a header (Record, Edit, the
+  synth's button, what's listening, the host's position), the lane of
+  takes in the host's bars, and the grid for the selected take (the app's
+  `GridCanvas` and `GridPanels`), which appears only once a take is chosen.
+- **The synth's editor opens in a window of its own** (uw-core's
+  `EditorWindow`), from a button in Umpire's header, lit while it's open.
+- **Record is a button** bound to the Record parameter; a press goes to the
+  host as a gesture, so it's automation like any other change.
+- **Older takes show as a strip** under the newer ones that cover them
+  (hide controls, never state), and **Bring take to front** makes one heard
+  again.
+- **The plugin's own undo covers the lane**: a take recorded, a take
+  deleted or brought to the front, and every grid edit. The host's undo
+  doesn't see them ("Two undos", plugin-version.md).
+- **The grid is in song time**, from the bar its take starts in, so its
+  bars, Ctrl-drag and Quantize are the host's sixteenths.
+- **While the host plays, the lane and grid page** to keep the playhead in
+  view, until scrolled by hand; no zoom yet (Z1).
 - **Decided 2026-11-19, in P2:** the plugin has a record arm of its own, a
   CLAP parameter "Record" (off by default), since otherwise every instance
   records whenever the host does and the newest take wins. And the synth

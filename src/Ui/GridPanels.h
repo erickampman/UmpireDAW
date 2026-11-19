@@ -4,6 +4,7 @@
 // inspector at the right, in the house widgets (Widgets.h). Umpire's ImGuiWidget does the
 // routing and the drawing on demand.
 
+#include <functional>
 #include <string>
 
 #include "App/GridModel.h"
@@ -21,6 +22,19 @@ public:
     float menuBarHeight() const noexcept { return menuH; }
     float panelWidth() const noexcept { return panelW; }
     std::string nameText() const { return nameBuf; }   // the name field, as typed
+
+    // What the plugin's window (milestone P3) changes and adds; the app's grid
+    // windows keep the defaults. The functions run inside ImGui's frame.
+    struct Hooks {
+        bool fileMenu     = true;   // File (Close window, Quit) and View
+        bool nameEditable = true;   // the clip's name field
+        std::function<void()> menuBarStart;   // before Edit (the plugin's Record)
+        std::function<void()> editMenuEnd;    // last in Edit (the take's commands)
+        std::function<void()> menuBarEnd;     // after the menus
+        std::function<void()> frame;          // after the panels (popups)
+        std::function<bool()> inspectorShown; // unset: always; false: no inspector (no clip)
+    };
+    Hooks hooks;
 
     bool quitRequested  = false;
     bool closeRequested = false;   // File > Close window

@@ -76,11 +76,14 @@ endif()
 add_library(umpire-warnings INTERFACE)
 target_compile_options(umpire-warnings INTERFACE -Wall -Wextra -Wpedantic)
 
-# --- umpire-clip: the clip model and MIDI Clip Files, which need only uw::ump.
-# Shared by the app and the plugin (docs/plugin-version.md, "What carries over").
+# --- umpire-clip: the clip model, MIDI Clip Files, editing a clip's notes and
+# the grid's model, which need only uw::ump. Shared by the app and the plugin
+# (docs/plugin-version.md, "What carries over").
 add_library(umpire-clip STATIC
     src/App/Clip.cpp
+    src/App/ClipEdit.cpp
     src/App/ClipFile.cpp
+    src/App/GridModel.cpp
     src/App/Scale.cpp)
 target_include_directories(umpire-clip PUBLIC src)
 target_link_libraries(umpire-clip PUBLIC uw::ump PRIVATE umpire-warnings)
@@ -93,8 +96,6 @@ set_target_properties(umpire-clip PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBI
 # MidiInput seam, not a platform's: main.cpp makes that.
 add_library(umpire-app STATIC
     src/App/AudioEngine.cpp
-    src/App/ClipEdit.cpp
-    src/App/GridModel.cpp
     src/App/Instruments.cpp
     src/App/MidiDescribe.cpp
     src/App/MidiInputs.cpp
@@ -114,20 +115,34 @@ target_include_directories(umpire-app PUBLIC src)
 target_include_directories(umpire-app SYSTEM PRIVATE external)
 target_link_libraries(umpire-app PUBLIC umpire-clip uw::base uw::plugin uw::clap-host uw::editor-window uw::audio PRIVATE umpire-warnings)
 
-# --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library sees the toolkit.
-add_library(umpire-ui STATIC
+# --- umpire-grid-ui: the grid (canvas and panels), Umpire's ImGui widget and the
+# house widgets: what the app's grid windows and the plugin's window share
+# (milestone P3). DGL, NanoVG and ImGui, over umpire-clip only.
+add_library(umpire-grid-ui STATIC
     src/Ui/GridCanvas.cpp
     src/Ui/GridPanels.cpp
-    src/Ui/GridSelfTest.cpp
     src/Ui/ImGuiWidget.cpp
+    src/Ui/Widgets.cpp)
+target_include_directories(umpire-grid-ui PUBLIC src)
+target_link_libraries(umpire-grid-ui
+    PUBLIC  umpire-clip dgl-opengl dgl-opengl-definitions umpire-imgui
+    PRIVATE umpire-warnings)
+set_target_properties(umpire-grid-ui PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
+if(APPLE)
+    target_compile_definitions(umpire-grid-ui PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+
+# --- umpire-ui: the main window (DGL, NanoVG, ImGui). Only this library and
+# umpire-grid-ui see the toolkit.
+add_library(umpire-ui STATIC
+    src/Ui/GridSelfTest.cpp
     src/Ui/MainWindow.cpp
     src/Ui/TrackCanvas.cpp
     src/Ui/TrackPanels.cpp
-    src/Ui/TrackSelfTest.cpp
-    src/Ui/Widgets.cpp)
+    src/Ui/TrackSelfTest.cpp)
 target_link_libraries(umpire-ui
     PUBLIC  umpire-app
-    PRIVATE dgl-opengl dgl-opengl-definitions umpire-imgui umpire-warnings)
+    PRIVATE umpire-grid-ui dgl-opengl dgl-opengl-definitions umpire-imgui umpire-warnings)
 if(APPLE)
     target_compile_definitions(umpire-ui PRIVATE GL_SILENCE_DEPRECATION)
 else()
@@ -219,8 +234,8 @@ endif()
 # --- Umpire as a plugin (milestones P1 and P2, docs/plugin-version.md) ------------
 # A CLAP instrument with its own entry point, as Retune's (~/Dev-MIDI/Retune):
 # it opens its own MIDI input and hosts a CLAP synth through uw-core, so the
-# notes never pass through the host. No DPF: it has no editor of its own (the
-# synth's is embedded). clap-wrapper (Unlikelyware's fork, `unlikelyware`, as
+# notes never pass through the host. DGL and ImGui only for its window (P3),
+# as the app's grid uses them; no DPF plugin wrapper. clap-wrapper (Unlikelyware's fork, `unlikelyware`, as
 # Retune pins it) makes the VST3, for Ardour.
 option(UMPIRE_BUILD_PLUGIN "Build Umpire.clap" ON)
 option(UMPIRE_BUILD_VST3 "Build Umpire.vst3 via clap-wrapper" ON)
@@ -238,8 +253,14 @@ if(UMPIRE_BUILD_PLUGIN)
 
     # The plugin's own sources, compiled into each binary: the .clap and the .vst3.
     function(umpire_add_plugin_sources TARGET_NAME)
-        target_sources(${TARGET_NAME} PRIVATE src/Plugin/UmpirePlugin.cpp)
-        target_link_libraries(${TARGET_NAME} PRIVATE umpire-plugin-core uw::clap-host uw::midi umpire-warnings)
+        # The window (P3, Plugin/PluginEditor.h): the grid's UI, DGL and ImGui.
+        target_sources(${TARGET_NAME} PRIVATE src/Plugin/UmpirePlugin.cpp src/Plugin/PluginEditor.cpp)
+        if(APPLE)
+            target_sources(${TARGET_NAME} PRIVATE src/Plugin/PluginEditorMac.mm)
+            target_compile_definitions(${TARGET_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+        endif()
+        target_link_libraries(${TARGET_NAME} PRIVATE umpire-plugin-core umpire-grid-ui uw::clap-host uw::midi
+                              uw::editor-window umpire-warnings)
         target_compile_definitions(${TARGET_NAME} PRIVATE UMPIRE_VERSION_STRING="${PROJECT_VERSION}")
         set_target_properties(${TARGET_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
     endfunction()
@@ -356,4 +377,18 @@ if(UMPIRE_BUILD_PLUGIN)
     file(WRITE "${CMAKE_BINARY_DIR}/test-plugin-render.conf" "input = none\nsynth = PlainOldSynth\n")
     set_tests_properties(test-plugin-render PROPERTIES SKIP_RETURN_CODE 77 ENVIRONMENT
         "UMPIRE_PLUGIN_CONF=${CMAKE_BINARY_DIR}/test-plugin-render.conf;UMPIRE_PLUGIN_LOG=none")
+endif()
+
+if(UMPIRE_BUILD_PLUGIN AND APPLE)
+    # The plugin's window, checked by eye (milestone P3): a bare Cocoa host
+    # opens Umpire.clap's window and clicks into it (tools/PluginWindowCheck.mm).
+    # Not a test, since it opens a window; built only when asked:
+    #   ninja -C build umpire-plugin-window-check
+    #   UMPIRE_PLUGIN_CONF=build/test-plugin.conf UMPIRE_PLUGIN_LOG=none \
+    #       build/umpire-plugin-window-check build/Umpire.clap DIR
+    add_executable(umpire-plugin-window-check EXCLUDE_FROM_ALL tools/PluginWindowCheck.mm)
+    target_link_libraries(umpire-plugin-window-check PRIVATE umpire-plugin-core "-framework Cocoa" umpire-warnings)
+    target_include_directories(umpire-plugin-window-check PRIVATE external/uw-core/external/clap/include)
+    set_source_files_properties(tools/PluginWindowCheck.mm PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+    add_dependencies(umpire-plugin-window-check umpire-clap)
 endif()

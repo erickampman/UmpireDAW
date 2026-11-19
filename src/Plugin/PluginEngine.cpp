@@ -365,6 +365,16 @@ void PluginEngine::process(const Block& b) noexcept {
     const HostTransport& last = pieces[count - 1].transport;
     seenTempo.store(last.tempo > 0 ? last.tempo : 120.0, std::memory_order_relaxed);
     seenBeatsPerBar.store(last.tsigDen == 4 && last.tsigNum > 0 ? last.tsigNum : 4, std::memory_order_relaxed);
+    // For the editor's playhead: the position at the block's end while
+    // rolling, else where the host says it is.
+    const Piece& lastPiece = pieces[count - 1];
+    const bool   rolling   = last.playing && last.hasBeats;
+    if (rolling)
+        seenPosition.store(lastPiece.tick + std::llround(static_cast<double>(lastPiece.frames) * lastPiece.ticksPerFrame),
+                           std::memory_order_relaxed);
+    else if (last.hasBeats)
+        seenPosition.store(std::llround(last.songBeats * static_cast<double>(kTicksPerQuarter)), std::memory_order_relaxed);
+    seenPlaying.store(rolling, std::memory_order_relaxed);
 
     runSynth(b);
     steadyFrames += b.frames;

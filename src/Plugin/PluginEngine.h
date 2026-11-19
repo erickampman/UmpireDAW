@@ -148,6 +148,10 @@ public:
     double lastTempo() const { return seenTempo.load(std::memory_order_relaxed); }
     int    lastBeatsPerBar() const { return seenBeatsPerBar.load(std::memory_order_relaxed); }
     bool   recording() const { return recordingNow.load(std::memory_order_relaxed); }
+    // Where the host was at the end of the last block, in song ticks, and
+    // whether it was playing then (the editor's playhead, P3).
+    Tick   position() const { return seenPosition.load(std::memory_order_relaxed); }
+    bool   hostPlaying() const { return seenPlaying.load(std::memory_order_relaxed); }
     // Takes not recorded because both buffers were waiting (the lane side
     // didn't collect them), since the last call.
     std::uint64_t takeMissedCount() { return missedTakes.exchange(0); }
@@ -258,6 +262,8 @@ private:
     std::atomic<std::int64_t>  statSumNs{0}, statMinNs{INT64_MAX}, statMaxNs{0};
     std::atomic<double>        seenTempo{120.0};
     std::atomic<int>           seenBeatsPerBar{4};
+    std::atomic<Tick>          seenPosition{0};
+    std::atomic<bool>          seenPlaying{false};
 };
 
 } // namespace umpire::plugin

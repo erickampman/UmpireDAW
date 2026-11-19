@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     check("stereo out, nothing in", layout.audioOutputs.size() == 1 && layout.audioOutputs[0].channelCount == 2 &&
                                         layout.audioInputs.empty());
     check("no notes from the host", layout.noteInputs.empty());
-    check("no editor without a synth", !plugin->hasEditor());
+    check("a window of its own, even without a synth (P3)", plugin->hasEditor());
 
     check("it activates", plugin->activate(48000, 512));
     std::vector<float> left(512, 1.0f), right(512, 1.0f);

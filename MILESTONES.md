@@ -2,7 +2,11 @@
 
 ## Tests
 - all: ninja -C build && ctest --test-dir build --output-on-failure
-- self-test: build/umpire-daw --self-test DIR (opens two windows; silent; don't type into them)
+- self-test: build/umpire-daw --self-test DIR (opens two windows; silent; don't type into them).
+  On the Mac its grid-window input checks fail, as before P3 (plugin-version.md, "P3")
+- plugin window (Mac): ninja -C build umpire-plugin-window-check, then
+  UMPIRE_PLUGIN_CONF=build/test-plugin.conf UMPIRE_PLUGIN_LOG=none UMPIRE_PLUGIN_CAPTURE=DIR
+  build/umpire-plugin-window-check build/Umpire.clap DIR (opens a window; silent)
 
 ## Toward a first useful version
 
@@ -148,7 +152,20 @@ S2 and R1 to R6.
   VST3 validator 47 of 47. PlainOldSynth now keeps Pitch 7.25 per key, so
   the chase works with it. Left: the checks in hosts (the author's, now 8),
   and Linux's build.*
-- P3. [ ] The editor: a lane in time with the host, and the grid
+- P3. [ ] The editor: a lane in time with the host, and the grid. *Built
+  2026-11-19 on the Mac (plugin-version.md, "P3"; decisions.md, "The
+  plugin's window"; the design agreed with the author first): the host's
+  plugin window is Umpire's, with a Record button on the Record parameter
+  (a gesture to the host), the lane of takes in the host's bars (older
+  takes' covered parts as a strip; Bring take to front; Delete take), the
+  playhead, and the selected take's grid in song time (the app's
+  `GridCanvas` and `GridPanels`, shared through `umpire-grid-ui`); edits go
+  through the lane (`LaneKeeper::editTake`) with the plugin's own undo,
+  takes recorded included; the synth's editor in a window of its own.
+  Checked headless (10 of 10, testEditor), with tools/PluginWindowCheck.mm
+  (the window opened and clicked in a bare Cocoa host), clap-validator (30,
+  the 2 expected failures) and the VST3 validator (47 of 47). Left: the
+  checks in hosts (the author's, 8), and Linux's build.*
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
   synth's state, clip export
 - P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms; the

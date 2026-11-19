@@ -281,15 +281,15 @@ std::string GridModel::pendingChanges(std::vector<NoteChange>& out, std::vector<
         resized += length;
         velocity += loud;
         if (!time && !row && !length && !loud) continue;
-        out.push_back({n.on, false, n.start, n.length, row ? rowPitch79(n.pitch) : o.pitch79, n.velocity16});
+        out.push_back({n.on, false, n.start - origin, n.length, row ? rowPitch79(n.pitch) : o.pitch79, n.velocity16});
     }
     for (const GridNote& o : original)
         if (!kept.contains(o.on)) {
-            out.push_back({o.on, true, o.start, o.length, o.pitch79, o.velocity16});
+            out.push_back({o.on, true, o.start - origin, o.length, o.pitch79, o.velocity16});
             ++removed;
         }
     for (const GridNote& n : notes)
-        if (n.on == NoteSpan::npos) added.push_back({n.start, n.length, rowPitch79(n.pitch), n.velocity16});
+        if (n.on == NoteSpan::npos) added.push_back({n.start - origin, n.length, rowPitch79(n.pitch), n.velocity16});
 
     const int count = static_cast<int>(out.size() + added.size());
     if (count == 0) return {};
@@ -321,7 +321,7 @@ bool GridModel::commit(const std::string& name) {
         if (!n.selected || n.on == NoteSpan::npos) continue;
         const auto it = std::find_if(changes.begin(), changes.end(), [&](const NoteChange& c) { return c.on == n.on; });
         if (it != changes.end()) continue;
-        changes.push_back({n.on, false, n.start, n.length, n.pitch79, n.velocity16});
+        changes.push_back({n.on, false, n.start - origin, n.length, n.pitch79, n.velocity16});
     }
     // Where the focus is among the placed notes: kept changes, then added.
     std::size_t focusPlaced = NoteSpan::npos, place = 0;
@@ -410,16 +410,28 @@ void GridModel::showClip(std::shared_ptr<const Clip> source, const std::vector<s
     layOut(ons, focusOn);
 }
 
+void GridModel::release() {
+    shown.reset();
+    original.clear();
+    grabbed.clear();
+    notes.clear();
+    pending  = false;
+    focus    = -1;
+    steps    = 0;
+    clipName.clear();
+    touch();
+}
+
 void GridModel::layOut(const std::vector<std::size_t>& selectOn, std::size_t focusOn) {
     const Clip& clip = *shown;
     clipName = clip.name;
-    steps    = std::max({16, steps, static_cast<int>((clip.length + 16 * kStep - 1) / (16 * kStep)) * 16});
+    steps    = std::max({16, steps, static_cast<int>((origin + clip.length + 16 * kStep - 1) / (16 * kStep)) * 16});
     notes.clear();
     focus = -1;
     for (const NoteSpan& n : notesOf(clip.events, clip.length)) {
         GridNote g;
         g.pitch      = rowFor(n.pitch79);
-        g.start      = n.start;
+        g.start      = origin + n.start;
         g.length     = std::max<Tick>(n.length, 1);
         g.velocity   = std::clamp(n.velocity >> 9, kMinVelocity, kMaxVelocity);
         g.fromClip   = true;

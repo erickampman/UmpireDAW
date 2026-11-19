@@ -3,8 +3,8 @@
 **Decided 2026-11-18** (decisions.md, "Umpire as a plugin"). Proposed on
 the Mac the same day; the spike (P1) was built and checked headless there,
 then checked by the author in REAPER and Bitwig on both platforms and in
-Ardour on Linux ("In hosts", below), and it passed. P2 is next ("If it
-works", below). The rest of this section is the proposal as written. What's left of the
+Ardour on Linux ("In hosts", below), and it passed. P2 (recording and
+playback) and P3 (the editor) are built on the Mac ("If it works", below). The rest of this section is the proposal as written. What's left of the
 standalone plan (milestones 12 to 18, the tempo map and stem export, plugin
 routing) is most of a DAW, and the author has to build it alone. This
 proposes a smaller route to the same goal: put Umpire inside a host that
@@ -543,12 +543,18 @@ the timer question belongs anyway.
 - **To record other tracks while Umpire plays** (printing its sound to an
   audio track, say), leave its Record off: it plays its takes as usual.
 - **In Ardour, open Umpire's window once each session if the synth needs
-  timers.** Until it's opened, Ardour gives the plugin no timers, so a
+  timers** (since P3 that's Umpire's own window; the synth's opens from it). Until it's opened, Ardour gives the plugin no timers, so a
   synth that needs them stalls; closing it afterwards is fine. Takes no
   longer wait for it (P2: the lane thread). A device that goes away and
   comes back is reopened only once the window has been opened.
 - **Host note effects in front of Umpire do nothing**: Umpire takes its
   notes from the device, not the host.
+- **Umpire's window** (P3) shows its takes and edits them. Its Undo (Edit,
+  or Cmd+Z when the window has the keys) is its own; the host's undo
+  doesn't undo edits made in it. Hosts may keep keys for themselves: in
+  REAPER, turn on "Send all keyboard input to plugin" for the grid's keys,
+  or use the Edit menu and right-click. The synth's editor opens from the
+  button with its name, in a window of its own.
 - **On Linux with PipeWire**, the block size comes from PipeWire, not the
   host: start the host with `pw-jack -p 256` (or set PipeWire's quantum)
   for a short delay between playing and hearing.
@@ -728,6 +734,169 @@ hosts are the author's (below).
    option, on by default), so its takes sound as before: play a take with
    glides from the start and from the middle, and loop it. With that option
    off, a key keeps its last glide for its next note, as MIDI 2.0 says.
+
+### P3: the editor (built 2026-11-19, on the Mac)
+
+The plugin's own window, in place of the synth's editor, which until now
+was what the host's plugin window showed. The design was proposed with a
+mockup and agreed with the author before it was built (decisions.md, "The
+plugin's window"; ui-direction.md's rules: only what you need, hide
+controls but never state, nothing changes on a guess).
+
+```
+┌ Record │ Edit │ PlainOldSynth                         KeyboardEDO   9.2.1 ┐  header (ImGui's menu bar)
+│ 1        2        3        4        5        6        7  ...             │  the ruler: the host's bars
+│ [Take 1 ▪▪▪▪▪▪][Take 3 ▪▪▪▪▪]    [Take 2 ▪▪▪]       │ playhead          │  what's heard, newest on top
+│          [░░ Take 1, covered ░░]                                         │  the strip: covered parts
+├──────────────────────────────────────────────────────────────────────────┤
+│ keys │ the selected take's grid, in song time, the playhead through it │ inspector │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Decided with the author (2026-11-19):**
+- **The host's plugin window is Umpire's.** The synth's editor opens in a
+  window of its own (uw-core's `EditorWindow`, as "What carries over"
+  planned), from a button with the synth's name in Umpire's header, lit
+  while that window is open. Closing Umpire's window closes it too.
+- **Record** is a button in the header (red when on), bound to the Record
+  parameter (id 1). A press is applied by the audio thread at the next
+  block, or by `params.flush` if the host isn't processing (the plugin asks
+  for one), and goes to the host as a gesture (begin, value, end), so the
+  host records it as automation and its own view follows. A change from the
+  host shows on the button.
+- **The lane** shows the takes in the host's bars (4/4: the grid's bars are
+  sixteen sixteenths), each with a sketch of its notes. Where takes
+  overlap, what's heard is drawn: the newest. The parts of older takes that
+  newer ones cover show as a thin strip under them, so nothing that changes
+  what's heard is hidden. A click on a take chooses it for the grid; a
+  click on the strip chooses the newest covered take there, and another
+  click the next older. A click on empty lane chooses none, and the grid
+  goes. With no takes the lane says "Turn on Record and record in the host
+  to make a take."
+- **Bring take to front** (Edit, and a take's right-click menu) makes an
+  older take the newest, so it's heard where it overlaps others. **Delete
+  take** is beside it.
+- **Undo is the plugin's own** and covers the lane: a take recorded, a take
+  deleted or brought to the front, and every edit in the grid, named as the
+  app names them ("Undo Move note"). Edit has Undo and Redo; Cmd+Z and
+  Cmd+Shift+Z (Ctrl on Linux) work when the window has the keys. The host's
+  undo doesn't see these (above, "Two undos"). A loaded state starts a new
+  history.
+- **While the host plays**, the lane and the grid page to keep the playhead
+  in view, until scrolled by hand (Shift+wheel or a sideways swipe); the
+  next play starts paging again. No zoom (Z1 stays separate).
+
+**How it's built:**
+- **The window** (`src/Plugin/PluginEditor.{h,cpp}`) is DGL embedded in
+  the host's view (DGL's embed `Window` and its own `Application`, not
+  DPF's plugin wrapper), its top-level widget the app's `GridCanvas`, with
+  `GridPanels` over it. The grid code now lives in two libraries both
+  targets share: `umpire-clip` gains `ClipEdit` and `GridModel` (they need
+  only `uw::ump`), and `umpire-grid-ui` holds `GridCanvas`, `GridPanels`,
+  `ImGuiWidget` and `Widgets`. The app's grid windows are unchanged: the
+  new hooks default to what they did.
+  - `GridCanvas` takes a **band** (`GridBand`) between the menu bar and
+    the grid: the plugin's lane. It draws it, routes its clicks, wheel and
+    motion to it, hides the grid while no take is chosen, and draws the
+    playhead on the grid and pages to it.
+  - `GridPanels` takes **hooks**: no File or View menu, the Record button
+    first in the menu bar, the take's commands at the end of Edit, the
+    synth's button and the status at the right, the right-click menu, no
+    inspector without a take, and the name read only (a take's name is its
+    number until P4 saves names).
+  - `GridModel` has an **origin**: the grid is in song time from the bar
+    its take starts in, so its columns, bar lines, Ctrl-drag and Quantize
+    are the host's sixteenths even when a take starts off the beat
+    (Ardour's start at beat -0.08, a locate mid-bar). What it gives the
+    lane is in the clip's ticks; a note moved before the take's start
+    starts the take earlier (`LaneKeeper::editTake` shifts the clip).
+- **Edits go back through the lane.** `LaneKeeper` gains `editTake`,
+  `deleteTake`, `bringToFront`, `undo`, `redo` and `view()`, all under its
+  lock on the main thread; `Lane` gains `replace`, `remove`,
+  `bringToFront`, `restore` and `visibleSpans` (what the lane draws as
+  heard). Each change gives the engine new play data through its queue, as
+  a take does, so the audio thread still neither locks nor allocates, and
+  sets the flag the main thread turns into the host's `mark_dirty`. A take
+  recorded is an undo step ("Record take").
+- **The host's position** for the playhead: `PluginEngine::position()` and
+  `hostPlaying()`, atomics the audio thread writes at the end of each block.
+- **Timers**: the window is driven at about 60 a second by the host's
+  `timer-support`, or, where the host has none (Bitwig on the Mac), by a
+  run-loop timer of its own in the common modes, as Retune's editor. On the
+  Mac its size is in points, scaled by the backing scale of the view it's
+  in, read live (`PluginEditorMac.mm`) since DGL reads it once; moved to a
+  screen of another scale, it's sized again.
+- **The log** says "window opened (960x600 at 2.0)", "window closed",
+  "synth's window opened" and "closed"; the heartbeat says whether each is
+  open.
+
+**Checked on the Mac (headless, silent):**
+- `ninja -C build && ctest --test-dir build --output-on-failure`: 10 of 10.
+  `test-plugin-engine` adds testEditor: a note moved in the grid goes into
+  the take through `editTake` (one "Move note" step, the take's id kept,
+  the state dirty) and is heard at its new beat; a note moved before the
+  take starts the take earlier; undo and redo of it; bring to front and
+  delete, and undo of the delete; a recorded take as a "Record take" step;
+  the covered spans; the grid's origin (a note at its song beat); the
+  host's position. `test-plugin-clap`: the plugin now has a window without
+  a synth.
+- **`tools/PluginWindowCheck.mm`** (`ninja -C build
+  umpire-plugin-window-check`; not a ctest, since it opens a window): a bare
+  Cocoa host with no timer-support (as Bitwig on the Mac) opens the built
+  Umpire.clap's window with three overlapping takes, plays at 120, and
+  clicks into it itself. Passed: the window opens; a click on Take 1 shows
+  its grid; the Record button sends the host a gesture with On, and Record
+  is on; a click on the grid adds a note to the take (17 notes in the saved
+  state); Cmd+Z takes it out (16). Its frames (`UMPIRE_PLUGIN_CAPTURE`,
+  since `screencapture` needs the Screen Recording permission) show the
+  lane, the covered strip under Take 2, the paging playhead in the lane and
+  the grid, Record lit, and the inspector.
+- **clap-validator 0.4.1**: 30 passed, 2 failed, 12 skipped, with no synth
+  and with PlainOldSynth: the same two expected `param-set-*` failures as
+  P2 ("The arm"). It doesn't open the window.
+- **Steinberg's VST3 validator** (built from `external/vst3sdk` into a
+  scratch folder): 47 passed, 0 failed, with no synth and with PlainOldSynth.
+- `build/umpire-daw --self-test`: the track view's checks pass; the grid
+  window's input checks fail from "click on the grid goes to the canvas"
+  on, **the same with the code before P3** (built and run to compare), so
+  that's older than P3 and Mac-only as far as known (clip-editor.md's run
+  was on Linux). Not looked into here.
+
+**Checks in hosts (the author's, by eye; the window makes no sound, but a
+take plays when the host plays):**
+
+1. **The window opens** in REAPER and Bitwig (CLAP) on the Mac, and in
+   Ardour (VST3) on Linux (Ardour on the Mac waits for an arm64 build): the
+   header, the lane with the takes, "window opened" in the log. Resize it.
+2. **It follows the host**: the playhead moves with the host's, in the lane
+   and the grid, pages while playing, and stops when the host stops; a
+   tempo change keeps it on the host's grid.
+3. **Record**: the button lights the host's Record parameter and back; host
+   automation of Record lights the button; recording with it on makes a take
+   that appears in the lane as soon as recording stops.
+4. **Edit a take**: click it, move, add and delete notes in the grid; play:
+   the edit is heard. Edit > Undo and Redo, with their names. Save, close
+   and reopen the project: the edit is kept.
+5. **Older takes**: record over part of a take; the covered part shows as a
+   strip; click it, Bring take to front: it's heard again; undo.
+6. **The synth's window**: the synth's button opens PlainOldSynth's editor
+   in a window of its own, and closes it; closing that window unlights the
+   button. In Bitwig, try it with each hosting mode.
+7. **Keys** in each host: Delete, the arrows, Q, and Cmd+Z in the grid. A
+   host may keep them (Cmd+Z is REAPER's and Bitwig's undo); REAPER passes
+   them with "Send all keyboard input to plugin" (the FX window's menu).
+   The Edit menu and right-click do everything without keys.
+8. **Two instances**, each with its window open: each shows its own lane.
+
+**Not in P3:**
+- **Names and scales of takes** aren't saved (P4: state and files), so the
+  grid's name field is read only and its tuning is the window's, worked out
+  again for each take.
+- **Meters other than 4/4**: the grid's bars are sixteen sixteenths, and
+  the lane's follow them.
+- **Choosing the input and the synth** in the window: still the setup file.
+- **Linux**: not built there yet; the X11 side (`set_scale`, sizes in
+  pixels) is written but untried.
 
 **What it replaces:** milestones 13 to 18, T1, S1, S2 and the plugin-routing
 proposal (R1 to R6). Milestone 12 becomes a question for P2. Zoom (Z1)

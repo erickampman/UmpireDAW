@@ -5,8 +5,11 @@
 // No CLAP, no threads: Plugin/LaneKeeper.h runs it on the lane thread.
 //
 // Takes are kept oldest first. Where takes overlap, the newest plays and the
-// older ones are kept underneath, not cut, for P3's editor to show.
+// older ones are kept underneath, not cut, for P3's editor to show (and bring
+// back: bringToFront()).
 
+#include <cstddef>
+#include <memory>
 #include <vector>
 
 #include "App/Clip.h"
@@ -25,6 +28,20 @@ public:
     // Replaces every take (a loaded state). Names and ids are given anew.
     void setTakes(std::vector<ClipRef> takes);
 
+    // --- P3: the editor's edits. Each keeps the take's id and place; false
+    // if there's no such take. ---
+    const ClipRef* find(ClipRefId ref) const;
+    // The take's clip and start replaced (an edit in the grid).
+    bool replace(ClipRefId ref, Tick start, std::shared_ptr<const Clip> clip);
+    bool remove(ClipRefId ref);
+    // Made the newest, so it's heard wherever it overlaps others.
+    bool bringToFront(ClipRefId ref);
+    // The takes as they were before (undo): their ids and names kept.
+    void restore(std::vector<ClipRef> takes);
+    // An id for an edited clip (a clip never changes once made: an edit
+    // makes a new one, docs/clip-editor.md).
+    ClipId newClipId() { return nextClip++; }
+
 private:
     std::vector<ClipRef> all;
     ClipRefId            nextRef  = 1;
@@ -39,5 +56,16 @@ private:
 // take tunes gets the Pitch 7.25 in force there, or a Per-Note Management
 // reset. At one tick, what ends a piece comes before what starts another.
 std::vector<ClipEvent> flatten(const std::vector<ClipRef>& takes);
+
+// Where a take ends on the lane: its length, or its last event if later.
+Tick takeEnd(const ClipRef& take);
+
+// The parts of takes[index] that are heard, in song ticks, in order: its
+// span less the spans of newer takes (what flatten() plays). The rest of its
+// span is covered (the editor draws it as a strip underneath).
+struct Span {
+    Tick start = 0, end = 0;
+};
+std::vector<Span> visibleSpans(const std::vector<ClipRef>& takes, std::size_t index);
 
 } // namespace umpire::plugin

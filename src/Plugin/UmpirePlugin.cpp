@@ -13,14 +13,16 @@
 //     thread, Plugin/LaneKeeper), and plays the lane back from the host's
 //     position; the host hears only audio.
 //
-// No editor of its own: its editor is the synth's, embedded in the host's
-// window (CLAP gui, forwarded to uw::HostedPlugin::openEditor). What it
-// does goes to a log file (logPath() below), since there's nothing else to
-// show it on: the input it opened, takes, the live input's timing, the
-// state, its latency, and a heartbeat counting the host's timer ticks and
-// main-thread callbacks (how the spike checked timer-support with the editor
-// closed, check 7). Setup comes from a small text file
-// (configPath(), Plugin/PluginSetup.h).
+// Its window (P3, Plugin/PluginEditor.h) is its own, embedded in the host's
+// plugin window: Record, the lane of takes in time with the host, and the
+// grid for the selected take, whose edits go back through the lane. The
+// synth's editor opens in a window of its own (uw::EditorWindow), from a
+// button in Umpire's (docs/plugin-version.md, "P3"). What it does also goes
+// to a log file (logPath() below): the input it opened, takes, the live
+// input's timing, the state, its latency, and a heartbeat counting the
+// host's timer ticks and main-thread callbacks (how the spike checked
+// timer-support with the window closed, check 7). Setup comes from a small
+// text file (configPath(), Plugin/PluginSetup.h).
 
 #include <clap/clap.h>
 
@@ -43,13 +45,19 @@
 #include <string>
 #include <vector>
 
+#ifdef __APPLE__
+#include <CoreFoundation/CoreFoundation.h>   // the window's own timer, on a host without timer-support
+#endif
+
 #include "App/ClipFile.h"
 #include "Plugin/LaneKeeper.h"
+#include "Plugin/PluginEditor.h"
 #include "Plugin/PluginEngine.h"
 #include "Plugin/PluginSetup.h"
 #include "uw/base/Clock.h"
 #include "uw/clap/ClapPluginFactory.h"
 #include "uw/midi/PlatformMidiInput.h"
+#include "uw/plugin/EditorWindow.h"
 #include "uw/plugin/HostServices.h"
 #include "uw/ump/Ump.h"
 
@@ -188,20 +196,6 @@ private:
     Plugin& plugin;
 };
 
-// The synth's editor, embedded in the host's window: its requests go to the
-// host's CLAP gui.
-class EditorBridge final : public uw::EditorHost {
-public:
-    explicit EditorBridge(Plugin& p) : plugin(p) {}
-    bool requestEditorResize(uw::EditorSize size) override;
-    bool requestEditorShown(bool shown) override;
-    void editorResizeHintsChanged() override;
-    void editorClosed() override;
-
-private:
-    Plugin& plugin;
-};
-
 class Plugin {
 public:
     explicit Plugin(const clap_host_t* h);
@@ -214,11 +208,11 @@ public:
     const clap_host_gui_t*            hostGui   = nullptr;
     const clap_host_state_t*          hostState = nullptr;
     const clap_host_latency_t*        hostLatency = nullptr;
+    const clap_host_params_t*         hostParams  = nullptr;
     const int                         instance;
 
     Config         config;
     ForwardingHost services{*this};
-    EditorBridge   bridge{*this};
     PluginEngine   engine;
     LaneKeeper     keeper{engine, [this](const ClipRef& take) { logTake(take); }};
 
@@ -261,9 +255,32 @@ public:
     std::atomic<bool> armed{false};
     bool              loggedArmed = false;   // main thread
 
-    // The editor (the synth's).
-    bool           editorOpen = false;
-    uw::EditorSize lastSize{640, 480};
+    // The Record button pressed in the window: 0 or 1 for the audio thread
+    // (or params flush) to apply and tell the host, as a gesture; -1 none.
+    std::atomic<int> guiArm{-1};
+
+    // Umpire's window (P3), embedded in the host's, and the synth's editor in
+    // a window of its own. Main thread.
+    bool                              guiCreated = false;
+    std::unique_ptr<PluginEditor>     window;
+    std::uintptr_t                    guiParent = 0;
+    std::uint32_t                     guiWidth = PluginEditor::kWidth, guiHeight = PluginEditor::kHeight;   // the host's units
+    double                            guiScale = 1.0;   // pixels per unit: the Mac's backing scale; set_scale on X11
+    clap_id                           guiTimer = CLAP_INVALID_ID;
+#ifdef __APPLE__
+    CFRunLoopTimerRef                 ownGuiTimer = nullptr;
+#endif
+    std::unique_ptr<uw::EditorWindow> synthWindow;
+
+    bool armedForWindow() const {
+        const int pressed = guiArm.load();
+        return pressed >= 0 ? pressed == 1 : armed.load();
+    }
+    void pressRecord(bool on);
+    void toggleSynthWindow();
+    void startGuiTimer();
+    void stopGuiTimer();
+    void guiTick();
 
     void log(const char* format, ...) __attribute__((format(printf, 2, 3)));
 
@@ -351,26 +368,6 @@ void ForwardingHost::unwatchFd(int fd) {
     plugin.hostFd->unregister_fd(plugin.host, fd);
 }
 
-bool EditorBridge::requestEditorResize(uw::EditorSize size) {
-    if (plugin.hostGui == nullptr) return false;
-    plugin.lastSize = size;
-    return plugin.hostGui->request_resize(plugin.host, size.width, size.height);
-}
-
-bool EditorBridge::requestEditorShown(bool shown) {
-    if (plugin.hostGui == nullptr) return false;
-    return shown ? plugin.hostGui->request_show(plugin.host) : plugin.hostGui->request_hide(plugin.host);
-}
-
-void EditorBridge::editorResizeHintsChanged() {
-    if (plugin.hostGui != nullptr) plugin.hostGui->resize_hints_changed(plugin.host);
-}
-
-void EditorBridge::editorClosed() {
-    plugin.editorOpen = false;
-    if (plugin.hostGui != nullptr) plugin.hostGui->closed(plugin.host, true);
-}
-
 // --- life -------------------------------------------------------------------------------
 
 bool Plugin::init() {
@@ -380,6 +377,7 @@ bool Plugin::init() {
     hostGui   = static_cast<const clap_host_gui_t*>(host->get_extension(host, CLAP_EXT_GUI));
     hostState = static_cast<const clap_host_state_t*>(host->get_extension(host, CLAP_EXT_STATE));
     hostLatency = static_cast<const clap_host_latency_t*>(host->get_extension(host, CLAP_EXT_LATENCY));
+    hostParams  = static_cast<const clap_host_params_t*>(host->get_extension(host, CLAP_EXT_PARAMS));
 
     const fs::path confPath = configPath();
     config = parseConfig(readFile(confPath));
@@ -435,7 +433,9 @@ void Plugin::destroy() {
         if (source != uw::kInvalidMidiSource) midi->close(source);
         midi.reset();
     }
-    if (synth && editorOpen) synth->closeEditor();
+    stopGuiTimer();
+    window.reset();
+    synthWindow.reset();   // closes the synth's editor
     engine.deactivate();   // the host should have already; harmless if so
     synth.reset();         // unregisters the synth's timers and fds, through ForwardingHost
     factory.reset();       // after the synth, which holds its module
@@ -475,6 +475,10 @@ void Plugin::openInput() {
 // The main thread's work, from our timer and from main-thread callbacks.
 void Plugin::housekeeping() {
     if (synth) synth->idle();
+    if (synthWindow && !synthWindow->isOpen()) {   // closed by its close button
+        synthWindow.reset();
+        log("synth's window closed");
+    }
 
     // Takes reach the lane on the lane thread; the host is told here, since
     // mark_dirty is the main thread's.
@@ -526,9 +530,9 @@ void Plugin::logTake(const ClipRef& take) {
 void Plugin::report() {
     lastReport = std::chrono::steady_clock::now();
     if (!activeOnce) return;
-    log("heartbeat: %llu timer ticks, %llu main-thread callbacks, %llu synth timer ticks; editor %s; %s",
+    log("heartbeat: %llu timer ticks, %llu main-thread callbacks, %llu synth timer ticks; window %s, synth's window %s; %s",
         static_cast<unsigned long long>(timerTicks), static_cast<unsigned long long>(callbacks),
-        static_cast<unsigned long long>(synthTimerTicks), editorOpen ? "open" : "closed",
+        static_cast<unsigned long long>(synthTimerTicks), window ? "open" : "closed", synthWindow ? "open" : "closed",
         engine.offline() ? "offline render" : "real time");
     timerTicks = callbacks = synthTimerTicks = 0;
     const LiveStats s = engine.takeStats();
@@ -593,6 +597,31 @@ HostTransport fromClap(const clap_event_transport_t& t) {
 constexpr clap_id kRecordParam = 1;
 
 // A param event for the Record parameter: its new value in `armed`.
+// The Record button's press, to the host as a gesture, so it's recorded as
+// automation and the host's view of the parameter follows.
+void pushArm(const clap_output_events_t* out, bool armed) {
+    if (out == nullptr) return;
+    clap_event_param_gesture_t gesture{};
+    gesture.header.size     = sizeof gesture;
+    gesture.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    gesture.header.type     = CLAP_EVENT_PARAM_GESTURE_BEGIN;
+    gesture.param_id        = kRecordParam;
+    out->try_push(out, &gesture.header);
+    clap_event_param_value_t value{};
+    value.header.size     = sizeof value;
+    value.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
+    value.header.type     = CLAP_EVENT_PARAM_VALUE;
+    value.param_id        = kRecordParam;
+    value.note_id         = -1;
+    value.port_index      = -1;
+    value.channel         = -1;
+    value.key             = -1;
+    value.value           = armed ? 1.0 : 0.0;
+    out->try_push(out, &value.header);
+    gesture.header.type = CLAP_EVENT_PARAM_GESTURE_END;
+    out->try_push(out, &gesture.header);
+}
+
 bool readArm(const clap_event_header_t* h, bool& armed) {
     if (h == nullptr || h->space_id != CLAP_CORE_EVENT_SPACE_ID || h->type != CLAP_EVENT_PARAM_VALUE) return false;
     const auto* e = reinterpret_cast<const clap_event_param_value_t*>(h);
@@ -608,6 +637,10 @@ clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* 
     b.now    = uw::nowNanoseconds();
     if (process->transport != nullptr) b.transport = fromClap(*process->transport);
     bool armed = self->armed.load(std::memory_order_relaxed);
+    if (const int pressed = self->guiArm.exchange(-1); pressed >= 0) {   // the window's Record button
+        armed = pressed == 1;
+        pushArm(process->out_events, armed);
+    }
     b.armed    = armed;
     // Transport events inside the block (a tempo change) and the arm's
     // changes split it (the engine). Past the array, a change of the arm
@@ -800,9 +833,13 @@ bool paramsTextToValue(const clap_plugin_t*, clap_id id, const char* text, doubl
 
 // Param events outside process() (the host isn't processing): the arm
 // applies from the next block.
-void paramsFlush(const clap_plugin_t* p, const clap_input_events_t* in, const clap_output_events_t*) {
+void paramsFlush(const clap_plugin_t* p, const clap_input_events_t* in, const clap_output_events_t* out) {
     Plugin* self  = Plugin::self(p);
     bool    armed = self->armed.load();
+    if (const int pressed = self->guiArm.exchange(-1); pressed >= 0) {
+        armed = pressed == 1;
+        pushArm(out, armed);
+    }
     if (in != nullptr)
         for (std::uint32_t i = 0, n = in->size(in); i < n; ++i) readArm(in->get(in, i), armed);
     self->armed.store(armed);
@@ -839,6 +876,10 @@ void onTimer(const clap_plugin_t* p, clap_id id) {
         self->housekeeping();
         return;
     }
+    if (id == self->guiTimer) {
+        self->guiTick();
+        return;
+    }
     const auto it = self->timers.find(id);
     if (it == self->timers.end()) return;
     ++self->synthTimerTicks;
@@ -858,83 +899,217 @@ void onFd(const clap_plugin_t* p, int fd, clap_posix_fd_flags_t flags) {
 
 const clap_plugin_posix_fd_support_t kPosixFdSupport = {onFd};
 
-// --- gui: the synth's editor, embedded -------------------------------------------------
+// --- gui: Umpire's window (P3), embedded; the synth's in a window of its own -----------
 
-bool guiIsApiSupported(const clap_plugin_t* p, const char* api, bool isFloating) {
-    Plugin* self = Plugin::self(p);
-    return !isFloating && std::strcmp(api, kWindowApi) == 0 && self->synth && self->synth->hasEditor();
+// The Record button: applied on the audio thread at the next block (or by
+// params flush, if the host isn't processing), which tells the host.
+void Plugin::pressRecord(bool on) {
+    guiArm.store(on ? 1 : 0);
+    if (hostParams != nullptr) hostParams->request_flush(host);
 }
 
-bool guiGetPreferredApi(const clap_plugin_t* p, const char** api, bool* isFloating) {
-    Plugin* self = Plugin::self(p);
-    if (!self->synth || !self->synth->hasEditor()) return false;
+void Plugin::toggleSynthWindow() {
+    if (synthWindow) {
+        synthWindow.reset();
+        log("synth's window closed");
+        return;
+    }
+    if (!synth || !synth->hasEditor()) return;
+    synthWindow = uw::EditorWindow::open(*synth, services, "Umpire - " + synth->descriptor().name);
+    log(synthWindow ? "synth's window opened" : "the synth's editor wouldn't open");
+}
+
+// The window's timer, about 60 a second: the host's if it has timer-support,
+// else (Bitwig on the Mac) one of our own on the main run loop, in the
+// common modes so it keeps firing during a drag, as Retune's.
+void Plugin::startGuiTimer() {
+    if (guiTimer != CLAP_INVALID_ID) return;
+    if (hostTimer != nullptr && hostTimer->register_timer(host, 16, &guiTimer)) return;
+    guiTimer = CLAP_INVALID_ID;
+#ifdef __APPLE__
+    if (ownGuiTimer != nullptr) return;
+    CFRunLoopTimerContext context = {0, this, nullptr, nullptr, nullptr};
+    ownGuiTimer = CFRunLoopTimerCreate(
+        kCFAllocatorDefault, CFAbsoluteTimeGetCurrent() + 0.016, 0.016, 0, 0,
+        [](CFRunLoopTimerRef, void* info) { static_cast<Plugin*>(info)->guiTick(); }, &context);
+    if (ownGuiTimer != nullptr) CFRunLoopAddTimer(CFRunLoopGetMain(), ownGuiTimer, kCFRunLoopCommonModes);
+#endif
+}
+
+void Plugin::stopGuiTimer() {
+    if (guiTimer != CLAP_INVALID_ID && hostTimer != nullptr) hostTimer->unregister_timer(host, guiTimer);
+    guiTimer = CLAP_INVALID_ID;
+#ifdef __APPLE__
+    if (ownGuiTimer != nullptr) {
+        CFRunLoopTimerInvalidate(ownGuiTimer);
+        CFRelease(ownGuiTimer);
+        ownGuiTimer = nullptr;
+    }
+#endif
+}
+
+void Plugin::guiTick() {
+    if (!window) return;
+#ifdef __APPLE__
+    // Moved to a screen of another scale: sized again, in its pixels.
+    if (const double now = parentScale(guiParent); now != guiScale) {
+        guiScale = now;
+        window->setSize(guiWidth, guiHeight, guiScale);
+    }
+#endif
+    window->idle();
+}
+
+bool guiIsApiSupported(const clap_plugin_t*, const char* api, bool isFloating) {
+    return !isFloating && std::strcmp(api, kWindowApi) == 0;
+}
+
+bool guiGetPreferredApi(const clap_plugin_t*, const char** api, bool* isFloating) {
     *api        = kWindowApi;
     *isFloating = false;
     return true;
 }
 
+// The window itself waits for set_parent, which gives it somewhere to be.
 bool guiCreate(const clap_plugin_t* p, const char* api, bool isFloating) {
-    return guiIsApiSupported(p, api, isFloating);
+    if (!guiIsApiSupported(p, api, isFloating)) return false;
+    Plugin::self(p)->guiCreated = true;
+    return true;
 }
 
 void guiDestroy(const clap_plugin_t* p) {
     Plugin* self = Plugin::self(p);
-    if (self->editorOpen) self->synth->closeEditor();
-    if (self->editorOpen) self->log("editor closed");
-    self->editorOpen = false;
+    self->stopGuiTimer();
+    if (self->window) self->log("window closed");
+    self->window.reset();
+    self->guiCreated = false;
+    self->guiParent  = 0;
 }
 
-bool guiSetScale(const clap_plugin_t*, double) { return false; }
+// The Mac's sizes are points (the backing scale is ours to apply); X11's are
+// pixels, and set_scale says how many to a logical one.
+bool guiSetScale(const clap_plugin_t* p, double scale) {
+#ifdef __APPLE__
+    (void)p, (void)scale;
+    return false;
+#else
+    Plugin* self   = Plugin::self(p);
+    self->guiScale = scale > 0 ? scale : 1.0;
+    return true;
+#endif
+}
 
 bool guiGetSize(const clap_plugin_t* p, std::uint32_t* width, std::uint32_t* height) {
     Plugin* self = Plugin::self(p);
-    *width       = self->lastSize.width;
-    *height      = self->lastSize.height;
+    *width       = self->guiWidth;
+    *height      = self->guiHeight;
     return true;
 }
 
-bool guiCanResize(const clap_plugin_t* p) {
-    Plugin* self = Plugin::self(p);
-    return self->editorOpen && self->synth->editorResizable();
+bool guiCanResize(const clap_plugin_t*) { return true; }
+
+bool guiGetResizeHints(const clap_plugin_t*, clap_gui_resize_hints_t* hints) {
+    hints->can_resize_horizontally = true;
+    hints->can_resize_vertically   = true;
+    hints->preserve_aspect_ratio   = false;
+    hints->aspect_ratio_width      = 0;
+    hints->aspect_ratio_height     = 0;
+    return true;
 }
 
-bool guiGetResizeHints(const clap_plugin_t*, clap_gui_resize_hints_t*) { return false; }
-bool guiAdjustSize(const clap_plugin_t* p, std::uint32_t*, std::uint32_t*) { return guiCanResize(p); }
+// The host's units: logical on the Mac; pixels on X11 (the smallest scaled).
+std::uint32_t minimum(const Plugin* self, unsigned logical) {
+#ifdef __APPLE__
+    (void)self;
+    return logical;
+#else
+    return static_cast<std::uint32_t>(std::lround(logical * self->guiScale));
+#endif
+}
+
+bool guiAdjustSize(const clap_plugin_t* p, std::uint32_t* width, std::uint32_t* height) {
+    const Plugin* self = Plugin::self(p);
+    *width             = std::max(*width, minimum(self, PluginEditor::kMinWidth));
+    *height            = std::max(*height, minimum(self, PluginEditor::kMinHeight));
+    return true;
+}
+
+// The window's logical size and pixels per logical pixel, from the host's units.
+void windowSize(const Plugin* self, unsigned& width, unsigned& height, double& scale) {
+#ifdef __APPLE__
+    width  = self->guiWidth;
+    height = self->guiHeight;
+    scale  = self->guiScale;
+#else
+    scale  = self->guiScale;
+    width  = static_cast<unsigned>(std::lround(self->guiWidth / scale));
+    height = static_cast<unsigned>(std::lround(self->guiHeight / scale));
+#endif
+}
 
 bool guiSetSize(const clap_plugin_t* p, std::uint32_t width, std::uint32_t height) {
-    Plugin*        self = Plugin::self(p);
-    uw::EditorSize size{width, height};
-    if (!self->editorOpen || !self->synth->setEditorSize(size)) return false;
-    self->lastSize = size;
+    Plugin* self    = Plugin::self(p);
+    self->guiWidth  = width;
+    self->guiHeight = height;
+    if (self->window) {
+        unsigned w = 0, h = 0;
+        double   scale = 1;
+        windowSize(self, w, h, scale);
+        self->window->setSize(w, h, scale);
+    }
     return true;
 }
 
-bool guiSetParent(const clap_plugin_t* p, const clap_window_t* window) {
+bool guiSetParent(const clap_plugin_t* p, const clap_window_t* parentWindow) {
     Plugin* self = Plugin::self(p);
-    if (!self->synth || self->editorOpen) return false;
+    if (!self->guiCreated || self->window || std::strcmp(parentWindow->api, kWindowApi) != 0) return false;
 #ifdef __APPLE__
-    const auto parent = reinterpret_cast<uw::NativeWindow>(window->cocoa);
+    self->guiParent = reinterpret_cast<std::uintptr_t>(parentWindow->cocoa);
+    self->guiScale  = parentScale(self->guiParent);
 #else
-    const auto parent = static_cast<uw::NativeWindow>(window->x11);
+    self->guiParent = static_cast<std::uintptr_t>(parentWindow->x11);
 #endif
-    uw::EditorSize size;
-    if (!self->synth->openEditor(parent, self->bridge, size)) {
-        self->log("the synth's editor wouldn't open");
+    EditorLinks links;
+    links.keeper          = &self->keeper;
+    links.engine          = &self->engine;
+    links.armed           = [self] { return self->armedForWindow(); };
+    links.setArmed        = [self](bool on) { self->pressRecord(on); };
+    links.synthName       = [self] { return self->synth ? self->synth->descriptor().name : std::string(); };
+    links.synthEditorOpen = [self] { return self->synthWindow != nullptr; };
+    if (self->synth && self->synth->hasEditor()) links.toggleSynthEditor = [self] { self->toggleSynthWindow(); };
+    links.inputName = [self] {
+        return self->source == uw::kInvalidMidiSource ? std::string()
+                                                      : self->sourceName + (self->sourceConnected ? "" : " (gone)");
+    };
+    unsigned w = 0, h = 0;
+    double   scale = 1;
+    windowSize(self, w, h, scale);
+    self->window = PluginEditor::open(self->guiParent, w, h, scale, std::move(links));
+    if (!self->window) {
+        self->log("the window wouldn't open");
         return false;
     }
-    self->editorOpen = true;
-    self->log("editor opened (%ux%u)", size.width, size.height);
-    if (size.width != self->lastSize.width || size.height != self->lastSize.height) {
-        self->lastSize = size;
-        if (self->hostGui != nullptr) self->hostGui->request_resize(self->host, size.width, size.height);
-    }
+    self->log("window opened (%ux%u at %.1f)", w, h, scale);
+    self->startGuiTimer();
     return true;
 }
 
 bool guiSetTransient(const clap_plugin_t*, const clap_window_t*) { return false; }
 void guiSuggestTitle(const clap_plugin_t*, const char*) {}
-bool guiShow(const clap_plugin_t*) { return true; }
-bool guiHide(const clap_plugin_t*) { return true; }
+
+bool guiShow(const clap_plugin_t* p) {
+    Plugin* self = Plugin::self(p);
+    if (!self->window) return false;
+    self->startGuiTimer();
+    return true;
+}
+
+bool guiHide(const clap_plugin_t* p) {
+    Plugin* self = Plugin::self(p);
+    if (!self->window) return false;
+    self->stopGuiTimer();
+    return true;
+}
 
 const clap_plugin_gui_t kGui = {guiIsApiSupported, guiGetPreferredApi, guiCreate,       guiDestroy,
                                 guiSetScale,       guiGetSize,         guiCanResize,    guiGetResizeHints,
