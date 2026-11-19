@@ -1,8 +1,10 @@
 # Umpire as a plugin
 
-**A proposal, 2026-11-18, on the Mac; not yet decided.** The spike (P1)
-is built and checked headless on the Mac. Its checks in hosts, which
-decide this, are the author's ("The spike, built", below). What's left of the
+**Decided 2026-11-18** (decisions.md, "Umpire as a plugin"). Proposed on
+the Mac the same day; the spike (P1) was built and checked headless there,
+then checked by the author in REAPER and Bitwig on both platforms and in
+Ardour on Linux ("In hosts", below), and it passed. P2 is next ("If it
+works", below). The rest of this section is the proposal as written. What's left of the
 standalone plan (milestones 12 to 18, the tempo map and stem export, plugin
 routing) is most of a DAW, and the author has to build it alone. This
 proposes a smaller route to the same goal: put Umpire inside a host that

@@ -556,10 +556,12 @@ On the Linux PC: [stem-export.md](stem-export.md). In short:
   dry, both, or through a chosen slot), and the manifest names what
   wasn't printed.
 
-## Umpire as a plugin (proposed 2026-11-18, not yet decided)
+## Umpire as a plugin (decided 2026-11-18)
 
-On the Mac: [plugin-version.md](plugin-version.md). The rest of the
-standalone plan is most of a DAW. In short:
+Proposed on the Mac and decided the same day, after the spike (P1) passed
+in REAPER, Bitwig and Ardour on Linux and in REAPER and Bitwig on the Mac:
+[plugin-version.md](plugin-version.md). The rest of the standalone plan is
+most of a DAW. In short:
 - **Umpire becomes a CLAP instrument** (VST3 and AUv2 through clap-wrapper)
   in REAPER or Bitwig, which do the transport, tempo map, mixing, saving
   and stems.
@@ -578,6 +580,13 @@ standalone plan is most of a DAW. In short:
 - **First a one-day spike** (P1), checked in REAPER, Bitwig and Ardour on
   both platforms. If it fails in REAPER and Bitwig, the standalone plan
   goes on.
+- **Decided:** the plugin is the product. Its milestones are P2 to P5
+  (MILESTONES.md). The standalone milestones 13 to 18, the tempo map and
+  stem export (T1, S1, S2) and plugin routing (R1 to R6) are replaced, not
+  built; milestone 12 becomes a question for P2. `umpire-daw` stays, as it
+  is, as the test bed for the clip model and the grid, sharing `src/App`
+  with the plugin. Ardour (Linux) is the open-source host that works so
+  far.
 
 ## Deferred
 

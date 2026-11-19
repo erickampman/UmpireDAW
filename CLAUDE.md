@@ -9,6 +9,10 @@ windows included, edits clips in a grid, and saves and opens sessions; see
 [docs/plugins.md](docs/plugins.md),
 [docs/plugin-editors.md](docs/plugin-editors.md),
 [docs/files.md](docs/files.md) and [docs/clip-editor.md](docs/clip-editor.md).
+Since 2026-11-18 the product is the plugin (`src/Plugin`, `Umpire.clap` and
+`Umpire.vst3`): Umpire as an instrument inside REAPER, Bitwig or Ardour,
+milestones P2 to P5 ([docs/plugin-version.md](docs/plugin-version.md)).
+`umpire-daw` stays as the test bed for the clip model and the grid.
 
 ## Read first
 
@@ -33,14 +37,15 @@ windows included, edits clips in a grid, and saves and opens sessions; see
    bundle, MIDI Clip Files, the File menu),
    [docs/clip-editor.md](docs/clip-editor.md) (milestone 10: the grid
    edits its clip; selection, moves, per-note data, pitch on the EDO grid),
-   [docs/plugin-routing.md](docs/plugin-routing.md) (proposed: the
-   routing graph, MIDI and audio mixers, the track's plugin stack),
-   [docs/stem-export.md](docs/stem-export.md) (proposed: stems and the
-   tempo map for other DAWs),
-   [docs/plugin-version.md](docs/plugin-version.md) (proposed: Umpire as a
-   CLAP instrument in REAPER or Bitwig, opening the MIDI 2.0 input and
-   hosting the synth itself; would replace much of the above; its spike,
-   P1, is built in `src/Plugin`, its host checks still to do),
+   [docs/plugin-routing.md](docs/plugin-routing.md) (replaced by the
+   plugin, not built: the routing graph, MIDI and audio mixers, the
+   track's plugin stack),
+   [docs/stem-export.md](docs/stem-export.md) (replaced by the plugin, not
+   built: stems and the tempo map for other DAWs),
+   [docs/plugin-version.md](docs/plugin-version.md) (decided 2026-11-18:
+   Umpire as a CLAP instrument in REAPER, Bitwig or Ardour, opening the
+   MIDI 2.0 input and hosting the synth itself; replaces the standalone
+   roadmap after milestone 11; the spike, P1, passed; P2 on is the work),
    [docs/ui-direction.md](docs/ui-direction.md) (the UI direction: only what
    you need; read before any UI work).
 

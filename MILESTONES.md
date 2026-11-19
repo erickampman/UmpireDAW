@@ -57,11 +57,16 @@ timeline. Linux first (decisions.md, "Scope").
     request; not yet built on Linux, and opening a real plugin's editor is
     the author's
 12. [ ] UMP groups and arrangement (Umpire): tracks over group ranges,
-    clip references with transforms
-13. [ ] First useful version (Umpire): record from KeyEDO, edit, play to
-    plugin and hardware, save/reopen
+    clip references with transforms -- *a question for P2 now (below)*
+13. [ ] ~~First useful version (Umpire): record from KeyEDO, edit, play to
+    plugin and hardware, save/reopen~~ -- *replaced by the plugin, P2 to P5*
 
-## Proposed: plugin routing (not yet decided)
+**Decided 2026-11-18: Umpire as a plugin** (decisions.md; below). The
+standalone milestones after 11 are replaced: 13 to 18, T1, S1, S2 and R1 to
+R6 won't be built. `umpire-daw` stays as it is, the test bed for the clip
+model and the grid. The sections below are kept as the record.
+
+## Replaced: plugin routing (proposed, not built)
 
 Proposed 2026-10-30 (docs/plugin-routing.md; decisions.md, "Plugin
 routing"): the session as a graph with one cable per input, MIDI and audio
@@ -88,7 +93,7 @@ about a milestone:
 Mixer strips stay with milestone 14, whose audio strips would be this
 proposal's audio mixer node.
 
-## Proposed: the tempo map and stem export (not yet scheduled)
+## Replaced: the tempo map and stem export (proposed, not built)
 
 Proposed 2026-10-30 (docs/stem-export.md; decisions.md, "Stem export"):
 other DAWs finish what Umpire leaves out, from its stems, and need its
@@ -108,15 +113,15 @@ tempo map to line up with them.
 - Later: the tempo map as MIDI 2.0 Flex Data (or in a MIDI Clip File),
   once another DAW imports it
 
-## Proposed: Umpire as a plugin (not yet decided)
+## Umpire as a plugin (decided 2026-11-18)
 
-Proposed 2026-11-18 (docs/plugin-version.md; decisions.md, "Umpire as a
-plugin"): Umpire as a CLAP instrument in REAPER or Bitwig, opening the MIDI
-2.0 input and hosting the synth itself, so the notes never pass through the
-host. If the spike works, it replaces milestones 13 to 18, T1, S1, S2 and
-R1 to R6.
+Proposed and decided 2026-11-18 (docs/plugin-version.md; decisions.md,
+"Umpire as a plugin"): Umpire as a CLAP instrument in REAPER, Bitwig or
+Ardour, opening the MIDI 2.0 input and hosting the synth itself, so the
+notes never pass through the host. It replaces milestones 13 to 18, T1, S1,
+S2 and R1 to R6.
 
-- P1. [ ] The spike: one input, one hosted synth, one clip recorded with
+- P1. [x] The spike: one input, one hosted synth, one clip recorded with
   the host and played back from its position, saved in the state; checked
   in REAPER and Bitwig, and in Ardour (open source) through the VST3 build,
   on the Mac and Linux. *Built 2026-11-18 on the Mac (`Umpire.clap`,
@@ -127,8 +132,9 @@ R1 to R6.
   author's) in REAPER and Bitwig on the Mac, and on Linux (built there the
   same day) in REAPER, Bitwig and Ardour 8.4: Ardour's checks 1 to 7 pass,
   with timers only once the plugin's window has opened (plugin-version.md,
-  "In hosts"; release notes there). Left: REAPER's check 6; Ardour on the
-  Mac (the author's is Intel-only).*
+  "In hosts"; release notes there). Done 2026-11-18. Not done, and not
+  needed to go on: REAPER's check 6 (Bitwig and Ardour passed it); Ardour
+  on the Mac (the author's is Intel-only).*
 - P2. [ ] Recording and playback on the clip model, driven by the host's
   position; the chase on jumps; latency reported
 - P3. [ ] The editor: a lane in time with the host, and the grid
@@ -151,7 +157,7 @@ Asked for 2026-11-01: Umpire has no zoom yet; the track view's beat
 - Later: the zoom levels of ui-direction.md ("Zoom replaces opening
   things": Sections, Bars, Notes, Expression), editing notes in the lane
 
-## After the first useful version: audio
+## Replaced: after the first useful version, audio (not built)
 
 Decided 2026-10-14 (decisions.md, "Audio: printing, mixdown, playback").
 Plugin tracks come first; hardware comes last.
@@ -171,5 +177,6 @@ Plugin tracks come first; hardware comes last.
 - [x] StageHand switches to uw-core (merged 2026-10-08)
 - [x] StageHand switches to DPF fork (2026-10-22, StageHand b65ba55)
 - [ ] Plugins move onto DPF fork and use uw::ump (plugins-roadmap.md)
-- [ ] StageHand's routing moves onto uw-core's graph, if plugin routing
-  (above) is accepted (plugin-routing.md, "Shared with StageHand")
+- [ ] ~~StageHand's routing moves onto uw-core's graph, if plugin routing
+  (above) is accepted~~ (plugin routing is replaced; StageHand may still
+  want the graph on its own)
