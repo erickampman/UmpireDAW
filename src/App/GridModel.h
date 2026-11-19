@@ -150,6 +150,8 @@ public:
     // is printing it (decisions.md, "The clip editor"). Commit it as
     // "Quantize notes".
     void quantizeSelected();
+    // Select every note in the grid (Edit > Select all notes, Ctrl/Cmd+A).
+    void selectAll();
 
     // The edits since the clip was shown, as one command on it (named for
     // what they did), if editClip is set; then the new clip is shown. Without

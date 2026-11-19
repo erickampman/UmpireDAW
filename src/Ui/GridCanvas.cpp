@@ -417,6 +417,10 @@ bool GridCanvas::onKeyboard(const KeyboardEvent& ev) {
         if (model.redo) model.redo();
     } else if (command && ev.key == 'z') {
         if (model.undo) model.undo();
+    } else if (command && ev.key == 'a') {   // Select all notes
+        model.selectAll();
+        changed();
+        return true;
     } else if (ev.key == 'q' && !command && selected) {   // Quantize notes
         model.quantizeSelected();
         model.commit("Quantize notes");

@@ -250,6 +250,22 @@ void GridModel::quantizeSelected() {
     if (diff) edited();
 }
 
+void GridModel::selectAll() {
+    bool diff = false;
+    for (int i = 0; i < static_cast<int>(notes.size()); ++i) {
+        GridNote& n = notes[static_cast<std::size_t>(i)];
+        diff |= n.selected != true;
+        n.selected = true;
+    }
+    if (notes.empty()) {
+        focus = -1;
+    } else if (focus < 0) {
+        focus = 0;
+        diff = true;
+    }
+    if (diff) touch();
+}
+
 void GridModel::setClipName(const std::string& name) {
     if (name.empty() || name == clipName) return;
     if (renameClip) {

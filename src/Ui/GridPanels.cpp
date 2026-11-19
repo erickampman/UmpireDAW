@@ -81,6 +81,14 @@ void GridPanels::menuBar() {
         if (ImGui::MenuItem(redo.c_str(), redoKey, false, model.redo && !model.redoLabel.empty())) model.redo();
         ImGui::Separator();
         const int selected = model.selectionSize();
+#ifdef __APPLE__
+        const char* selectAllKey = "Cmd+A";
+#else
+        const char* selectAllKey = "Ctrl+A";
+#endif
+        if (ImGui::MenuItem("Select all notes", selectAllKey, false, !model.notes.empty())) {
+            model.selectAll();
+        }
         if (ImGui::MenuItem("Quantize notes", "Q", false, selected > 0)) {
             model.quantizeSelected();
             model.commit("Quantize notes");
