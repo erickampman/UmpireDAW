@@ -4,8 +4,9 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 // FileDialog on macOS (FileDialog.h): NSOpenPanel and NSSavePanel, begun
-// modeless (or as a sheet on the parent view's window, if one is given), so the main loop (MainLoopMac.mm, which hands AppKit every event)
-// keeps ticking while one is up. The completion handler keeps the answer for
+// modeless (or as a sheet on the parent view's window, if one is given), so
+// the main loop (MainLoopMac.mm, which hands AppKit every event) keeps
+// ticking while one is up. The completion handler keeps the answer for
 // poll().
 
 namespace umpire {

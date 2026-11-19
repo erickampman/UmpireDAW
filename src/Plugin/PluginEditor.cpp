@@ -439,7 +439,7 @@ void PluginEditor::Impl::build() {
     model.undoLabel = view.undoLabel;
     model.redoLabel = view.redoLabel;
     dialog.setParent(parentView);   // the Mac's panels as sheets on the host's window, in front of it
-        if (const char* dir = std::getenv("UMPIRE_PLUGIN_CAPTURE")) captureDir = dir;
+    if (const char* dir = std::getenv("UMPIRE_PLUGIN_CAPTURE")) captureDir = dir;
     window.show();
 }
 

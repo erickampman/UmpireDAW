@@ -104,9 +104,9 @@ public:
 
     // A change outside the lane that the plugin's undo covers (the synth
     // changed). swap() puts back what the step holds and returns the step
-    // that puts back what it replaced (null if it couldn't: then that's the
-    // end of it). Called on the main thread from undo() and redo(), without
-    // the keeper's lock.
+    // that puts back what it replaced, or null if it couldn't now (nothing
+    // changed: the step stays where it was, to try again). Called on the
+    // main thread from undo() and redo(), without the keeper's lock.
     class OtherStep {
     public:
         virtual ~OtherStep()                      = default;
@@ -141,6 +141,10 @@ private:
     std::atomic<bool>       dirty{false};
     std::atomic<std::uint64_t> changes{0};
     std::vector<Step>       undos, redos;
+    // Counted under the lock, so a step outside the lane, swapped with the
+    // lock let go of, knows what happened meanwhile: steps made (a take
+    // recorded), and histories started anew (a state loaded).
+    std::uint64_t           stepsMade = 0, historiesCleared = 0;
 
     std::thread             thread;
     std::mutex              wakeLock;

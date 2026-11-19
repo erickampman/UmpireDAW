@@ -97,6 +97,18 @@ void GridModel::selectIn(int rowLow, int rowHigh, Tick from, Tick to, bool add) 
     if (diff) touch();
 }
 
+void GridModel::selectAll() noexcept {
+    bool diff = false;
+    for (GridNote& n : notes) {
+        diff |= !n.selected;
+        n.selected = true;
+    }
+    const int next = notes.empty() ? -1 : focus >= 0 ? focus : static_cast<int>(notes.size()) - 1;
+    diff |= next != focus;
+    focus = next;
+    if (diff) touch();
+}
+
 // --- edits ----------------------------------------------------------------------------
 
 int GridModel::addNote(int pitch, int step, int lengthSteps, int velocity) {
@@ -248,22 +260,6 @@ void GridModel::quantizeSelected() {
         n.start = s;
     }
     if (diff) edited();
-}
-
-void GridModel::selectAll() {
-    bool diff = false;
-    for (int i = 0; i < static_cast<int>(notes.size()); ++i) {
-        GridNote& n = notes[static_cast<std::size_t>(i)];
-        diff |= n.selected != true;
-        n.selected = true;
-    }
-    if (notes.empty()) {
-        focus = -1;
-    } else if (focus < 0) {
-        focus = 0;
-        diff = true;
-    }
-    if (diff) touch();
 }
 
 void GridModel::setClipName(const std::string& name) {

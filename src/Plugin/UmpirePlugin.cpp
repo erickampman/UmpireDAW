@@ -667,14 +667,14 @@ bool Plugin::useSynth(const SynthChoice& c) {
     std::unique_ptr<uw::HostedPlugin> next = loadSynth(c, path);
     if (next && !c.state.empty() && !next->loadState(c.state.data(), c.state.size()))
         log("%s didn't take its saved state", next->descriptor().name.c_str());
-    if (synthWindow) {   // the old synth's editor goes with it
-        synthWindow.reset();
-        log("synth's window closed");
-    }
     const PluginEngine::Swap swap = engine.swapSynth(next.get());
-    if (swap == PluginEngine::Swap::Busy) {
+    if (swap == PluginEngine::Swap::Busy) {   // nothing changed: the old synth's editor stays
         log("the synth can't change now: the host hasn't processed the last change yet");
         return false;
+    }
+    if (synthWindow) {   // the old synth's editor goes with it, before it might be destroyed below
+        synthWindow.reset();
+        log("synth's window closed");
     }
     if (swap == PluginEngine::Swap::Pending && synth) retiring.push_back(std::move(synth));
     synth       = std::move(next);   // Done: the old one goes now

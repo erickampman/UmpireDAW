@@ -84,6 +84,12 @@ int main() {
         m.selectIn(59, 61, 0, kGridStep, true);
         check("a Shift box adds", m.selectionSize() == 3);
         m.select(1);
+        m.selectAll();
+        check("select all keeps the focus", m.selectionSize() == 3 && m.focus == 1);
+        m.select(-1);
+        m.selectAll();
+        check("select all, with no focus: the last note", m.selectionSize() == 3 && m.focus == 2);
+        m.select(1);
         m.toggle(2);
         m.nudge(kGridStep / 3, 0);   // off the grid, as played
         m.beginDrag();

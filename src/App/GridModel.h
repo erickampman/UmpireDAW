@@ -118,6 +118,9 @@ public:
     // The notes touching rows [rowLow, rowHigh] and ticks [from, to): only
     // them, or added to the selection.
     void selectIn(int rowLow, int rowHigh, Tick from, Tick to, bool add) noexcept;
+    // Every note (Edit > Select all notes, Cmd/Ctrl+A). The focus stays if
+    // there is one, else it's the last note, as a box's.
+    void selectAll() noexcept;
 
     // --- edits: each shows at once; commit() makes them the clip's ---
     // Adds a note at `pitch` and `step` (a column), kept inside the grid, and
@@ -150,8 +153,6 @@ public:
     // is printing it (decisions.md, "The clip editor"). Commit it as
     // "Quantize notes".
     void quantizeSelected();
-    // Select every note in the grid (Edit > Select all notes, Ctrl/Cmd+A).
-    void selectAll();
 
     // The edits since the clip was shown, as one command on it (named for
     // what they did), if editClip is set; then the new clip is shown. Without

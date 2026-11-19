@@ -29,7 +29,9 @@ each case.
   it adds them. A click on empty grid, without a drag, still adds a note, as
   it always has. A click on a note in a selection, without a drag, selects
   only that note. Selected notes have an amber edge, and the focus note (the
-  one the inspector shows) has a thicker one.
+  one the inspector shows) has a thicker one. Edit > Select all notes
+  (Cmd+A on the Mac, Ctrl+A on Linux; added 2026-11-19) selects every note,
+  keeping the focus note, or making the last note it if there was none.
 - **Moving.** A drag moves the whole selection by whole sixteenths, the
   columns the pointer crosses, and each note keeps its offset from the grid.
   A recorded note moved in time keeps its feel: moving isn't quantizing
@@ -198,7 +200,7 @@ On the Linux PC (GCC 15.2, X11), 2026-11-01:
 
 ## Not in it (later)
 
-- Copy, cut, paste and duplicate; select all.
+- Copy, cut, paste and duplicate.
 - **Quantize** is an effect, not an edit (decisions.md, "The clip editor";
   ideas.md, "Quantize as a plugin"). When it exists, the grid still edits
   the recorded notes, shows that the effect is on (a badge), and marks where

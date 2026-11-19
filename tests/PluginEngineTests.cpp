@@ -939,6 +939,37 @@ void testOtherSteps() {
     check("undo swaps it back", keeper.undo() && synthNow == 1 && keeper.view().redoLabel == "Change synth");
     check("redo swaps it again", keeper.redo() && synthNow == 2 && keeper.view().undoLabel == "Change synth");
     check("a new step clears redo", keeper.undo() && keeper.renameTake(id, "Other") && keeper.view().redoLabel.empty());
+
+    // A swap that can't happen now (the engine busy) changes nothing: the
+    // step stays, to try again.
+    struct Refused final : LaneKeeper::OtherStep {
+        explicit Refused(int& tries) : tries(tries) {}
+        std::shared_ptr<LaneKeeper::OtherStep> swap() override {
+            return ++tries == 1 ? nullptr : std::make_shared<Refused>(tries);
+        }
+        int& tries;
+    };
+    int tries = 0;
+    keeper.recordOther("Change synth", std::make_shared<Refused>(tries));
+    keeper.takeDirty();
+    check("a refused swap keeps its step and doesn't dirty",
+          !keeper.undo() && keeper.view().undoLabel == "Change synth" && !keeper.takeDirty());
+    check("and it can be tried again", keeper.undo() && tries == 2 && keeper.view().redoLabel == "Change synth");
+
+    // A step made while the swap runs (the lane thread's take, say) clears
+    // the redos: the swap's own redo isn't put back over it.
+    struct During final : LaneKeeper::OtherStep {
+        During(LaneKeeper& k, ClipRefId id) : keeper(k), id(id) {}
+        std::shared_ptr<LaneKeeper::OtherStep> swap() override {
+            keeper.renameTake(id, "Meanwhile");
+            return std::make_shared<During>(keeper, id);
+        }
+        LaneKeeper& keeper;
+        ClipRefId   id;
+    };
+    keeper.recordOther("Change synth", std::make_shared<During>(keeper, id));
+    check("a step made during an undo leaves nothing to redo",
+          keeper.undo() && keeper.view().redoLabel.empty() && keeper.view().undoLabel == "Rename take");
 }
 
 void testSynthSwap() {

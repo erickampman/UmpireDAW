@@ -63,6 +63,7 @@ void LaneKeeper::recordLocked(std::string label) {
     undos.push_back({std::move(label), lane.takes(), nullptr});
     if (undos.size() > kUndoLimit) undos.erase(undos.begin());
     redos.clear();
+    ++stepsMade;
 }
 
 void LaneKeeper::changedLocked() {
@@ -178,6 +179,7 @@ void LaneKeeper::recordOther(std::string label, std::shared_ptr<OtherStep> step)
     undos.push_back({std::move(label), {}, std::move(step)});
     if (undos.size() > kUndoLimit) undos.erase(undos.begin());
     redos.clear();
+    ++stepsMade;
     dirty.store(true);
     changes.fetch_add(1);
 }
@@ -187,22 +189,32 @@ bool LaneKeeper::redo() { return step(false); }
 
 // A lane step is swapped under the lock. A step outside the lane (the synth)
 // is swapped with the lock let go of, since it calls the host, which might
-// call back (a state save takes the lock).
+// call back (a state save takes the lock). Meanwhile the lane thread may make
+// a step (a take recorded), which clears the redos, or a state may load,
+// which clears both: what's put back afterwards keeps to that.
 bool LaneKeeper::step(bool back) {
     std::unique_lock<std::mutex> guard(lock);
     pumpLocked();
     std::vector<Step>& from = back ? undos : redos;
-    if (from.empty() || !from.back().other) return stepLocked(back ? undos : redos, back ? redos : undos);
+    std::vector<Step>& to   = back ? redos : undos;
+    if (from.empty() || !from.back().other) return stepLocked(from, to);
     Step taken = std::move(from.back());
     from.pop_back();
+    const std::uint64_t made = stepsMade, cleared = historiesCleared;
     guard.unlock();
     std::shared_ptr<OtherStep> reverse = taken.other->swap();
     guard.lock();
-    if (reverse) {
-        std::vector<Step>& to = back ? redos : undos;
-        to.push_back({taken.label, {}, std::move(reverse)});
-        if (to.size() > kUndoLimit) to.erase(to.begin());
+    const bool reset    = historiesCleared != cleared;
+    const bool newSteps = stepsMade != made;   // the redos were cleared
+    const auto keep     = [](std::vector<Step>& in, Step s) {
+        in.push_back(std::move(s));
+        if (in.size() > kUndoLimit) in.erase(in.begin());
+    };
+    if (!reverse) {   // it couldn't now: nothing changed, the step stays
+        if (!reset && (back || !newSteps)) keep(from, std::move(taken));
+        return false;
     }
+    if (!reset && !(back && newSteps)) keep(to, {taken.label, {}, std::move(reverse)});
     dirty.store(true);
     changes.fetch_add(1);
     return true;
@@ -233,6 +245,7 @@ void LaneKeeper::setTakes(std::vector<ClipRef> takes, int nextNumber) {
     lane.setTakes(std::move(takes), nextNumber);
     undos.clear();   // a loaded state starts a new history
     redos.clear();
+    ++historiesCleared;
     engine.setEvents(flatten(lane.takes()));
     changes.fetch_add(1);
 }
