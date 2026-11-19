@@ -101,9 +101,11 @@ the message until then:
 ### Chasing Pitch 7.25
 
 *Found 2026-11-18 (P1, plugin-version.md, "Found so far"): PlainOldSynth
-doesn't keep Pitch 7.25 as a tuning table. It keeps it for the sounding note
-only, and drops one sent before the note-on. So for PlainOldSynth this chase
-does nothing, though it does no harm. What follows is the spec's behaviour.*
+didn't keep Pitch 7.25 as a tuning table, so this chase did nothing there.
+Fixed in PlainOldSynth 2026-11-19: it keeps it per key, as below (a CLAP
+tuning expression still lasts for its note only). The other plugin modules
+that share its `PitchBendConverterModule` (StruckSynth, ModicumFM and the
+rest) don't yet.*
 
 The synths keep each key's Pitch 7.25 as a tuning table: it lasts until
 changed or reset, whether or not a note is playing. So playing from anywhere

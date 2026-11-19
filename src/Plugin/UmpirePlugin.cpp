@@ -8,9 +8,10 @@
 //     the Mac, the ALSA sequencer on Linux), and takes no MIDI from the host;
 //   - it hosts one CLAP synth through uw-core's CLAP host (uw::ClapPlugin)
 //     and runs it inside its own process() (Plugin/PluginEngine);
-//   - it records while the host records, each take a clip on its own lane
-//     (Plugin/Lane, kept by the lane thread, Plugin/LaneKeeper), and plays
-//     the lane back from the host's position; the host hears only audio.
+//   - it records while the host records and its Record parameter (its arm)
+//     is on, each take a clip on its own lane (Plugin/Lane, kept by the lane
+//     thread, Plugin/LaneKeeper), and plays the lane back from the host's
+//     position; the host hears only audio.
 //
 // No editor of its own: its editor is the synth's, embedded in the host's
 // window (CLAP gui, forwarded to uw::HostedPlugin::openEditor). What it
@@ -251,8 +252,14 @@ public:
     double        callbackFrames = 2400;   // a main-thread callback asked for every 50 ms of audio
     double        framesSinceCallback = 0;
 
-    // Transport events in the block (audio thread).
-    std::array<TransportChange, PluginEngine::kMaxPieces> changes{};
+    // Transport events and the arm's changes in the block (audio thread).
+    std::array<TransportChange, 64> changes{};
+
+    // The Record parameter (the arm): written by the audio thread (or by
+    // params flush and the state, never at once), read by the main thread for
+    // the state and the log.
+    std::atomic<bool> armed{false};
+    bool              loggedArmed = false;   // main thread
 
     // The editor (the synth's).
     bool           editorOpen = false;
@@ -475,6 +482,10 @@ void Plugin::housekeeping() {
     if (const std::uint64_t missed = engine.takeMissedCount(); missed > 0)
         log("%llu take(s) not recorded: the last two weren't collected yet", static_cast<unsigned long long>(missed));
 
+    if (armed.load() != loggedArmed) {
+        loggedArmed = armed.load();
+        log(loggedArmed ? "record: armed" : "record: off");
+    }
     if (engine.recording() != wasRecording) {
         wasRecording = engine.recording();
         log(wasRecording ? "recording" : "recording stopped");
@@ -578,22 +589,48 @@ HostTransport fromClap(const clap_event_transport_t& t) {
     return h;
 }
 
+// The Record parameter's id (stable: hosts save automation by it).
+constexpr clap_id kRecordParam = 1;
+
+// A param event for the Record parameter: its new value in `armed`.
+bool readArm(const clap_event_header_t* h, bool& armed) {
+    if (h == nullptr || h->space_id != CLAP_CORE_EVENT_SPACE_ID || h->type != CLAP_EVENT_PARAM_VALUE) return false;
+    const auto* e = reinterpret_cast<const clap_event_param_value_t*>(h);
+    if (e->param_id != kRecordParam) return false;
+    armed = e->value >= 0.5;
+    return true;
+}
+
 clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* process) {
     Plugin* self = Plugin::self(p);
     Block   b;
     b.frames = process->frames_count;
     b.now    = uw::nowNanoseconds();
     if (process->transport != nullptr) b.transport = fromClap(*process->transport);
-    // Transport events inside the block (a tempo change) split it (the engine).
+    bool armed = self->armed.load(std::memory_order_relaxed);
+    b.armed    = armed;
+    // Transport events inside the block (a tempo change) and the arm's
+    // changes split it (the engine). Past the array, a change of the arm
+    // still applies from the next block.
     if (const clap_input_events_t* in = process->in_events) {
         const std::uint32_t n = in->size(in);
-        for (std::uint32_t i = 0; i < n && b.changeCount < self->changes.size(); ++i) {
+        for (std::uint32_t i = 0; i < n; ++i) {
             const clap_event_header_t* h = in->get(in, i);
-            if (h == nullptr || h->space_id != CLAP_CORE_EVENT_SPACE_ID || h->type != CLAP_EVENT_TRANSPORT) continue;
-            self->changes[b.changeCount++] = {h->time, fromClap(*reinterpret_cast<const clap_event_transport_t*>(h))};
+            TransportChange            change;
+            if (readArm(h, armed)) {
+                change.hasTransport = false;
+            } else if (h != nullptr && h->space_id == CLAP_CORE_EVENT_SPACE_ID && h->type == CLAP_EVENT_TRANSPORT) {
+                change.transport = fromClap(*reinterpret_cast<const clap_event_transport_t*>(h));
+            } else {
+                continue;
+            }
+            change.frame = h->time;
+            change.armed = armed;
+            if (b.changeCount < self->changes.size()) self->changes[b.changeCount++] = change;
         }
         b.changes = self->changes.data();
     }
+    self->armed.store(armed, std::memory_order_relaxed);
     if (process->audio_outputs_count > 0 && process->audio_outputs[0].data32 != nullptr) {
         b.out         = process->audio_outputs[0].data32;
         b.outChannels = process->audio_outputs[0].channel_count;
@@ -654,6 +691,7 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
         saved.synthId = self->synth->descriptor().id;
         if (!self->synth->saveState(saved.synthState)) saved.synthState.clear();
     }
+    saved.armed = self->armed.load();
     const std::vector<std::uint8_t> bytes = encodeState(saved);
     std::size_t                     at    = 0;
     while (at < bytes.size()) {
@@ -661,8 +699,8 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
         if (n <= 0) return false;
         at += static_cast<std::size_t>(n);
     }
-    self->log("saved: %zu takes, %zu bytes of clips, synth state %zu bytes", saved.takes.size(), clipBytes,
-              saved.synthState.size());
+    self->log("saved: %zu takes, %zu bytes of clips, synth state %zu bytes, record %s", saved.takes.size(), clipBytes,
+              saved.synthState.size(), saved.armed ? "on" : "off");
     return true;
 }
 
@@ -701,6 +739,9 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
     }
     const std::size_t takeCount = takes.size();
     self->keeper.setTakes(std::move(takes));
+    self->armed.store(saved.armed);
+    if (const auto* params = static_cast<const clap_host_params_t*>(self->host->get_extension(self->host, CLAP_EXT_PARAMS)))
+        params->rescan(self->host, CLAP_PARAM_RESCAN_VALUES);
 
     bool synthLoaded = false;
     if (self->synth && !saved.synthState.empty()) {
@@ -709,11 +750,66 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
                       self->synth->descriptor().id.c_str());
         else synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
     }
-    self->log("loaded: %zu takes, %zu events; synth state %s", takeCount, events, synthLoaded ? "loaded" : "not loaded");
+    self->log("loaded: %zu takes, %zu events; synth state %s; record %s", takeCount, events,
+              synthLoaded ? "loaded" : "not loaded", saved.armed ? "on" : "off");
     return true;
 }
 
 const clap_plugin_state_t kState = {stateSave, stateLoad};
+
+// --- params: Record, the arm ------------------------------------------------------------
+
+// One parameter, so a host can arm an instance (its parameter view, an
+// automation lane) and the others don't record (plugin-version.md, "The arm").
+
+std::uint32_t paramsCount(const clap_plugin_t*) { return 1; }
+
+bool paramsGetInfo(const clap_plugin_t*, std::uint32_t index, clap_param_info_t* info) {
+    if (index != 0) return false;
+    *info               = {};
+    info->id            = kRecordParam;
+    info->flags         = CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_AUTOMATABLE;
+    info->cookie        = nullptr;
+    std::snprintf(info->name, sizeof info->name, "%s", "Record");
+    info->module[0]     = '\0';
+    info->min_value     = 0;
+    info->max_value     = 1;
+    info->default_value = 0;
+    return true;
+}
+
+bool paramsGetValue(const clap_plugin_t* p, clap_id id, double* value) {
+    if (id != kRecordParam) return false;
+    *value = Plugin::self(p)->armed.load() ? 1.0 : 0.0;
+    return true;
+}
+
+bool paramsValueToText(const clap_plugin_t*, clap_id id, double value, char* text, std::uint32_t size) {
+    if (id != kRecordParam || size == 0) return false;
+    std::snprintf(text, size, "%s", value >= 0.5 ? "On" : "Off");
+    return true;
+}
+
+bool paramsTextToValue(const clap_plugin_t*, clap_id id, const char* text, double* value) {
+    if (id != kRecordParam) return false;
+    if (std::strcmp(text, "On") == 0 || std::strcmp(text, "on") == 0 || std::strcmp(text, "1") == 0) *value = 1;
+    else if (std::strcmp(text, "Off") == 0 || std::strcmp(text, "off") == 0 || std::strcmp(text, "0") == 0) *value = 0;
+    else return false;
+    return true;
+}
+
+// Param events outside process() (the host isn't processing): the arm
+// applies from the next block.
+void paramsFlush(const clap_plugin_t* p, const clap_input_events_t* in, const clap_output_events_t*) {
+    Plugin* self  = Plugin::self(p);
+    bool    armed = self->armed.load();
+    if (in != nullptr)
+        for (std::uint32_t i = 0, n = in->size(in); i < n; ++i) readArm(in->get(in, i), armed);
+    self->armed.store(armed);
+}
+
+const clap_plugin_params_t kParams = {paramsCount, paramsGetInfo, paramsGetValue, paramsValueToText,
+                                      paramsTextToValue, paramsFlush};
 
 // --- latency: the synth's, as ours ------------------------------------------------------
 
@@ -851,6 +947,7 @@ const void* pluginGetExtension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_STATE) == 0) return &kState;
     if (std::strcmp(id, CLAP_EXT_RENDER) == 0) return &kRender;
     if (std::strcmp(id, CLAP_EXT_LATENCY) == 0) return &kLatency;
+    if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) return &kParams;
     if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0) return &kTimerSupport;
     if (std::strcmp(id, CLAP_EXT_POSIX_FD_SUPPORT) == 0) return &kPosixFdSupport;
     if (std::strcmp(id, CLAP_EXT_GUI) == 0) return &kGui;

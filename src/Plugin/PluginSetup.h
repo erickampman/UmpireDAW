@@ -36,13 +36,15 @@ int chooseSource(const std::vector<uw::MidiSourceInfo>& sources, const std::stri
 
 // The plugin's CLAP state: the lane's takes, each as where it starts and a
 // MIDI Clip File (App/ClipFile.h), and the hosted synth, which and its own
-// state. Little-endian:
-//   "UMPP", version (u32, 2),
+// state, and the arm (the Record parameter). Little-endian:
+//   "UMPP", version (u32, 3),
 //   take count (u32), then each take's start (i64 ticks on the host's
 //   timeline) and clip file size (u32) and bytes, oldest first,
-//   synth id size (u32) and bytes, synth state size (u32) and bytes.
-// Version 1 (the spike, P1) had one clip file in place of the takes, from
-// the song's start: it's read as one take at 0.
+//   synth id size (u32) and bytes, synth state size (u32) and bytes,
+//   flags (u32; bit 0: armed).
+// Version 2 (P2) had no flags: read unarmed. Version 1 (the spike, P1) had
+// one clip file in place of the takes, from the song's start: it's read as
+// one take at 0.
 struct SavedTake {
     std::int64_t              start = 0;   // ticks (App/Clip.h's 40320 a quarter)
     std::vector<std::uint8_t> clipFile;
@@ -52,6 +54,7 @@ struct SavedState {
     std::vector<SavedTake>    takes;
     std::string               synthId;
     std::vector<std::byte>    synthState;
+    bool                      armed = false;
 };
 
 std::vector<std::uint8_t> encodeState(const SavedState& state);

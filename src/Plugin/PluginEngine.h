@@ -9,14 +9,16 @@
 //   - takes live input from the MIDI thread (the plugin's own uw-core input,
 //     never the host's MIDI) through a SpscQueue, places each message at a
 //     sample offset from its capture time, and plays it through to the synth;
-//   - records it into a take while the host records (CLAP_TRANSPORT_IS_RECORDING),
-//     in ticks from the host's song position (song_pos_beats); a jump while
-//     recording (a locate, a loop wrap) ends the take and starts another;
+//   - records it into a take while the host records (CLAP_TRANSPORT_IS_RECORDING)
+//     and the plugin's Record parameter is on (its arm), in ticks from the
+//     host's song position (song_pos_beats); a jump while recording (a locate,
+//     a loop wrap) ends the take and starts another;
 //   - plays the lane (Plugin/Lane.h's flatten(), in song ticks) from the
 //     host's position, ending notes and chasing Pitch 7.25 when the position
 //     jumps, as App/Player does on a seek;
-//   - follows the host's transport events inside the block (a tempo change):
-//     each piece of the block is played and recorded at its own position;
+//   - follows the host's transport events inside the block (a tempo change),
+//     and the arm's changes: each piece of the block is played and recorded at
+//     its own position;
 //   - runs the hosted synth (a uw::HostedPlugin, uw-core's CLAP host) once
 //     for the block, its events at their sample offsets, in MIDI 2.0 where
 //     its note port takes it, MIDI 1.0 otherwise (as App/AudioEngine).
@@ -57,16 +59,21 @@ struct HostTransport {
     int    barNumber     = 0;
 };
 
-// A transport event inside a block: from `frame` on, the transport is this.
+// A change inside a block, a transport event or the arm's: from `frame` on,
+// the arm is `armed`, and the transport is `transport` if `hasTransport`
+// (a transport event); otherwise it goes on as before (an arm change).
 struct TransportChange {
     std::uint32_t frame = 0;
+    bool          hasTransport = true;
     HostTransport transport;
+    bool          armed = false;
 };
 
 // One block, as the host gives it.
 struct Block {
     std::uint32_t          frames = 0;
     HostTransport          transport;                 // at frame 0
+    bool                   armed = false;             // the Record parameter at frame 0: takes record
     const TransportChange* changes     = nullptr;     // in frame order, each after the last
     std::uint32_t          changeCount = 0;
     uw::Nanoseconds        now = 0;                   // when process() was called, on uw-core's clock
@@ -97,7 +104,7 @@ public:
     static constexpr std::size_t kMaxEvents     = 2048;      // to the synth in one block (uw::ClapPlugin's limit)
     static constexpr std::size_t kMaxTakeEvents = 1u << 16;  // in one take
     static constexpr int         kKeys          = 16 * 16 * 128;   // group, channel, note
-    static constexpr std::size_t kMaxPieces     = 16;        // a block split by transport events; more are merged
+    static constexpr std::size_t kMaxPieces     = 16;        // a block split by its changes; more are ignored
 
     PluginEngine();
     ~PluginEngine() override;
@@ -177,6 +184,8 @@ private:
         HostTransport transport;
         Tick          tick = 0;            // the song position at `first`
         double        ticksPerFrame = 0;
+        bool          armed = false;       // the Record parameter
+        bool          continues = false;   // no transport event of its own: on from the last piece
         bool          recording = false;   // live input in it goes to the take
     };
 

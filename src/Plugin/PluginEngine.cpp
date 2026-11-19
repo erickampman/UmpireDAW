@@ -333,17 +333,30 @@ void PluginEngine::process(const Block& b) noexcept {
     adoptPlayData();
     gatherLive(b);
 
-    // The block's pieces, split where a transport event changes the
-    // transport (a tempo change). Past kMaxPieces, later events are ignored.
+    // The block's pieces, split where a change (a transport event, a tempo
+    // change; the arm) changes them. A change at a piece's own first frame
+    // replaces it. Past kMaxPieces, later changes are ignored.
     Piece       pieces[kMaxPieces];
     std::size_t count = 1;
     pieces[0].transport = b.transport;
-    for (std::uint32_t i = 0; i < b.changeCount && count < kMaxPieces; ++i) {
+    pieces[0].armed     = b.armed;
+    for (std::uint32_t i = 0; i < b.changeCount; ++i) {
         const TransportChange& c = b.changes[i];
-        if (c.frame <= pieces[count - 1].first || c.frame >= b.frames) continue;
-        pieces[count].first     = c.frame;
-        pieces[count].transport = c.transport;
-        ++count;
+        if (c.frame >= b.frames || c.frame < pieces[count - 1].first) continue;
+        if (c.frame > pieces[count - 1].first) {
+            if (count == kMaxPieces) break;
+            Piece& next    = pieces[count];
+            next.first     = c.frame;
+            next.transport = pieces[count - 1].transport;
+            next.continues = true;
+            ++count;
+        }
+        Piece& piece = pieces[count - 1];
+        if (c.hasTransport) {
+            piece.transport = c.transport;
+            piece.continues = false;
+        }
+        piece.armed = c.armed;
     }
     for (std::size_t i = 0; i < count; ++i) {
         pieces[i].frames = (i + 1 < count ? pieces[i + 1].first : b.frames) - pieces[i].first;
@@ -362,10 +375,10 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     const double         tempo = t.tempo > 0 ? t.tempo : 120.0;
     p.ticksPerFrame            = tempo / 60.0 * static_cast<double>(kTicksPerQuarter) / sampleRate;
     const bool rolling         = t.playing && t.hasBeats;
-    p.tick                     = rolling ? std::llround(t.songBeats * static_cast<double>(kTicksPerQuarter)) : expectedTick;
+    p.tick = rolling && !p.continues ? std::llround(t.songBeats * static_cast<double>(kTicksPerQuarter)) : expectedTick;
     const Tick ticks           = std::llround(static_cast<double>(p.frames) * p.ticksPerFrame);
     const Tick end             = p.tick + ticks;
-    const bool rec             = rolling && t.recording && !offline();
+    const bool rec             = rolling && t.recording && p.armed && !offline();
 
     // A jump: a locate, a loop wrap. Tempo changes move the position a
     // little against the last piece's guess, so only more than half a piece
@@ -373,8 +386,9 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     const Tick tolerance = ticks / 2 + 16;
     const bool jumped    = wasRolling && rolling && std::llabs(p.tick - expectedTick) > tolerance;
 
-    // Recording follows the host's record button; a jump ends the take where
-    // the last piece ended and starts another here.
+    // Recording follows the host's record button and the arm (disarming ends
+    // the take, arming while the host records punches in); a jump ends the
+    // take where the last piece ended and starts another here.
     if (recordingSlot >= 0 && (!rec || jumped)) endTake(jumped ? expectedTick : p.tick);
     if (!rec) takeBlocked = false;
     if (rec && recordingSlot < 0 && (!takeBlocked || jumped)) {
@@ -383,7 +397,8 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     }
     p.recording = recordingSlot >= 0;
 
-    // Playback from the host's position; while recording, the lane is silent.
+    // Playback from the host's position; while recording, the lane is silent
+    // (only while armed: an instance that isn't plays on).
     const bool play = rolling && !p.recording && playing != nullptr;
     if (wasPlaying && !play) endPlayNotes(p.first);
     if (play) {

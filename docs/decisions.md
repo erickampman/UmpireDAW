@@ -587,6 +587,11 @@ most of a DAW. In short:
   is, as the test bed for the clip model and the grid, sharing `src/App`
   with the plugin. Ardour (Linux) is the open-source host that works so
   far.
+- **Decided 2026-11-19, in P2:** the plugin has a record arm of its own, a
+  CLAP parameter "Record" (off by default), since otherwise every instance
+  records whenever the host does and the newest take wins. And the synth
+  keeps Pitch 7.25 per key as the spec says, rather than the chase working
+  around it: PlainOldSynth now does (plugin-version.md, "P2").
 
 ## Deferred
 

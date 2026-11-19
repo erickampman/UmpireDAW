@@ -25,7 +25,7 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return lower(haystack).find(lower(needle)) != std::string::npos;
 }
 
-constexpr std::uint32_t kVersion = 2;   // 1: the spike's one clip
+constexpr std::uint32_t kVersion = 3;   // 1: the spike's one clip; 2: no flags
 
 void put32(std::vector<std::uint8_t>& out, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
@@ -78,6 +78,7 @@ std::vector<std::uint8_t> encodeState(const SavedState& state) {
     out.insert(out.end(), state.synthId.begin(), state.synthId.end());
     put32(out, static_cast<std::uint32_t>(state.synthState.size()));
     for (const std::byte b : state.synthState) out.push_back(static_cast<std::uint8_t>(b));
+    put32(out, state.armed ? 1u : 0u);
     return out;
 }
 
@@ -105,7 +106,7 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
     std::uint32_t version = 0, n = 0;
     const std::uint8_t* p = nullptr;
     get32(version);
-    if (version != 1 && version != kVersion) {
+    if (version < 1 || version > kVersion) {
         error = "state version " + std::to_string(version) + ", this plugin reads 1 to " + std::to_string(kVersion);
         return false;
     }
@@ -142,6 +143,14 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
     }
     state.synthState.resize(n);
     if (n > 0) std::memcpy(state.synthState.data(), p, n);
+    if (version >= 3) {
+        std::uint32_t flags = 0;
+        if (!get32(flags)) {
+            error = "the state ends before its flags";
+            return false;
+        }
+        state.armed = (flags & 1u) != 0;
+    }
     return true;
 }
 

@@ -97,11 +97,13 @@ struct Host {
     float*             out[2] = {left.data(), right.data()};
     uw::Nanoseconds    now    = kNow;
     HostTransport      transport;
+    bool               armed = true;   // the Record parameter
 
     void block() {
         Block b;
         b.frames      = kFrames;
         b.transport   = transport;
+        b.armed       = armed;
         b.now         = now;
         b.out         = out;
         b.outChannels = 2;
@@ -351,6 +353,19 @@ void testState() {
     check("another's state is refused", !decodeState(junk, sizeof junk, back, error), error);
     const auto empty = encodeState(SavedState{});
     check("an empty one round-trips", decodeState(empty.data(), empty.size(), back, error) && back.takes.empty());
+    check("unarmed by default", !back.armed);
+    s.armed = true;
+    const auto armedBytes = encodeState(s);
+    check("the arm round-trips (version 3)", decodeState(armedBytes.data(), armedBytes.size(), back, error) && back.armed &&
+                                                 back.takes.size() == 2, error);
+
+    // P2's version 2: no flags, read unarmed.
+    const std::uint8_t v2[] = {'U', 'M', 'P', 'P', 2, 0, 0, 0, 1, 0, 0, 0,   // one take
+                               0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 7, 8,     // at 0, two bytes
+                               1, 0, 0, 0, 'x', 0, 0, 0, 0};                 // synth "x", no state
+    check("version 2 reads unarmed", decodeState(v2, sizeof v2, back, error) && back.takes.size() == 1 &&
+                                         back.takes[0].clipFile.size() == 2 && back.synthId == "x" && !back.armed,
+          error);
 
     // The spike's version 1: one clip from the song's start.
     const std::uint8_t v1[] = {'U', 'M', 'P', 'P', 1, 0, 0, 0, 3, 0, 0, 0, 7, 8, 9, 1, 0, 0, 0, 'x', 0, 0, 0, 0};
@@ -436,6 +451,7 @@ void testTempoChangeInBlock() {
     b.transport   = t;
     b.changes     = &change;
     b.changeCount = 1;
+    b.armed       = change.armed = true;
     b.now         = kNow;
     b.out         = out;
     b.outChannels = 2;
@@ -578,6 +594,69 @@ void testLaneKeeper() {
 
 } // namespace
 
+// The arm (the Record parameter): a take records only while the host records
+// and the instance is armed.
+void testArm() {
+    FakeSynth    synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    Host host(engine);
+
+    // Unarmed: the host records, this instance doesn't, and plays its lane on.
+    engine.setEvents({{beats(4.01), ump::midi2NoteOn(0, 0, 72, 0x8000)}, {beats(4.5), ump::midi2NoteOff(0, 0, 72)}});
+    host.armed = false;
+    host.play(4.0, true);
+    engine.onMidi(1, at(host.now - 5'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    auto got = synth.last();
+    bool lanePlayed = false;
+    for (const auto& e : got) lanePlayed = lanePlayed || (ump::isNoteOn(e.message) && ump::noteNumber(e.message) == 72);
+    check("unarmed, the host recording doesn't record", !engine.recording());
+    check("and the lane plays on", lanePlayed);
+    check("live input still plays through", got.size() >= 2);
+    host.block();
+    FinishedTake none;
+    check("no take", !engine.collectTake(none));
+
+    // Armed inside a block (a param event at frame 240): punched in there.
+    engine.setEvents({});
+    engine.onMidi(1, at(host.now - 5'000'000, ump::midi2NoteOff(0, 0, 60)));
+    host.block();
+    std::vector<float> l(kFrames), r(kFrames);
+    float*             out[2] = {l.data(), r.data()};
+    TransportChange    arm;
+    arm.frame        = 240;
+    arm.hasTransport = false;   // an arm change: the position goes on from frame 0's
+    arm.armed        = true;
+    Block b;
+    b.frames      = kFrames;
+    b.transport   = host.transport;   // beat 4.06
+    b.armed       = false;
+    b.changes     = &arm;
+    b.changeCount = 1;
+    b.now         = host.now;
+    b.out         = out;
+    b.outChannels = 2;
+    engine.onMidi(1, at(host.now - 2'500'000, ump::midi2NoteOn(0, 0, 64, 0x8000)));   // frame 360
+    engine.process(b);
+    host.now += 10'000'000;
+    host.transport.songBeats += kBeatsPerBlock;
+    check("armed inside the block: recording", engine.recording());
+    host.armed = true;
+    host.block();
+    host.armed = false;   // disarmed: the take ends, the host still recording
+    host.block();
+    check("disarmed: stopped", !engine.recording());
+    FinishedTake take;
+    check("the take starts where it was armed (beat 4.07)", engine.collectTake(take) && take.start == beats(4.07),
+          std::to_string(take.start));
+    check("with the note played after it", !take.clip.events.empty() && ump::noteNumber(take.clip.events[0].message) == 64 &&
+                                               take.clip.events[0].tick == beats(4.075) - beats(4.07),
+          take.clip.events.empty() ? "" : std::to_string(take.clip.events[0].tick));
+    check("and ends where it was disarmed", take.clip.length == beats(4.1) - beats(4.07), std::to_string(take.clip.length));
+}
+
 int main() {
     testLiveInput();
     testMidi1Synth();
@@ -589,6 +668,7 @@ int main() {
     testTempoChangeInBlock();
     testLane();
     testLaneKeeper();
+    testArm();
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

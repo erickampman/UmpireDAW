@@ -100,8 +100,8 @@ public:
         processing = active && plugin->start_processing(plugin);
     }
 
-    // `seconds` of the song from beat 0 at `tempo`, left channel.
-    std::vector<float> play(double tempo, double seconds) {
+    // `seconds` of the song from `startBeat` at `tempo`, left channel.
+    std::vector<float> play(double tempo, double seconds, double startBeat = 0) {
         std::vector<float> out;
         std::vector<float> left(kFrames), right(kFrames);
         float*             channels[2] = {left.data(), right.data()};
@@ -121,7 +121,7 @@ public:
             t.tempo           = tempo;
             t.tsig_num        = 4;
             t.tsig_denom      = 4;
-            const double beat = i * static_cast<double>(kFrames) / kRate * tempo / 60.0;
+            const double beat = startBeat + i * static_cast<double>(kFrames) / kRate * tempo / 60.0;
             t.song_pos_beats  = static_cast<clap_beattime>(std::llround(beat * CLAP_BEATTIME_FACTOR));
             clap_process_t p{};
             p.steady_time         = static_cast<std::int64_t>(i) * kFrames;
@@ -202,9 +202,9 @@ int main(int argc, char** argv) {
     if (!module) return 1;
 
     // A clip: key 60 on beat 1 as it is; key 64 on beat 3, then a Pitch 7.25
-    // a quarter-tone up (after its note-on: PlainOldSynth keeps Pitch 7.25
-    // for the sounding note only, and drops one sent before it); key 67 on
-    // beat 5 with a Pitch 7.9 attribute a quarter-tone up, as KeyboardEDO sends.
+    // a quarter-tone up (after its note-on, as KeyboardEDO's glide sends it);
+    // key 67 on beat 5 with a Pitch 7.9 attribute a quarter-tone up, as
+    // KeyboardEDO sends.
     uw::MidiMessage tune;
     tune.words[0]  = 0x40000000u | 64u << 8 | 3;   // registered per-note controller 3, key 64
     tune.words[1]  = (64u << 25) + (1u << 24);      // 64.5 in 7.25
@@ -264,6 +264,33 @@ int main(int argc, char** argv) {
     }
     check("a second instance plays on when the first goes", second == realtime);
 
+    // The chase (playback.md): key 62 tuned a quarter-tone up at beat 0.5,
+    // with no note sounding (a tuning table), and its note on beat 2. Played
+    // from beat 1, past the tuning, the chase sends it again before anything
+    // plays; PlainOldSynth keeps Pitch 7.25 for the key (since 2026-11-19),
+    // so the note sounds at 62.5, 302.3 Hz, not 293.7.
+    std::vector<float> chased;
+    {
+        uw::MidiMessage tuneKey;
+        tuneKey.words[0]  = 0x40000000u | 62u << 8 | 3;
+        tuneKey.words[1]  = (62u << 25) + (1u << 24);   // 62.5 in 7.25
+        tuneKey.wordCount = 2;
+        const std::vector<ClipEvent> tuning = {
+            {kTicksPerQuarter / 2, tuneKey},
+            {2 * kTicksPerQuarter, ump::midi2NoteOn(0, 0, 62, 0xC000)},
+            {3 * kTicksPerQuarter, ump::midi2NoteOff(0, 0, 62)},
+        };
+        plugin::SavedState table;
+        table.takes = {{0, clipfile::write(tuning, 4 * kTicksPerQuarter, {120, 4})}};
+        Instance f(module->factory());
+        f.load(plugin::encodeState(table));
+        f.start();
+        chased = f.play(120, 1.5, 1.0);
+    }
+    const double chasedHz = pitchHz(chased, 30000, 4096);   // beat 2 is frame 24000
+    check("played from past a key's Pitch 7.25, the chase tunes its note (302.3 Hz)",
+          std::fabs(chasedHz / 302.27 - 1) < 0.005, std::to_string(chasedHz));
+
     const long first = firstSound(realtime);
     check("the synth plays the clip", first >= 0);
     // Beat 1 at 120 bpm: 0.5 s, frame 24000. The synth's own attack may be a few frames.
@@ -296,6 +323,42 @@ int main(int argc, char** argv) {
               back.takes[0].clipFile == saved.takes[0].clipFile &&
               back.synthId == "com.unlikelyware.plainoldsynth" && !back.synthState.empty(),
           error);
+    // The arm, through CLAP: one parameter, Record, off until the host sets
+    // it, kept in the state.
+    {
+        Instance g(module->factory());
+        const auto* params = static_cast<const clap_plugin_params_t*>(g.plugin->get_extension(g.plugin, CLAP_EXT_PARAMS));
+        clap_param_info_t info{};
+        double            value = -1;
+        check("one parameter, Record, stepped, off by default",
+              params != nullptr && params->count(g.plugin) == 1 && params->get_info(g.plugin, 0, &info) &&
+                  std::string(info.name) == "Record" && (info.flags & CLAP_PARAM_IS_STEPPED) != 0 &&
+                  info.default_value == 0 && params->get_value(g.plugin, info.id, &value) && value == 0);
+        clap_event_param_value_t armEvent{};
+        armEvent.header.size  = sizeof armEvent;
+        armEvent.header.type  = CLAP_EVENT_PARAM_VALUE;
+        armEvent.param_id     = info.id;
+        armEvent.note_id      = -1;
+        armEvent.port_index   = -1;
+        armEvent.channel      = -1;
+        armEvent.key          = -1;
+        armEvent.value        = 1;
+        clap_input_events_t in{&armEvent, [](const clap_input_events_t*) -> std::uint32_t { return 1; },
+                               [](const clap_input_events_t* list, std::uint32_t) {
+                                   return static_cast<const clap_event_header_t*>(list->ctx);
+                               }};
+        clap_output_events_t out{nullptr, [](const clap_output_events_t*, const clap_event_header_t*) { return true; }};
+        params->flush(g.plugin, &in, &out);
+        check("flush arms it", params->get_value(g.plugin, info.id, &value) && value == 1);
+        plugin::SavedState armedState;
+        const auto         bytes = g.save();
+        check("the state keeps the arm", plugin::decodeState(bytes.data(), bytes.size(), armedState, error) && armedState.armed,
+              error);
+        Instance h(module->factory());
+        h.load(bytes);
+        check("and loads it", h.plugin != nullptr && params->get_value(h.plugin, info.id, &value) && value == 1);
+    }
+
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

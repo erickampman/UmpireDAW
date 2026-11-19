@@ -502,6 +502,13 @@ the timer question belongs anyway.
   and works. A per-key tuning sent ahead of its notes (a tuning table) would
   be lost live as well as on playback. To decide: whether that's the synth's
   to change (the spec makes it persistent) or the chase's to drop.
+  **Decided 2026-11-19: the synth's.** PlainOldSynth now keeps Pitch 7.25
+  per key (group, channel, note) until a new one or a Per-Note Management
+  Reset, and sends it again after each plain note-on of the key; a note-on
+  with a Pitch 7.9 attribute keeps its own pitch, and a CLAP tuning
+  expression still lasts for its note only. The chase is unchanged, and now
+  works: test-plugin-render plays from past a key's Pitch 7.25 and hears its
+  note tuned. The other synths sharing the module don't keep it yet.
 - **Latency isn't reported.** `uw::HostedPlugin` has no latency, so the
   plugin can't pass on the synth's. P2 needs uw-core to expose it.
 - **The transport is read once a block.** A tempo change inside a block (a
@@ -509,7 +516,8 @@ the timer question belongs anyway.
   block. Fine for the spike; P2 could split blocks at them.
 - **Every instance records whenever the host records**, armed or not. CLAP's
   transport says nothing about arming, so the open question below ("an arm
-  of its own") is real.
+  of its own") is real. **Fixed 2026-11-19** (P2, "The arm"): a Record
+  parameter.
 - **Likely in REAPER**: anticipative FX processing renders tracks ahead of
   time, which would delay live input by up to its lookahead. Arming the
   track with monitoring on (REAPER then processes it in real time), or
@@ -519,10 +527,12 @@ the timer question belongs anyway.
 
 ### For the release notes
 
-Until the plugin has an arm of its own (open questions):
-
-- **Umpire records whenever the host records.** Its take is kept inside
-  the plugin and saved with the project; the host's timeline doesn't show it.
+- **Umpire records while the host records and its Record parameter is
+  on** (off when it's added). Turn it on in the host's view of the plugin's
+  parameters, or automate it. In REAPER: the FX window's Param button,
+  "Show in track controls", Record; then drag or scroll the slider on the
+  track header past half. Its takes are kept inside the plugin and
+  saved with the project; the host's timeline doesn't show them.
 - **Keep the host from recording a clip of its own** on Umpire's track: in
   Bitwig, turn off the track's record arm; in REAPER, leave it armed with
   monitoring on and set its record mode to "Record: disable (input
@@ -530,9 +540,8 @@ Until the plugin has an arm of its own (open questions):
   delaying live input). Ardour records only with an armed track, so there
   it does record one: ignore or delete it. The host's clip plays nothing,
   and editing it changes nothing.
-- **Don't record other tracks while Umpire is loaded** (printing its sound
-  to an audio track, say): Umpire would record over its take. Export
-  instead, over a range that covers the take.
+- **To record other tracks while Umpire plays** (printing its sound to an
+  audio track, say), leave its Record off: it plays its takes as usual.
 - **In Ardour, open Umpire's window once each session if the synth needs
   timers.** Until it's opened, Ardour gives the plugin no timers, so a
   synth that needs them stalls; closing it afterwards is fine. Takes no
@@ -611,16 +620,47 @@ still stands in for one.
   0.
 - **`SpikeEngine` becomes `PluginEngine`**: it's no longer a spike.
 
+**The arm (decided and built 2026-11-19).** Without one, every instance
+recorded whenever the host recorded, armed or not, and the newest take
+wins: playing into Umpire while recording another track, or two instances
+on one input, would cover the take you meant to keep. So the plugin has one
+CLAP parameter, **Record** (id 1, stepped, off by default, as a host's
+tracks are; automatable). A take records only while the host records *and*
+Record is on:
+- Turning it on while the host records punches in there; turning it off
+  ends the take there. A change in the block's events splits the block at
+  its frame, as a tempo change does, and the position goes on from the
+  piece before it.
+- An instance that isn't armed plays its lane while the host records,
+  and its live input still plays through, so recording other tracks with
+  Umpire loaded is fine now.
+- Hosts show it in their own parameter views and automation lanes
+  (REAPER's FX parameters, Bitwig's Remote Controls or the device's
+  parameter list, Ardour's generic controls); P3's editor can put a button
+  on it. clap-wrapper maps it to a VST3 parameter.
+- The state (version 3) keeps it: flags after the synth's state, bit 0
+  armed. Versions 1 and 2 load unarmed.
+- The log says "record: armed" and "record: off"; "saved" and "loaded"
+  name it.
+- Checked headless: `test-plugin-engine`'s testArm (unarmed: no take, the
+  lane plays on, live input plays through; armed at frame 240 of a block:
+  the take starts there, its note at its tick; disarmed: the take ends), the
+  state's version 3 and version 2; `test-plugin-render` through CLAP (one
+  parameter, Record, stepped, off; flush arms it; the state keeps and loads
+  it). Steinberg's VST3 validator: 47 passed, 0 failed, with no synth and
+  with PlainOldSynth. clap-validator 0.4.1: 30 passed, 2 failed, 12
+  skipped (both ways). The two failures are `param-set-events` and
+  `param-set-no-cookies`: they set each parameter to a random value and
+  expect something to change, and for Record they drew 0, its default (seen
+  with a probe), so nothing could. Expected with one on/off parameter that
+  defaults to off; the flush path itself is checked above.
+
 **Not in P2:**
-- **An arm of its own.** Every instance still records whenever the host
-  records (the release notes). The cheapest arm is a CLAP parameter
-  ("Record"), which REAPER and Bitwig show in their own parameter views and
-  can automate; or it waits for P3's editor. The author's choice.
 - **Milestone 12's question** (tracks over UMP group ranges): no. One
   instance plays everything from its input to its one synth; a second
   synth is a second instance on another host track (check 6).
-- **The chase and PlainOldSynth's Pitch 7.25** ("Found so far"): unchanged
-  until the author decides whether the synth or the chase changes.
+- **The chase and PlainOldSynth's Pitch 7.25** ("Found so far"): the chase
+  is unchanged; the synth changed (decided 2026-11-19).
 - **The input's retries and device changes** (`openInput()`, `sync()`) stay
   on the main thread, so in Ardour before the window opens a device that
   comes back isn't reopened. The input opens at `init()` either way.
@@ -634,7 +674,7 @@ hosts are the author's (below).
   `HostedPlugin::latencyFrames()`, `HostServices::latencyChanged()`.
 - **While this instance records, its lane is silent**, as the spike's clip
   was: older takes don't sound under the one being recorded. Before a punch-in
-  (the host's record flag off) the lane plays as usual.
+  (the host's record flag off, or Record off) the lane plays as usual.
 - **The log** names each take ("Take 3: 5 notes, ... from beat 8.00 to beat
   12.00, first note-on at ..."), says "latency: n frames (the synth's)" when
   it changes, "saved: n takes ..." and "loaded: n takes ...", and "take(s)
@@ -673,6 +713,21 @@ hosts are the author's (below).
 6. **Latency**: the log's "latency" line, if the synth has any
    (PlainOldSynth probably reports none, so this mostly checks nothing
    breaks).
+7. **The arm** (2026-11-19): with Record off, the host recording makes no
+   take and the lane plays on; turn Record on in the host's parameter view
+   and record: a take. Two instances on one input, one armed: only it
+   records. Record comes back on after save and reopen. In Ardour, through
+   the VST3: the parameter shows in its generic controls. *REAPER on the
+   Mac, 2026-11-19 (the author): works. With Record off, REAPER's own
+   recording made no take; Record is reached from the FX window's **Param**
+   button, "Show in track controls", which puts it on the track header as a
+   slider (drag or scroll it past half for On), or the **UI** button
+   (REAPER's own parameter list in place of the synth's editor).*
+8. **PlainOldSynth's tuning table** (2026-11-19, PlainOldSynth rebuilt):
+   KeyboardEDO resets each key before each note-on (its Per-Note Management
+   option, on by default), so its takes sound as before: play a take with
+   glides from the start and from the middle, and loop it. With that option
+   off, a key keeps its last glide for its next note, as MIDI 2.0 says.
 
 **What it replaces:** milestones 13 to 18, T1, S1, S2 and the plugin-routing
 proposal (R1 to R6). Milestone 12 becomes a question for P2. Zoom (Z1)
@@ -683,7 +738,8 @@ carries over to the plugin's lane and grid.
 - **The name.** naming.md's rules (no "MIDI"; Umpire) suggest "Umpire" for
   the plugin as well; the standalone app might then become a test bed, not
   a product.
-- **The recording UI**: whether the host's record button is enough, or the
-  plugin needs an arm of its own (recording in some instances, not others).
+- ~~**The recording UI**: whether the host's record button is enough, or the
+  plugin needs an arm of its own~~: it needs one (decided 2026-11-19, P2,
+  "The arm").
 - **Hardware output** from the plugin (above): needed or not.
 - **Which open-source host to recommend**, once the checks are in (above).
