@@ -113,8 +113,9 @@ void SpikeEngine::setClip(const Clip& clip) {
     owned.push_back(std::move(data));
 }
 
-bool SpikeEngine::collectTake(Clip& out) {
+bool SpikeEngine::collectTake(Clip& out, Tick* start) {
     if (takeState.load(std::memory_order_acquire) != kTakeReady) return false;
+    if (start != nullptr) *start = takeStart;
     out        = Clip{};
     out.name   = "Take";
     out.length = takeEnd;

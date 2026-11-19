@@ -406,6 +406,83 @@ it, or the host plays a take.
 - The browser lists Umpire twice, the CLAP and the VST3; the FORMAT column
   tells them apart.
 
+**REAPER 7.85, Linux, CLAP (2026-11-18, the author):**
+- **The host records its own copy.** With the track armed and its record
+  input on MIDI, REAPER records KeyboardEDO into a MIDI item of its own
+  while the plugin records its take. The item is never played (the plugin
+  has no note ports), so editing it, as the author did by dragging its
+  notes, changes nothing that sounds. Record mode "Record: disable (input
+  monitoring only)", from the arm button's right-click menu, keeps the
+  track armed and monitored and makes no item; that works, but it's awkward.
+- **Live delay was the block size.** REAPER's audio system was JACK, which
+  here is PipeWire's, so PipeWire's quantum (1024 frames at 48 kHz, 21 ms)
+  set the block, not REAPER's own block size (128, used only in its ALSA
+  mode). The delay was noticeable. Starting REAPER with
+  `pw-jack -p 256 <path to reaper>` (or adding `-p 256` to the launcher's
+  `Exec=` line) gives blocks of 256: capture to block 0.2 to 4.8 ms, and
+  the delay is gone (the author).
+- **Once, a take played back seconds late**, after switching to "Record:
+  disable". Not reproduced in either record mode afterwards. The take's log
+  line now gives its start, its first note-on and the tempo, so if it comes
+  back the log tells whether the take was stored late or played late.
+
+**Bitwig Studio 6.1.7, Linux, CLAP (2026-11-18, the author):**
+- The same as REAPER: an armed track records Bitwig's own clip as well as
+  the plugin's take. With the track's record arm off, only the plugin
+  records (its recording follows the transport, not the arm). The author
+  will live with that for now, with a release note (below).
+- Takes recorded where played ("first note-on at beat 4.02" for a note on
+  bar 2 at 110 bpm). Blocks of up to 1024 frames; capture to block 0 to
+  20.9 ms.
+- Bitwig gives timer-support on Linux (about 20 ticks a second), unlike on
+  the Mac.
+
+**Ardour 8.4 (Ubuntu 24.04's package), Linux, VST3 (2026-11-18, the author):**
+- Ubuntu's `ardour` package is the full program (ardour.org's free binary
+  is a demo). Ardour 8 doesn't host CLAP, so it's the VST3 (the log says
+  "in Ardour (CLAP-as-VST3)"). Ardour found new VST3s but didn't scan them
+  until asked (Window → Plugin Manager, or Preferences → Plugins).
+- **Check 7, timers: none with the plugin's window never opened.** Ardour
+  offers timer-support and posix-fd-support (through clap-wrapper, from
+  VST3's `IRunLoop`), but before the window was first opened every
+  heartbeat read 0 timer ticks, 0 main-thread callbacks, 0 synth timer
+  ticks, and heartbeats only came when Ardour saved the plugin's state
+  (about every 2 minutes; `saveState()` runs the main-thread work). So a
+  finished take went in only at the next save, and "recording" was never
+  logged. Once the window opened: about 198 of the plugin's 50 ms timer
+  ticks, 157 main-thread callbacks and 327 of PlainOldSynth's 16 ms timer
+  ticks per 10 s. **Closing the window doesn't stop them**: Ardour hides it
+  and calls the plugin's `gui.destroy` only when the session closes, so the
+  log still says "editor open" and the ticks go on. So opening the window
+  once per session is enough; after reopening the session there are none
+  again until it's opened. P2 can't rely on it: the main-thread work needs another way in
+  when the host gives no run loop (for instance from `process()` through
+  a lock-free hand-off, or doing the take's hand-over on the audio thread).
+- **Check 2: passes in part.** Ardour records only with an armed track, so
+  it records a MIDI region of its own on Umpire's track as well. Takes land
+  where played ("first note-on at beat 4.07"). Recording starts at beat
+  -0.08 (Ardour's transport starts a little before the playhead).
+- **Check 3: passes.** Session → Export with Stem Export, over a range
+  selection (the take isn't a region, so Ardour's session range may be
+  empty), then imported back: the audio is in time with the take. Exporting
+  reactivates the plugin with blocks of up to 8192; there's no render-mode
+  change in the log (the VST3's offline mode doesn't reach the render
+  extension, or Ardour exports in real time; to look at).
+- Live input feels in time to the author at 1024-frame blocks (Ardour's
+  ALSA backend, 21.3 ms).
+- **Ardour's own instruments need its MIDI input connected**: a second
+  track with StruckSynth heard nothing from KeyboardEDO. Ardour was on its
+  ALSA backend, which sees a software client such as KeyboardEDO only with
+  its MIDI system set to the ALSA sequencer; then the track's input is
+  chosen. Not confirmed. Through Ardour it would be 12-EDO in any case
+  (MIDI 1.0).
+- **Check 4: passes.** Saved, quit and reopened: the take and the synth's
+  state came back ("loaded: clip of 12 events to beat 15.10; synth state
+  loaded") and play.
+- **Check 6: passes.** Two Umpire tracks, each with its own PlainOldSynth,
+  both play from KeyboardEDO, non-12-EDO layouts included; both instances
+  log the live input, none late or dropped.
+
 **Ardour on the Mac: not tried.** The author's Ardour on the Mac isn't an
 arm64 build, and Umpire is built for arm64 only (as StageHand and Retune
 are), so it can't load the plugin. Ardour, check 7, waits for Linux, where
@@ -434,8 +511,35 @@ the timer question belongs anyway.
 - **Likely in REAPER**: anticipative FX processing renders tracks ahead of
   time, which would delay live input by up to its lookahead. Arming the
   track with monitoring on (REAPER then processes it in real time), or
-  turning anticipative processing off for the track, should fix it. To
-  confirm in check 1.
+  turning anticipative processing off for the track, should fix it. Not
+  seen on Linux: armed and monitored, the delay there was the block size
+  (above).
+
+### For the release notes
+
+Until the plugin has an arm of its own (open questions):
+
+- **Umpire records whenever the host records.** Its take is kept inside
+  the plugin and saved with the project; the host's timeline doesn't show it.
+- **Keep the host from recording a clip of its own** on Umpire's track: in
+  Bitwig, turn off the track's record arm; in REAPER, leave it armed with
+  monitoring on and set its record mode to "Record: disable (input
+  monitoring only)" (an unarmed REAPER track may be rendered ahead,
+  delaying live input). Ardour records only with an armed track, so there
+  it does record one: ignore or delete it. The host's clip plays nothing,
+  and editing it changes nothing.
+- **Don't record other tracks while Umpire is loaded** (printing its sound
+  to an audio track, say): Umpire would record over its take. Export
+  instead, over a range that covers the take.
+- **In Ardour, open Umpire's window once each session.** Until it's opened,
+  Ardour gives the plugin no timers, so a take goes in only when Ardour
+  next saves, and a synth that needs timers stalls. Closing it afterwards
+  is fine.
+- **Host note effects in front of Umpire do nothing**: Umpire takes its
+  notes from the device, not the host.
+- **On Linux with PipeWire**, the block size comes from PipeWire, not the
+  host: start the host with `pw-jack -p 256` (or set PipeWire's quantum)
+  for a short delay between playing and hearing.
 
 ## If it works
 

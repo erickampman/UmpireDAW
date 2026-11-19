@@ -123,8 +123,12 @@ R1 to R6.
   `Umpire.vst3`; plugin-version.md, "The spike, built"). Checked headless:
   the tests, clap-validator, Steinberg's VST3 validator, and renders through
   PlainOldSynth (per-note pitch whole, onsets on the beat at two tempos,
-  offline = real time, state, two instances). Left: the checks in REAPER,
-  Bitwig and Ardour, by hand (the author's), and the Linux build.*
+  offline = real time, state, two instances). Checked by hand (the
+  author's) in REAPER and Bitwig on the Mac, and on Linux (built there the
+  same day) in REAPER, Bitwig and Ardour 8.4: Ardour's checks 1 to 7 pass,
+  with timers only once the plugin's window has opened (plugin-version.md,
+  "In hosts"; release notes there). Left: REAPER's check 6; Ardour on the
+  Mac (the author's is Intel-only).*
 - P2. [ ] Recording and playback on the clip model, driven by the host's
   position; the chase on jumps; latency reported
 - P3. [ ] The editor: a lane in time with the host, and the grid

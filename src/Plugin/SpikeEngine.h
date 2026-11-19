@@ -114,7 +114,8 @@ public:
     // The clip the audio thread plays from now on (a copy is taken).
     void setClip(const Clip& clip);
     // A take that has ended since the last call, as a clip: false if none.
-    bool collectTake(Clip& out);
+    // `start`, if given, gets the tick recording began at (for the log).
+    bool collectTake(Clip& out, Tick* start = nullptr);
     // Frees clips the audio thread has let go of. Call now and then.
     void collectGarbage();
 

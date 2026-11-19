@@ -454,12 +454,18 @@ void Plugin::housekeeping() {
     if (synth) synth->idle();
 
     Clip take;
-    if (engine.collectTake(take)) {
+    Tick takeFrom = 0;
+    if (engine.collectTake(take, &takeFrom)) {
         const auto notes = notesOf(take.events, take.length);
         clip             = std::move(take);
         engine.setClip(clip);
-        log("take: %zu notes, %zu events, to beat %.2f", notes.size(), clip.events.size(),
-            static_cast<double>(clip.length) / static_cast<double>(kTicksPerQuarter));
+        const auto beats = [](Tick t) { return static_cast<double>(t) / static_cast<double>(kTicksPerQuarter); };
+        Tick firstOn = -1;
+        for (const ClipEvent& e : clip.events)
+            if (uw::ump::isNoteOn(e.message)) { firstOn = e.tick; break; }
+        log("take: %zu notes, %zu events, from beat %.2f to beat %.2f, first note-on at beat %.2f, at %.1f bpm",
+            notes.size(), clip.events.size(), beats(takeFrom), beats(clip.length),
+            firstOn < 0 ? -1.0 : beats(firstOn), engine.lastTempo());
         if (hostState != nullptr) hostState->mark_dirty(host);
     }
     engine.collectGarbage();
