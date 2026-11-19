@@ -1,4 +1,5 @@
-// Umpire as a CLAP instrument: the spike (milestone P1, docs/plugin-version.md).
+// Umpire as a CLAP instrument (docs/plugin-version.md: P1 the spike, P2
+// recording and playback).
 //
 // Our own CLAP entry point, as Retune's (no DPF wrapper: DPF has no recording
 // flag and doesn't pass on timer-support or posix-fd-support), wrapped as a
@@ -6,17 +7,18 @@
 //   - the plugin opens one MIDI input itself, through uw-core (CoreMIDI on
 //     the Mac, the ALSA sequencer on Linux), and takes no MIDI from the host;
 //   - it hosts one CLAP synth through uw-core's CLAP host (uw::ClapPlugin)
-//     and runs it inside its own process() (Plugin/SpikeEngine);
-//   - it records while the host records and plays back from the host's
-//     position; the host hears only audio.
+//     and runs it inside its own process() (Plugin/PluginEngine);
+//   - it records while the host records, each take a clip on its own lane
+//     (Plugin/Lane, kept by the lane thread, Plugin/LaneKeeper), and plays
+//     the lane back from the host's position; the host hears only audio.
 //
 // No editor of its own: its editor is the synth's, embedded in the host's
 // window (CLAP gui, forwarded to uw::HostedPlugin::openEditor). What it
 // does goes to a log file (logPath() below), since there's nothing else to
 // show it on: the input it opened, takes, the live input's timing, the
-// state, and a heartbeat counting the host's timer ticks and main-thread
-// callbacks, which is how the spike checks that timer-support keeps working
-// with the editor closed (check 7). Setup comes from a small text file
+// state, its latency, and a heartbeat counting the host's timer ticks and
+// main-thread callbacks (how the spike checked timer-support with the editor
+// closed, check 7). Setup comes from a small text file
 // (configPath(), Plugin/PluginSetup.h).
 
 #include <clap/clap.h>
@@ -28,6 +30,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -40,8 +43,9 @@
 #include <vector>
 
 #include "App/ClipFile.h"
+#include "Plugin/LaneKeeper.h"
+#include "Plugin/PluginEngine.h"
 #include "Plugin/PluginSetup.h"
-#include "Plugin/SpikeEngine.h"
 #include "uw/base/Clock.h"
 #include "uw/clap/ClapPluginFactory.h"
 #include "uw/midi/PlatformMidiInput.h"
@@ -172,6 +176,7 @@ public:
     void         log(uw::LogLevel level, const char* message) override;
     uw::HostInfo hostInfo() const override;
     void         stateChanged() override;
+    void         latencyChanged() override;
     uw::TimerId  addTimer(std::uint32_t periodMs, std::function<void()> callback) override;
     void         removeTimer(uw::TimerId id) override;
     bool watchFd(int fd, std::uint32_t events, std::function<void(std::uint32_t)> callback) override;
@@ -207,12 +212,14 @@ public:
     const clap_host_posix_fd_support_t* hostFd  = nullptr;
     const clap_host_gui_t*            hostGui   = nullptr;
     const clap_host_state_t*          hostState = nullptr;
+    const clap_host_latency_t*        hostLatency = nullptr;
     const int                         instance;
 
     Config         config;
     ForwardingHost services{*this};
     EditorBridge   bridge{*this};
-    SpikeEngine    engine;
+    PluginEngine   engine;
+    LaneKeeper     keeper{engine, [this](const ClipRef& take) { logTake(take); }};
 
     std::shared_ptr<uw::ClapPluginFactory> factory;
     std::unique_ptr<uw::HostedPlugin>      synth;
@@ -222,8 +229,6 @@ public:
     std::string                            sourceName;
     std::uint64_t                          seenChanges = 0;
     bool                                   sourceConnected = false;
-
-    Clip clip;   // main thread: the clip, as the state saves it
 
     // Main-loop services forwarded for the synth: the host's ids to ours.
     struct Timer {
@@ -240,9 +245,14 @@ public:
     std::chrono::steady_clock::time_point lastReport = std::chrono::steady_clock::now();
     std::chrono::steady_clock::time_point nextInputTry{};
     bool          wasRecording = false;
+    bool          activating   = false;
+    std::uint32_t latency      = 0;   // the synth's, reported as ours
     bool          activeOnce   = false;
     double        callbackFrames = 2400;   // a main-thread callback asked for every 50 ms of audio
     double        framesSinceCallback = 0;
+
+    // Transport events in the block (audio thread).
+    std::array<TransportChange, PluginEngine::kMaxPieces> changes{};
 
     // The editor (the synth's).
     bool           editorOpen = false;
@@ -255,12 +265,9 @@ public:
     void openInput();
     void housekeeping();
     void report();
+    void logTake(const ClipRef& take);
 
     static Plugin* self(const clap_plugin_t* p) { return static_cast<Plugin*>(p->plugin_data); }
-    static void    requestCallback(void* context) {
-        auto* p = static_cast<Plugin*>(context);
-        p->host->request_callback(p->host);
-    }
 };
 
 void Plugin::log(const char* format, ...) {
@@ -292,6 +299,13 @@ uw::HostInfo ForwardingHost::hostInfo() const {
 
 void ForwardingHost::stateChanged() {
     if (plugin.hostState != nullptr) plugin.hostState->mark_dirty(plugin.host);
+}
+
+// While we're activating, the synth's new latency is read when its activate
+// returns (pluginActivate). At any other time it shouldn't change without a
+// restart (CLAP latency), so ask the host for one.
+void ForwardingHost::latencyChanged() {
+    if (!plugin.activating) plugin.host->request_restart(plugin.host);
 }
 
 uw::TimerId ForwardingHost::addTimer(std::uint32_t periodMs, std::function<void()> callback) {
@@ -358,6 +372,7 @@ bool Plugin::init() {
     hostFd    = static_cast<const clap_host_posix_fd_support_t*>(host->get_extension(host, CLAP_EXT_POSIX_FD_SUPPORT));
     hostGui   = static_cast<const clap_host_gui_t*>(host->get_extension(host, CLAP_EXT_GUI));
     hostState = static_cast<const clap_host_state_t*>(host->get_extension(host, CLAP_EXT_STATE));
+    hostLatency = static_cast<const clap_host_latency_t*>(host->get_extension(host, CLAP_EXT_LATENCY));
 
     const fs::path confPath = configPath();
     config = parseConfig(readFile(confPath));
@@ -390,7 +405,6 @@ bool Plugin::init() {
         }
     }
     engine.setSynth(synth.get());
-    engine.setNotify(&Plugin::requestCallback, this);
 
     if (config.input != "none") {
         midi = uw::PlatformMidiInput::create("Umpire");
@@ -404,10 +418,12 @@ bool Plugin::init() {
     }
 
     if (hostTimer != nullptr && !hostTimer->register_timer(host, 50, &ownTimer)) ownTimer = CLAP_INVALID_ID;
+    keeper.start();   // takes reach the lane with or without the host's main thread
     return true;
 }
 
 void Plugin::destroy() {
+    keeper.stop();
     if (midi) {   // no more input before the engine goes
         if (source != uw::kInvalidMidiSource) midi->close(source);
         midi.reset();
@@ -453,22 +469,11 @@ void Plugin::openInput() {
 void Plugin::housekeeping() {
     if (synth) synth->idle();
 
-    Clip take;
-    Tick takeFrom = 0;
-    if (engine.collectTake(take, &takeFrom)) {
-        const auto notes = notesOf(take.events, take.length);
-        clip             = std::move(take);
-        engine.setClip(clip);
-        const auto beats = [](Tick t) { return static_cast<double>(t) / static_cast<double>(kTicksPerQuarter); };
-        Tick firstOn = -1;
-        for (const ClipEvent& e : clip.events)
-            if (uw::ump::isNoteOn(e.message)) { firstOn = e.tick; break; }
-        log("take: %zu notes, %zu events, from beat %.2f to beat %.2f, first note-on at beat %.2f, at %.1f bpm",
-            notes.size(), clip.events.size(), beats(takeFrom), beats(clip.length),
-            firstOn < 0 ? -1.0 : beats(firstOn), engine.lastTempo());
-        if (hostState != nullptr) hostState->mark_dirty(host);
-    }
-    engine.collectGarbage();
+    // Takes reach the lane on the lane thread; the host is told here, since
+    // mark_dirty is the main thread's.
+    if (keeper.takeDirty() && hostState != nullptr) hostState->mark_dirty(host);
+    if (const std::uint64_t missed = engine.takeMissedCount(); missed > 0)
+        log("%llu take(s) not recorded: the last two weren't collected yet", static_cast<unsigned long long>(missed));
 
     if (engine.recording() != wasRecording) {
         wasRecording = engine.recording();
@@ -486,6 +491,23 @@ void Plugin::housekeeping() {
         }
     }
     if (std::chrono::steady_clock::now() - lastReport >= std::chrono::seconds(10)) report();
+}
+
+// On the lane thread (or wherever the take was collected), with the lane's
+// lock held: writeLog() takes its own.
+void Plugin::logTake(const ClipRef& take) {
+    const Clip& clip  = *take.clip;
+    const auto  notes = notesOf(clip.events, clip.length);
+    const auto  beats = [](Tick t) { return static_cast<double>(t) / static_cast<double>(kTicksPerQuarter); };
+    Tick        firstOn = -1;
+    for (const ClipEvent& e : clip.events)
+        if (uw::ump::isNoteOn(e.message)) {
+            firstOn = take.start + e.tick;
+            break;
+        }
+    log("%s: %zu notes, %zu events, from beat %.2f to beat %.2f, first note-on at beat %.2f, at %.1f bpm",
+        clip.name.c_str(), notes.size(), clip.events.size(), beats(take.start), beats(take.end()),
+        firstOn < 0 ? -1.0 : beats(firstOn), engine.lastTempo());
 }
 
 // A heartbeat every 10 s: what the main thread has been given, and the live
@@ -516,8 +538,17 @@ void pluginDestroy(const clap_plugin_t* p) {
 }
 
 bool pluginActivate(const clap_plugin_t* p, double sampleRate, std::uint32_t, std::uint32_t maxFrames) {
-    Plugin* self = Plugin::self(p);
+    Plugin* self     = Plugin::self(p);
+    self->activating = true;
     if (!self->engine.activate(sampleRate, maxFrames)) self->log("the synth wouldn't activate: silence");
+    self->activating = false;
+    // The synth's latency is ours; the host may be told of a change only now.
+    const std::uint32_t latency = self->synth && self->engine.synthHasNotes() ? self->synth->latencyFrames() : 0;
+    if (latency != self->latency) {
+        self->latency = latency;
+        if (self->hostLatency != nullptr) self->hostLatency->changed(self->host);
+        self->log("latency: %u frames (the synth's)", latency);
+    }
     self->callbackFrames      = sampleRate * 0.05;
     self->framesSinceCallback = 0;
     self->activeOnce          = true;
@@ -531,24 +562,37 @@ bool pluginStartProcessing(const clap_plugin_t*) { return true; }
 void pluginStopProcessing(const clap_plugin_t* p) { Plugin::self(p)->engine.stopProcessing(); }
 void pluginReset(const clap_plugin_t* p) { Plugin::self(p)->engine.reset(); }
 
+HostTransport fromClap(const clap_event_transport_t& t) {
+    HostTransport h;
+    h.playing       = (t.flags & CLAP_TRANSPORT_IS_PLAYING) != 0;
+    h.recording     = (t.flags & CLAP_TRANSPORT_IS_RECORDING) != 0 && (t.flags & CLAP_TRANSPORT_IS_WITHIN_PRE_ROLL) == 0;
+    h.hasBeats      = (t.flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
+    h.songBeats     = static_cast<double>(t.song_pos_beats) / CLAP_BEATTIME_FACTOR;
+    h.barStartBeats = static_cast<double>(t.bar_start) / CLAP_BEATTIME_FACTOR;
+    h.barNumber     = t.bar_number;
+    if ((t.flags & CLAP_TRANSPORT_HAS_TEMPO) != 0) h.tempo = t.tempo;
+    if ((t.flags & CLAP_TRANSPORT_HAS_TIME_SIGNATURE) != 0) {
+        h.tsigNum = t.tsig_num;
+        h.tsigDen = t.tsig_denom;
+    }
+    return h;
+}
+
 clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* process) {
     Plugin* self = Plugin::self(p);
     Block   b;
     b.frames = process->frames_count;
     b.now    = uw::nowNanoseconds();
-    if (const clap_event_transport_t* t = process->transport) {
-        b.transport.playing   = (t->flags & CLAP_TRANSPORT_IS_PLAYING) != 0;
-        b.transport.recording = (t->flags & CLAP_TRANSPORT_IS_RECORDING) != 0 &&
-                                (t->flags & CLAP_TRANSPORT_IS_WITHIN_PRE_ROLL) == 0;
-        b.transport.hasBeats  = (t->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
-        b.transport.songBeats = static_cast<double>(t->song_pos_beats) / CLAP_BEATTIME_FACTOR;
-        b.transport.barStartBeats = static_cast<double>(t->bar_start) / CLAP_BEATTIME_FACTOR;
-        b.transport.barNumber     = t->bar_number;
-        if ((t->flags & CLAP_TRANSPORT_HAS_TEMPO) != 0) b.transport.tempo = t->tempo;
-        if ((t->flags & CLAP_TRANSPORT_HAS_TIME_SIGNATURE) != 0) {
-            b.transport.tsigNum = t->tsig_num;
-            b.transport.tsigDen = t->tsig_denom;
+    if (process->transport != nullptr) b.transport = fromClap(*process->transport);
+    // Transport events inside the block (a tempo change) split it (the engine).
+    if (const clap_input_events_t* in = process->in_events) {
+        const std::uint32_t n = in->size(in);
+        for (std::uint32_t i = 0; i < n && b.changeCount < self->changes.size(); ++i) {
+            const clap_event_header_t* h = in->get(in, i);
+            if (h == nullptr || h->space_id != CLAP_CORE_EVENT_SPACE_ID || h->type != CLAP_EVENT_TRANSPORT) continue;
+            self->changes[b.changeCount++] = {h->time, fromClap(*reinterpret_cast<const clap_event_transport_t*>(h))};
         }
+        b.changes = self->changes.data();
     }
     if (process->audio_outputs_count > 0 && process->audio_outputs[0].data32 != nullptr) {
         b.out         = process->audio_outputs[0].data32;
@@ -557,8 +601,8 @@ clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* 
     }
     self->engine.process(b);
 
-    // The main thread is asked in now and then, so the synth's callbacks and
-    // a finished take are seen to on hosts without timer-support.
+    // The main thread is asked in now and then, so the synth's callbacks are
+    // seen to on hosts without timer-support.
     self->framesSinceCallback += b.frames;
     if (self->framesSinceCallback >= self->callbackFrames) {
         self->framesSinceCallback = 0;
@@ -594,15 +638,18 @@ std::uint32_t notePortsCount(const clap_plugin_t*, bool) { return 0; }
 bool notePortsGet(const clap_plugin_t*, std::uint32_t, bool, clap_note_port_info_t*) { return false; }
 const clap_plugin_note_ports_t kNotePorts = {notePortsCount, notePortsGet};
 
-// --- state: the clip as a MIDI Clip File, and the synth's own ---------------------------
+// --- state: the lane's takes as MIDI Clip Files, and the synth's own --------------------
 
 bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
     Plugin* self = Plugin::self(p);
-    self->housekeeping();   // a take just finished goes in
+    self->keeper.pump();   // a take just finished goes in
     SavedState saved;
-    if (!self->clip.events.empty() || self->clip.length > 0)
-        saved.clipFile = clipfile::write(self->clip.events, self->clip.length,
-                                         clipfile::Tempo{self->engine.lastTempo(), self->engine.lastBeatsPerBar()});
+    std::size_t clipBytes = 0;
+    const clipfile::Tempo tempo{self->engine.lastTempo(), self->engine.lastBeatsPerBar()};
+    for (const ClipRef& take : self->keeper.takes()) {
+        saved.takes.push_back({take.start, clipfile::write(take.clip->events, take.clip->length, tempo)});
+        clipBytes += saved.takes.back().clipFile.size();
+    }
     if (self->synth) {
         saved.synthId = self->synth->descriptor().id;
         if (!self->synth->saveState(saved.synthState)) saved.synthState.clear();
@@ -614,7 +661,8 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
         if (n <= 0) return false;
         at += static_cast<std::size_t>(n);
     }
-    self->log("saved: clip %zu bytes, synth state %zu bytes", saved.clipFile.size(), saved.synthState.size());
+    self->log("saved: %zu takes, %zu bytes of clips, synth state %zu bytes", saved.takes.size(), clipBytes,
+              saved.synthState.size());
     return true;
 }
 
@@ -634,19 +682,25 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
         self->log("couldn't load the state: %s", error.c_str());
         return false;
     }
-    Clip loaded;
-    if (!saved.clipFile.empty()) {
-        const clipfile::Read read = clipfile::read(saved.clipFile.data(), saved.clipFile.size());
+    std::vector<ClipRef> takes;
+    std::size_t          events = 0;
+    for (std::size_t i = 0; i < saved.takes.size(); ++i) {
+        const clipfile::Read read = clipfile::read(saved.takes[i].clipFile.data(), saved.takes[i].clipFile.size());
         if (!read.ok) {
-            self->log("couldn't read the saved clip: %s", read.error.c_str());
+            self->log("couldn't read the saved take %zu: %s", i + 1, read.error.c_str());
             return false;
         }
-        loaded.name   = "Take";
-        loaded.events = read.events;
-        loaded.length = read.length;
+        auto clip    = std::make_shared<Clip>();
+        clip->events = read.events;
+        clip->length = read.length;
+        events += clip->events.size();
+        ClipRef ref;
+        ref.start = saved.takes[i].start;
+        ref.clip  = std::move(clip);
+        takes.push_back(std::move(ref));
     }
-    self->clip = std::move(loaded);
-    self->engine.setClip(self->clip);
+    const std::size_t takeCount = takes.size();
+    self->keeper.setTakes(std::move(takes));
 
     bool synthLoaded = false;
     if (self->synth && !saved.synthState.empty()) {
@@ -655,13 +709,17 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
                       self->synth->descriptor().id.c_str());
         else synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
     }
-    self->log("loaded: clip of %zu events to beat %.2f; synth state %s", self->clip.events.size(),
-              static_cast<double>(self->clip.length) / static_cast<double>(kTicksPerQuarter),
-              synthLoaded ? "loaded" : "not loaded");
+    self->log("loaded: %zu takes, %zu events; synth state %s", takeCount, events, synthLoaded ? "loaded" : "not loaded");
     return true;
 }
 
 const clap_plugin_state_t kState = {stateSave, stateLoad};
+
+// --- latency: the synth's, as ours ------------------------------------------------------
+
+std::uint32_t latencyGet(const clap_plugin_t* p) { return Plugin::self(p)->latency; }
+
+const clap_plugin_latency_t kLatency = {latencyGet};
 
 // --- render: offline, live input is ignored ---------------------------------------------
 
@@ -792,6 +850,7 @@ const void* pluginGetExtension(const clap_plugin_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_NOTE_PORTS) == 0) return &kNotePorts;
     if (std::strcmp(id, CLAP_EXT_STATE) == 0) return &kState;
     if (std::strcmp(id, CLAP_EXT_RENDER) == 0) return &kRender;
+    if (std::strcmp(id, CLAP_EXT_LATENCY) == 0) return &kLatency;
     if (std::strcmp(id, CLAP_EXT_TIMER_SUPPORT) == 0) return &kTimerSupport;
     if (std::strcmp(id, CLAP_EXT_POSIX_FD_SUPPORT) == 0) return &kPosixFdSupport;
     if (std::strcmp(id, CLAP_EXT_GUI) == 0) return &kGui;
@@ -811,7 +870,7 @@ const clap_plugin_descriptor_t kDescriptor = {
     "",
     "",
     UMPIRE_VERSION_STRING,
-    "Records and plays MIDI 2.0 from its own input, through a synth it hosts (a spike)",
+    "Records and plays MIDI 2.0 from its own input, through a synth it hosts",
     kFeatures,
 };
 

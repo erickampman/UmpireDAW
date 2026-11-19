@@ -25,7 +25,7 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return lower(haystack).find(lower(needle)) != std::string::npos;
 }
 
-constexpr std::uint32_t kVersion = 1;
+constexpr std::uint32_t kVersion = 2;   // 1: the spike's one clip
 
 void put32(std::vector<std::uint8_t>& out, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
@@ -66,8 +66,14 @@ int chooseSource(const std::vector<uw::MidiSourceInfo>& sources, const std::stri
 std::vector<std::uint8_t> encodeState(const SavedState& state) {
     std::vector<std::uint8_t> out = {'U', 'M', 'P', 'P'};
     put32(out, kVersion);
-    put32(out, static_cast<std::uint32_t>(state.clipFile.size()));
-    out.insert(out.end(), state.clipFile.begin(), state.clipFile.end());
+    put32(out, static_cast<std::uint32_t>(state.takes.size()));
+    for (const SavedTake& take : state.takes) {
+        const auto start = static_cast<std::uint64_t>(take.start);
+        put32(out, static_cast<std::uint32_t>(start));
+        put32(out, static_cast<std::uint32_t>(start >> 32));
+        put32(out, static_cast<std::uint32_t>(take.clipFile.size()));
+        out.insert(out.end(), take.clipFile.begin(), take.clipFile.end());
+    }
     put32(out, static_cast<std::uint32_t>(state.synthId.size()));
     out.insert(out.end(), state.synthId.begin(), state.synthId.end());
     put32(out, static_cast<std::uint32_t>(state.synthState.size()));
@@ -99,15 +105,32 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
     std::uint32_t version = 0, n = 0;
     const std::uint8_t* p = nullptr;
     get32(version);
-    if (version != kVersion) {
-        error = "state version " + std::to_string(version) + ", this plugin reads " + std::to_string(kVersion);
+    if (version != 1 && version != kVersion) {
+        error = "state version " + std::to_string(version) + ", this plugin reads 1 to " + std::to_string(kVersion);
         return false;
     }
-    if (!get32(n) || !bytes(n, p)) {
-        error = "the state ends inside the clip";
-        return false;
+    if (version == 1) {   // the spike's one clip, from the song's start
+        if (!get32(n) || !bytes(n, p)) {
+            error = "the state ends inside the clip";
+            return false;
+        }
+        if (n > 0) state.takes.push_back({0, std::vector<std::uint8_t>(p, p + n)});
+    } else {
+        std::uint32_t takes = 0;
+        if (!get32(takes)) {
+            error = "the state ends before its takes";
+            return false;
+        }
+        for (std::uint32_t i = 0; i < takes; ++i) {
+            std::uint32_t low = 0, high = 0;
+            if (!get32(low) || !get32(high) || !get32(n) || !bytes(n, p)) {
+                error = "the state ends inside take " + std::to_string(i + 1);
+                return false;
+            }
+            const auto start = static_cast<std::int64_t>(static_cast<std::uint64_t>(high) << 32 | low);
+            state.takes.push_back({start, std::vector<std::uint8_t>(p, p + n)});
+        }
     }
-    state.clipFile.assign(p, p + n);
     if (!get32(n) || !bytes(n, p)) {
         error = "the state ends inside the synth's id";
         return false;

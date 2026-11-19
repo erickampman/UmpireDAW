@@ -1,4 +1,4 @@
-#include "Plugin/SpikeEngine.h"
+#include "Plugin/PluginEngine.h"
 
 #include <algorithm>
 #include <cmath>
@@ -52,18 +52,19 @@ void atomicMax(std::atomic<std::int64_t>& a, std::int64_t v) {
 
 } // namespace
 
-SpikeEngine::SpikeEngine() {
-    takeEvents.resize(kMaxTakeEvents);
+PluginEngine::PluginEngine() {
+    for (TakeBuffer& t : takes) t.events.resize(kMaxTakeEvents);
     chaseIndex.assign(kKeys, -1);
     outEvents.resize(kMaxEvents);
     synthEvents.resize(kMaxEvents);
+    liveBlock.resize(kMaxEvents);
 }
 
-SpikeEngine::~SpikeEngine() = default;   // `owned` frees every clip, the one playing included
+PluginEngine::~PluginEngine() = default;   // `owned` frees every PlayData, the one playing included
 
 // --- main thread -----------------------------------------------------------------------
 
-bool SpikeEngine::activate(double rate, std::uint32_t frames) {
+bool PluginEngine::activate(double rate, std::uint32_t frames) {
     sampleRate = rate > 0 ? rate : 48000.0;
     maxFrames  = frames;
     synthActive = false;
@@ -81,23 +82,29 @@ bool SpikeEngine::activate(double rate, std::uint32_t frames) {
     scratch.assign(synthChannels, std::vector<float>(maxFrames, 0.0f));
     scratchPointers.resize(synthChannels);
     for (std::uint32_t c = 0; c < synthChannels; ++c) scratchPointers[c] = scratch[c].data();
-    wasPlaying = false;
+    wasPlaying = wasRolling = false;
     sounding.reset();
     isActive = true;
     return synth == nullptr || synthActive;
 }
 
-void SpikeEngine::deactivate() {
+void PluginEngine::deactivate() {
     if (!isActive) return;
+    // The audio thread isn't running now (CLAP), so a take in progress can be
+    // ended here: Bitwig deactivates around a change of render mode, say.
+    if (recordingSlot >= 0) endTake(expectedTick);
+    takeBlocked = false;
     if (synthActive) synth->deactivate();
     synthActive = false;
     isActive    = false;
 }
 
-void SpikeEngine::setClip(const Clip& clip) {
+// --- the lane side ---------------------------------------------------------------------
+
+void PluginEngine::setEvents(const std::vector<ClipEvent>& songEvents) {
     auto data = std::make_unique<PlayData>();
     std::set<int> tuned;
-    for (const ClipEvent& e : clip.events) {
+    for (const ClipEvent& e : songEvents) {
         if (!ump::isChannelVoice(e.message)) continue;
         data->events.push_back(e);
         if (isPitch725(e.message)) tuned.insert(noteKey(e.message));
@@ -108,32 +115,36 @@ void SpikeEngine::setClip(const Clip& clip) {
     std::stable_sort(data->tunings.begin(), data->tunings.end(), byTick);
     data->tunedKeys.assign(tuned.begin(), tuned.end());
 
+    unsent = std::move(data);   // replaces one not sent yet: only the latest matters
     collectGarbage();
-    if (!toAudio.push(data.get())) return;   // sixteen clips waiting: the audio thread isn't running
-    owned.push_back(std::move(data));
 }
 
-bool SpikeEngine::collectTake(Clip& out, Tick* start) {
-    if (takeState.load(std::memory_order_acquire) != kTakeReady) return false;
-    if (start != nullptr) *start = takeStart;
-    out        = Clip{};
-    out.name   = "Take";
-    out.length = takeEnd;
-    out.events.assign(takeEvents.begin(), std::next(takeEvents.begin(), static_cast<std::ptrdiff_t>(takeCount)));
-    std::stable_sort(out.events.begin(), out.events.end(),
+bool PluginEngine::collectTake(FinishedTake& out) {
+    TakeBuffer* oldest = nullptr;
+    for (TakeBuffer& t : takes)
+        if (t.state.load(std::memory_order_acquire) == kTakeReady && (oldest == nullptr || t.serial < oldest->serial))
+            oldest = &t;
+    if (oldest == nullptr) return false;
+    out             = FinishedTake{};
+    out.start       = oldest->start;
+    out.clip.length = oldest->end - oldest->start;
+    out.clip.events.assign(oldest->events.begin(), std::next(oldest->events.begin(), static_cast<std::ptrdiff_t>(oldest->count)));
+    for (ClipEvent& e : out.clip.events) e.tick -= oldest->start;
+    std::stable_sort(out.clip.events.begin(), out.clip.events.end(),
                      [](const ClipEvent& a, const ClipEvent& b) { return a.tick < b.tick; });
-    takeState.store(kTakeIdle, std::memory_order_release);
+    oldest->state.store(kTakeIdle, std::memory_order_release);
     return true;
 }
 
-void SpikeEngine::collectGarbage() {
+void PluginEngine::collectGarbage() {
     PlayData* done = nullptr;
     while (toMain.pop(done))
         owned.erase(std::remove_if(owned.begin(), owned.end(), [&](const auto& p) { return p.get() == done; }),
                     owned.end());
+    if (unsent && toAudio.push(unsent.get())) owned.push_back(std::move(unsent));
 }
 
-LiveStats SpikeEngine::takeStats() {
+LiveStats PluginEngine::takeStats() {
     LiveStats s;
     s.count            = statCount.exchange(0);
     const auto sum     = statSumNs.exchange(0);
@@ -151,13 +162,13 @@ LiveStats SpikeEngine::takeStats() {
 
 // --- MIDI thread -----------------------------------------------------------------------
 
-void SpikeEngine::onMidi(uw::MidiSourceHandle, const uw::TimedMidiMessage& msg) noexcept {
+void PluginEngine::onMidi(uw::MidiSourceHandle, const uw::TimedMidiMessage& msg) noexcept {
     if (!live.push(msg)) statDropped.fetch_add(1, std::memory_order_relaxed);
 }
 
 // --- audio thread ----------------------------------------------------------------------
 
-void SpikeEngine::emit(std::uint32_t offset, const uw::MidiMessage& m) noexcept {
+void PluginEngine::emit(std::uint32_t offset, const uw::MidiMessage& m) noexcept {
     if (outCount >= outEvents.size()) {
         statDropped.fetch_add(1, std::memory_order_relaxed);
         return;
@@ -165,36 +176,37 @@ void SpikeEngine::emit(std::uint32_t offset, const uw::MidiMessage& m) noexcept 
     outEvents[outCount++] = Out{offset, m};
 }
 
-void SpikeEngine::endPlayNotes() noexcept {
+void PluginEngine::endPlayNotes(std::uint32_t offset) noexcept {
     if (sounding.none()) return;
     for (int key = 0; key < kKeys; ++key)
-        if (sounding.test(static_cast<std::size_t>(key))) emit(0, noteOff(key));
+        if (sounding.test(static_cast<std::size_t>(key))) emit(offset, noteOff(key));
     sounding.reset();
 }
 
-// Each key the clip tunes gets the Pitch 7.25 in force at `at`, or a reset
-// where none is (App/Player.cpp's chase), at the block's first frame.
-void SpikeEngine::chase(Tick at) noexcept {
+// Each key the lane tunes gets the Pitch 7.25 in force at `at`, or a reset
+// where none is (App/Player.cpp's chase).
+void PluginEngine::chase(Tick at, std::uint32_t offset) noexcept {
     if (playing == nullptr || playing->tunedKeys.empty()) return;
     const auto& tunings = playing->tunings;
     for (std::size_t i = 0; i < tunings.size() && tunings[i].tick < at; ++i)
         chaseIndex[static_cast<std::size_t>(noteKey(tunings[i].message))] = static_cast<int>(i);
     for (const int key : playing->tunedKeys) {
         const int i = chaseIndex[static_cast<std::size_t>(key)];
-        emit(0, i >= 0 ? tunings[static_cast<std::size_t>(i)].message : resetKey(key));
+        emit(offset, i >= 0 ? tunings[static_cast<std::size_t>(i)].message : resetKey(key));
     }
     for (std::size_t i = 0; i < tunings.size() && tunings[i].tick < at; ++i)
         chaseIndex[static_cast<std::size_t>(noteKey(tunings[i].message))] = -1;
 }
 
-void SpikeEngine::playRange(Tick from, Tick to, Tick blockTick, double ticksPerFrame, std::uint32_t frames) noexcept {
+void PluginEngine::playRange(Tick from, Tick to, const Piece& p) noexcept {
     if (playing == nullptr || to <= from) return;
     const auto& events = playing->events;
     auto it = std::lower_bound(events.begin(), events.end(), from,
                                [](const ClipEvent& e, Tick t) { return e.tick < t; });
+    const double first = p.first, last = p.first + p.frames - 1;
     for (; it != events.end() && it->tick < to; ++it) {
-        double frame = std::round(static_cast<double>(it->tick - blockTick) / ticksPerFrame);
-        frame        = std::clamp(frame, 0.0, static_cast<double>(frames - 1));
+        double frame = first + std::round(static_cast<double>(it->tick - p.tick) / p.ticksPerFrame);
+        frame        = std::clamp(frame, first, last);
         const uw::MidiMessage& m = it->message;
         if (ump::isNoteOn(m)) sounding.set(static_cast<std::size_t>(noteKey(m)));
         else if (ump::isNoteOff(m)) sounding.reset(static_cast<std::size_t>(noteKey(m)));
@@ -202,33 +214,58 @@ void SpikeEngine::playRange(Tick from, Tick to, Tick blockTick, double ticksPerF
     }
 }
 
-void SpikeEngine::record(Tick tick, const uw::MidiMessage& m) noexcept {
-    if (!ump::isChannelVoice(m)) return;
-    if (takeCount >= takeEvents.size()) {
+void PluginEngine::startTake(Tick at) noexcept {
+    for (int i = 0; i < 2; ++i) {
+        TakeBuffer& t = takes[i];
+        if (t.state.load(std::memory_order_acquire) != kTakeIdle) continue;
+        t.count = 0;
+        t.start = at;
+        t.end   = at;
+        liveHeld.reset();
+        t.state.store(kTakeRecording, std::memory_order_relaxed);
+        recordingSlot = i;
+        recordingNow.store(true, std::memory_order_relaxed);
+        return;
+    }
+    takeBlocked = true;   // both wait to be collected: this pass isn't recorded
+    missedTakes.fetch_add(1, std::memory_order_relaxed);
+}
+
+void PluginEngine::record(Tick tick, const uw::MidiMessage& m) noexcept {
+    if (recordingSlot < 0 || !ump::isChannelVoice(m)) return;
+    TakeBuffer& t = takes[recordingSlot];
+    if (t.count >= t.events.size()) {
         statDropped.fetch_add(1, std::memory_order_relaxed);
         return;
     }
-    takeEvents[takeCount++] = ClipEvent{tick, m};
+    t.events[t.count++] = ClipEvent{tick, m};
     if (ump::isNoteOn(m)) liveHeld.set(static_cast<std::size_t>(noteKey(m)));
     else if (ump::isNoteOff(m)) liveHeld.reset(static_cast<std::size_t>(noteKey(m)));
 }
 
 // Notes still held end with the take, so it never leaves one sounding.
-void SpikeEngine::endTake(Tick at) noexcept {
+void PluginEngine::endTake(Tick at) noexcept {
+    if (recordingSlot < 0) return;
+    TakeBuffer& t = takes[recordingSlot];
+    at            = std::max(at, t.start);
     if (liveHeld.any())
         for (int key = 0; key < kKeys; ++key)
             if (liveHeld.test(static_cast<std::size_t>(key))) record(at, noteOff(key));
     liveHeld.reset();
-    takeEnd = std::max(at, takeStart);
-    takeState.store(kTakeReady, std::memory_order_release);
-    if (notifyFn != nullptr) notifyFn(notifyCtx);
+    t.end    = at;
+    t.serial = nextSerial++;
+    t.state.store(kTakeReady, std::memory_order_release);
+    recordingSlot = -1;
+    recordingNow.store(false, std::memory_order_relaxed);
 }
 
 // Live input since the last block, each message at a sample offset from its
 // capture time: a block's frames are taken to be the block's length of time
 // before process() was called, so the delay is about a block, steady, and
-// the jitter is the host's callback jitter, not a block's.
-void SpikeEngine::takeLive(const Block& b, Tick blockTick, double ticksPerFrame) noexcept {
+// the jitter is the host's callback jitter, not a block's. Played through
+// now; recorded piece by piece (recordLive()).
+void PluginEngine::gatherLive(const Block& b) noexcept {
+    liveCount = liveNext = 0;
     uw::TimedMidiMessage timed;
     if (offline()) {   // the render extension: a render never hears what's played now
         while (live.pop(timed)) {}
@@ -237,7 +274,6 @@ void SpikeEngine::takeLive(const Block& b, Tick blockTick, double ticksPerFrame)
     const double          framesPerNs = sampleRate / 1e9;
     const uw::Nanoseconds blockNs     = static_cast<uw::Nanoseconds>(static_cast<double>(b.frames) / framesPerNs);
     const uw::Nanoseconds windowStart = b.now - blockNs;
-    const bool            recordingNow = takeState.load(std::memory_order_relaxed) == kTakeRecording;
     while (const uw::TimedMidiMessage* next = live.peek()) {
         if (next->captureTime > b.now) break;   // came in after this block began: the next block's
         live.pop(timed);
@@ -256,7 +292,7 @@ void SpikeEngine::takeLive(const Block& b, Tick blockTick, double ticksPerFrame)
         const auto offset = static_cast<std::uint32_t>(std::min(frame, static_cast<double>(b.frames - 1)));
 
         // MIDI 1.0 is upconverted first, always, as the standalone app does
-        // (App/TrackController.cpp), so the clip is MIDI 2.0.
+        // (App/TrackController.cpp), so the lane is MIDI 2.0.
         uw::MidiMessage converted[ump::kMaxTranslatedMessages];
         std::size_t     count = 1;
         converted[0]          = timed.message;
@@ -264,80 +300,111 @@ void SpikeEngine::takeLive(const Block& b, Tick blockTick, double ticksPerFrame)
             count = ump::upconvert(timed.message, upconverter, converted, std::size(converted));
         for (std::size_t i = 0; i < count; ++i) {
             emit(offset, converted[i]);
-            if (recordingNow) record(blockTick + std::llround(offset * ticksPerFrame), converted[i]);
+            if (liveCount < liveBlock.size()) liveBlock[liveCount++] = Out{offset, converted[i]};
+            else statDropped.fetch_add(1, std::memory_order_relaxed);
         }
     }
 }
 
-void SpikeEngine::adoptPlayData() noexcept {
-    PlayData* next = nullptr;
-    while (toAudio.pop(next)) {
-        if (playing != nullptr) toMain.push(playing);
-        playing    = next;
-        clipJumped = true;   // the old clip's notes end; the new one's tuning is chased
+void PluginEngine::recordLive(const Piece& p) noexcept {
+    const std::uint32_t end = p.first + p.frames;
+    for (; liveNext < liveCount && liveBlock[liveNext].offset < end; ++liveNext) {
+        const Out& e = liveBlock[liveNext];
+        if (p.recording)
+            record(p.tick + std::llround(static_cast<double>(e.offset - p.first) * p.ticksPerFrame), e.message);
     }
 }
 
-void SpikeEngine::process(const Block& b) noexcept {
+void PluginEngine::adoptPlayData() noexcept {
+    PlayData* next = nullptr;
+    while (toAudio.pop(next)) {
+        if (playing != nullptr) toMain.push(playing);
+        playing     = next;
+        dataChanged = true;   // the old lane's notes end; the new one's tuning is chased
+    }
+}
+
+void PluginEngine::process(const Block& b) noexcept {
     if (!isActive || b.frames == 0 || b.frames > maxFrames) {
         for (std::uint32_t c = 0; c < b.outChannels; ++c) std::fill_n(b.out[c], b.frames, 0.0f);
         return;
     }
     outCount = 0;
     adoptPlayData();
+    gatherLive(b);
 
-    const HostTransport& t = b.transport;
-    const double tempo     = t.tempo > 0 ? t.tempo : 120.0;
-    seenTempo.store(tempo, std::memory_order_relaxed);
-    seenBeatsPerBar.store(t.tsigDen == 4 && t.tsigNum > 0 ? t.tsigNum : 4, std::memory_order_relaxed);
-
-    const double ticksPerFrame = tempo / 60.0 * static_cast<double>(kTicksPerQuarter) / sampleRate;
-    const bool   rolling       = t.playing && t.hasBeats;
-    const Tick   blockTick     = rolling ? std::llround(t.songBeats * static_cast<double>(kTicksPerQuarter)) : expectedTick;
-    const Tick   blockTicks    = std::llround(static_cast<double>(b.frames) * ticksPerFrame);
-    const Tick   blockEnd      = blockTick + blockTicks;
-    const bool   rec           = rolling && t.recording && !offline();
-
-    // Recording follows the host's record button.
-    const int state = takeState.load(std::memory_order_acquire);
-    if (rec && state == kTakeIdle && !takeBlocked) {
-        takeCount = 0;
-        takeStart = blockTick;
-        liveHeld.reset();
-        takeState.store(kTakeRecording, std::memory_order_relaxed);
-    } else if (rec && state == kTakeReady) {
-        takeBlocked = true;   // the last take hasn't been collected: this pass isn't recorded
+    // The block's pieces, split where a transport event changes the
+    // transport (a tempo change). Past kMaxPieces, later events are ignored.
+    Piece       pieces[kMaxPieces];
+    std::size_t count = 1;
+    pieces[0].transport = b.transport;
+    for (std::uint32_t i = 0; i < b.changeCount && count < kMaxPieces; ++i) {
+        const TransportChange& c = b.changes[i];
+        if (c.frame <= pieces[count - 1].first || c.frame >= b.frames) continue;
+        pieces[count].first     = c.frame;
+        pieces[count].transport = c.transport;
+        ++count;
     }
-    if (!rec) takeBlocked = false;
-    if (!rec && state == kTakeRecording) endTake(blockTick);
-
-    // Playback from the host's position. A jump (a locate, a loop wrap, a
-    // new clip) ends the notes sounding and chases the tuning; tempo
-    // changes move the position a little against the last block's guess,
-    // so only more than half a block counts.
-    const bool play = rolling && !rec && playing != nullptr;
-    if (wasPlaying && !play) endPlayNotes();
-    if (play) {
-        const Tick tolerance = blockTicks / 2 + 16;
-        const bool jumped    = !wasPlaying || clipJumped || std::llabs(blockTick - expectedTick) > tolerance;
-        if (jumped) {
-            endPlayNotes();
-            chase(blockTick);
-        }
-        playRange(jumped ? blockTick : expectedTick, blockEnd, blockTick, ticksPerFrame, b.frames);
-    } else if (clipJumped) {
-        endPlayNotes();
+    for (std::size_t i = 0; i < count; ++i) {
+        pieces[i].frames = (i + 1 < count ? pieces[i + 1].first : b.frames) - pieces[i].first;
+        processPiece(pieces[i]);
     }
-    clipJumped   = false;
-    wasPlaying   = play;
-    expectedTick = rolling ? blockEnd : blockTick;
+    const HostTransport& last = pieces[count - 1].transport;
+    seenTempo.store(last.tempo > 0 ? last.tempo : 120.0, std::memory_order_relaxed);
+    seenBeatsPerBar.store(last.tsigDen == 4 && last.tsigNum > 0 ? last.tsigNum : 4, std::memory_order_relaxed);
 
-    takeLive(b, blockTick, ticksPerFrame);
     runSynth(b);
     steadyFrames += b.frames;
 }
 
-void SpikeEngine::runSynth(const Block& b) noexcept {
+void PluginEngine::processPiece(Piece& p) noexcept {
+    const HostTransport& t     = p.transport;
+    const double         tempo = t.tempo > 0 ? t.tempo : 120.0;
+    p.ticksPerFrame            = tempo / 60.0 * static_cast<double>(kTicksPerQuarter) / sampleRate;
+    const bool rolling         = t.playing && t.hasBeats;
+    p.tick                     = rolling ? std::llround(t.songBeats * static_cast<double>(kTicksPerQuarter)) : expectedTick;
+    const Tick ticks           = std::llround(static_cast<double>(p.frames) * p.ticksPerFrame);
+    const Tick end             = p.tick + ticks;
+    const bool rec             = rolling && t.recording && !offline();
+
+    // A jump: a locate, a loop wrap. Tempo changes move the position a
+    // little against the last piece's guess, so only more than half a piece
+    // counts.
+    const Tick tolerance = ticks / 2 + 16;
+    const bool jumped    = wasRolling && rolling && std::llabs(p.tick - expectedTick) > tolerance;
+
+    // Recording follows the host's record button; a jump ends the take where
+    // the last piece ended and starts another here.
+    if (recordingSlot >= 0 && (!rec || jumped)) endTake(jumped ? expectedTick : p.tick);
+    if (!rec) takeBlocked = false;
+    if (rec && recordingSlot < 0 && (!takeBlocked || jumped)) {
+        takeBlocked = false;
+        startTake(p.tick);
+    }
+    p.recording = recordingSlot >= 0;
+
+    // Playback from the host's position; while recording, the lane is silent.
+    const bool play = rolling && !p.recording && playing != nullptr;
+    if (wasPlaying && !play) endPlayNotes(p.first);
+    if (play) {
+        const bool fresh = !wasPlaying || dataChanged || jumped;
+        if (fresh) {
+            endPlayNotes(p.first);
+            chase(p.tick, p.first);
+        }
+        playRange(fresh ? p.tick : expectedTick, end, p);
+    } else if (dataChanged) {
+        endPlayNotes(p.first);
+    }
+    dataChanged  = false;
+    wasPlaying   = play;
+    wasRolling   = rolling;
+    expectedTick = rolling ? end : p.tick;
+
+    recordLive(p);
+}
+
+void PluginEngine::runSynth(const Block& b) noexcept {
     // Stable insertion sort by offset: nearly sorted already, and std::stable_sort may allocate.
     for (std::size_t i = 1; i < outCount; ++i) {
         const Out   e = outEvents[i];
@@ -398,11 +465,11 @@ void SpikeEngine::runSynth(const Block& b) noexcept {
     }
 }
 
-void SpikeEngine::stopProcessing() noexcept {
+void PluginEngine::stopProcessing() noexcept {
     if (synthActive) synth->stopProcessing();
 }
 
-void SpikeEngine::reset() noexcept {
+void PluginEngine::reset() noexcept {
     sounding.reset();
     wasPlaying = false;
     if (synthActive) synth->reset();

@@ -227,7 +227,7 @@ yet.
 ### What's built
 
 - **`src/Plugin/`**: `UmpirePlugin.cpp` is the CLAP entry point and the glue;
-  `SpikeEngine` is what runs in `process()`, with no CLAP in it, so the
+  `SpikeEngine` (`PluginEngine` since P2) is what runs in `process()`, with no CLAP in it, so the
   tests drive it directly; `PluginSetup` holds the setup file, the choice of
   input, and the state's format. The clip model and MIDI Clip Files come
   from `src/App` through a new library, `umpire-clip` (`Clip`, `ClipFile`,
@@ -533,10 +533,11 @@ Until the plugin has an arm of its own (open questions):
 - **Don't record other tracks while Umpire is loaded** (printing its sound
   to an audio track, say): Umpire would record over its take. Export
   instead, over a range that covers the take.
-- **In Ardour, open Umpire's window once each session.** Until it's opened,
-  Ardour gives the plugin no timers, so a take goes in only when Ardour
-  next saves, and a synth that needs timers stalls. Closing it afterwards
-  is fine.
+- **In Ardour, open Umpire's window once each session if the synth needs
+  timers.** Until it's opened, Ardour gives the plugin no timers, so a
+  synth that needs them stalls; closing it afterwards is fine. Takes no
+  longer wait for it (P2: the lane thread). A device that goes away and
+  comes back is reopened only once the window has been opened.
 - **Host note effects in front of Umpire do nothing**: Umpire takes its
   notes from the device, not the host.
 - **On Linux with PipeWire**, the block size comes from PipeWire, not the
@@ -558,6 +559,120 @@ Proposed milestones, about a day each, as the others:
 - **P5. Host checks**: REAPER, Bitwig and Ardour on both platforms, as
   ReleaseUMP's R3 host checks, and the other open-source hosts (Qtractor,
   Carla, Zrythm).
+
+### P2: recording and playback (built 2026-11-18, on the Mac)
+
+What the spike left, from its host checks ("Found so far" above), and the
+milestone's own list. Still no editor of its own (that's P3), so the log
+still stands in for one.
+
+- **Takes are clips on the plugin's lane.** Each take becomes a clip (a
+  `ClipRef`: where it starts, its events from there), named "Take n". A
+  take with nothing in it leaves nothing, as in the app (recording.md).
+  The lane keeps every take.
+- **The newest take plays where takes overlap; older ones are kept
+  underneath**, not cut. So recording over a passage replaces it in what's
+  heard, and nothing is lost: P3's editor can show the older takes and bring
+  one back. What plays is worked out on a non-audio thread whenever the lane
+  changes: each take's visible pieces are its span less the spans of newer
+  takes. A note sounding where a piece ends gets a note-off there; a note
+  that began under a newer take isn't started where its piece resumes. At
+  the start of each piece after the first, each key the take tunes gets its
+  Pitch 7.25 in force there (or a reset if none yet).
+- **A jump while recording ends the take and starts another** from where
+  the host now is, as the app does on a locate (recording.md). So recording
+  in a loop gives a take for each pass, the last one heard, the others
+  underneath: loop recording, newest wins.
+- **Takes reach the lane without the host's main thread.** Ardour gives
+  the plugin no timers and no main-thread callbacks until its window has
+  opened (check 7), so a take waited for the next save. Each instance now
+  has a thread of its own, the lane thread, which every 10 ms collects
+  finished takes from the engine, adds them to the lane, and gives the
+  audio thread what to play. The engine has two take buffers, so a new
+  take (the next loop pass) starts at once while the last waits to be
+  collected. The main thread touches the lane only under the lane's
+  mutex (state save and load, later the editor), never the audio thread.
+  Marking the host's state dirty is still the main thread's (CLAP says so):
+  the lane thread sets a flag, and the main thread's next housekeeping
+  marks it. Ardour saves now and then in any case.
+- **Tempo changes inside a block are followed.** CLAP transport events in
+  the block's input events split it: each piece is played and recorded at
+  its own position and tempo. The synth still runs once for the whole
+  block.
+- **Latency is reported**: the synth's, as the plugin's own (CLAP
+  `latency`). uw-core's `HostedPlugin` gains `latencyFrames()` (CLAP
+  `latency` on the hosted plugin), and `HostServices::latencyChanged()`.
+  When the synth reports a change while it's being activated, the plugin
+  tells the host (allowed while activating); otherwise the synth has asked
+  for a restart, which goes on to the host as before.
+- **The state, version 2**: "UMPP", 2, the number of takes, then for each
+  its start (i64 ticks) and its MIDI Clip File; then the synth as before.
+  Version 1 (the spike's one clip from beat 0) still loads, as one take at
+  0.
+- **`SpikeEngine` becomes `PluginEngine`**: it's no longer a spike.
+
+**Not in P2:**
+- **An arm of its own.** Every instance still records whenever the host
+  records (the release notes). The cheapest arm is a CLAP parameter
+  ("Record"), which REAPER and Bitwig show in their own parameter views and
+  can automate; or it waits for P3's editor. The author's choice.
+- **Milestone 12's question** (tracks over UMP group ranges): no. One
+  instance plays everything from its input to its one synth; a second
+  synth is a second instance on another host track (check 6).
+- **The chase and PlainOldSynth's Pitch 7.25** ("Found so far"): unchanged
+  until the author decides whether the synth or the chase changes.
+- **The input's retries and device changes** (`openInput()`, `sync()`) stay
+  on the main thread, so in Ardour before the window opens a device that
+  comes back isn't reopened. The input opens at `init()` either way.
+
+**Built** on the Mac the same day, and checked headless; the checks in
+hosts are the author's (below).
+
+- **New files**: `src/Plugin/Lane.{h,cpp}` (the takes, and `flatten()`:
+  what plays), `src/Plugin/LaneKeeper.{h,cpp}` (the lane thread), and
+  `PluginEngine` in place of `SpikeEngine`. uw-core `df496de`:
+  `HostedPlugin::latencyFrames()`, `HostServices::latencyChanged()`.
+- **While this instance records, its lane is silent**, as the spike's clip
+  was: older takes don't sound under the one being recorded. Before a punch-in
+  (the host's record flag off) the lane plays as usual.
+- **The log** names each take ("Take 3: 5 notes, ... from beat 8.00 to beat
+  12.00, first note-on at ..."), says "latency: n frames (the synth's)" when
+  it changes, "saved: n takes ..." and "loaded: n takes ...", and "take(s)
+  not recorded" if both take buffers were still waiting (not seen in the
+  tests unless the lane thread is stopped).
+- **Checked headless** (silent): `ninja -C build && ctest --test-dir build
+  --output-on-failure`, 10 of 10. `test-plugin-engine` adds: a loop
+  recorded as a take per pass, oldest collected first, a held note ended
+  where its pass did, a third pass missed while neither buffer was
+  collected; deactivating mid-take ends it; a tempo change at frame 240 of a
+  block played and recorded at the new tempo; `flatten()` with an older take
+  cut by a newer one (the cut note ended, the covered note-off dropped, the
+  tuning chased where the older resumes, a piece's end before the next
+  piece's start at one tick), a take wholly covered, takes back to back; the
+  lane thread collecting a take with nobody calling it, and a loaded lane
+  played. `test-plugin-clap` loads and saves two takes through the CLAP
+  state; `test-plugin-render` as before, through version 2. uw-core's
+  tests, 9 of 9, read StruckSynth's and Retune's latency (0). clap-validator
+  0.4.1: 20 passed, 0 failed, 24 skipped, with no synth and with
+  PlainOldSynth, as in P1. Steinberg's VST3 validator wasn't run again.
+
+**Checks in hosts (the author's, by ear):**
+
+1. **Takes keep**: record twice in different places; both play back; save,
+   close and reopen; both come back ("loaded: 2 takes").
+2. **Newest wins**: record over the middle of an earlier take; the new one
+   plays there, the old one before and after it, with no stuck or cut-off
+   notes at the joins.
+3. **Loop recording**: loop a bar and record three passes; the last pass
+   plays; the log has a take per pass.
+4. **Ardour, the window never opened**: a take plays back as soon as
+   recording stops (before, it waited for Ardour's next save). The log's
+   "Take n" line comes at once.
+5. **A tempo change while playing** a take (REAPER's tempo envelope, say):
+   still in time with the grid.
+6. **Latency**: the log's "latency" line, if the synth has any
+   (PlainOldSynth probably reports none, so this mostly checks nothing
+   breaks).
 
 **What it replaces:** milestones 13 to 18, T1, S1, S2 and the plugin-routing
 proposal (R1 to R6). Milestone 12 becomes a question for P2. Zoom (Z1)

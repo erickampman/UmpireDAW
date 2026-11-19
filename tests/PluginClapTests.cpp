@@ -83,9 +83,10 @@ int main(int argc, char** argv) {
     std::string        error;
     check("its state is Umpire's, empty",
           plugin::decodeState(reinterpret_cast<const std::uint8_t*>(saved.data()), saved.size(), state, error) &&
-              state.clipFile.empty() && state.synthId.empty(), error);
+              state.takes.empty() && state.synthId.empty(), error);
 
-    // A clip goes in through the state and comes out the same.
+    // Two takes go in through the state and come out the same: one from the
+    // song's start, one from beat 10.
     std::vector<ClipEvent> events = {
         {0, ump::midi2NoteOn(0, 0, 60, 0x8000, 60 << 9 | 100)},
         {kTicksPerQuarter / 3, ump::midi2NoteOff(0, 0, 60)},
@@ -93,15 +94,17 @@ int main(int argc, char** argv) {
         {6 * kTicksPerQuarter, ump::midi2NoteOff(0, 1, 67)},
     };
     plugin::SavedState in;
-    in.clipFile          = clipfile::write(events, 8 * kTicksPerQuarter, {120, 4});
+    in.takes             = {{0, clipfile::write(events, 8 * kTicksPerQuarter, {120, 4})},
+                            {10 * kTicksPerQuarter, clipfile::write(events, 7 * kTicksPerQuarter, {120, 4})}};
     const auto  inBytes  = plugin::encodeState(in);
     const auto* inData   = reinterpret_cast<const std::byte*>(inBytes.data());
-    check("it loads a clip", plugin->loadState(inData, inBytes.size()));
+    check("it loads two takes", plugin->loadState(inData, inBytes.size()));
     saved.clear();
     plugin->saveState(saved);
     check("and saves it again, the same",
           plugin::decodeState(reinterpret_cast<const std::uint8_t*>(saved.data()), saved.size(), state, error) &&
-              state.clipFile == in.clipFile);
+              state.takes.size() == 2 && state.takes[0].start == 0 && state.takes[0].clipFile == in.takes[0].clipFile &&
+              state.takes[1].start == in.takes[1].start && state.takes[1].clipFile == in.takes[1].clipFile);
 
     const std::byte junk[] = {std::byte{'R'}, std::byte{'I'}, std::byte{'F'}, std::byte{'F'}, std::byte{0}, std::byte{0},
                               std::byte{0},   std::byte{0}};

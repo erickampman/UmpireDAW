@@ -219,7 +219,7 @@ int main(int argc, char** argv) {
         {5 * kTicksPerQuarter + kTicksPerQuarter * 4 / 5, ump::midi2NoteOff(0, 0, 67)},
     };
     plugin::SavedState saved;
-    saved.clipFile    = clipfile::write(events, 6 * kTicksPerQuarter, {120, 4});
+    saved.takes       = {{0, clipfile::write(events, 6 * kTicksPerQuarter, {120, 4})}};
     const auto state  = plugin::encodeState(saved);
 
     std::vector<float> realtime, offline, slower;
@@ -291,8 +291,9 @@ int main(int argc, char** argv) {
 
     plugin::SavedState back;
     std::string        error;
-    check("its state keeps the clip and the synth's",
-          plugin::decodeState(savedAgain.data(), savedAgain.size(), back, error) && back.clipFile == saved.clipFile &&
+    check("its state keeps the take and the synth's",
+          plugin::decodeState(savedAgain.data(), savedAgain.size(), back, error) && back.takes.size() == 1 &&
+              back.takes[0].clipFile == saved.takes[0].clipFile &&
               back.synthId == "com.unlikelyware.plainoldsynth" && !back.synthState.empty(),
           error);
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");

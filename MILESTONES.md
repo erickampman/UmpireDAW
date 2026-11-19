@@ -136,7 +136,14 @@ S2 and R1 to R6.
   needed to go on: REAPER's check 6 (Bitwig and Ardour passed it); Ardour
   on the Mac (the author's is Intel-only).*
 - P2. [ ] Recording and playback on the clip model, driven by the host's
-  position; the chase on jumps; latency reported
+  position; the chase on jumps; latency reported. *Built 2026-11-18 on the
+  Mac (plugin-version.md, "P2"): every take kept on the plugin's lane, the
+  newest heard where takes overlap; a jump while recording starts a new
+  take (loop recording); takes collected on a lane thread of the plugin's
+  own, so Ardour no longer needs the window opened for them; tempo changes
+  inside a block; the synth's latency reported (uw-core df496de); state
+  version 2. Checked headless (10 of 10, clap-validator). Left: the
+  checks in hosts (the author's), and Linux's build.*
 - P3. [ ] The editor: a lane in time with the host, and the grid
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
   synth's state, clip export

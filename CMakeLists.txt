@@ -216,19 +216,24 @@ if(APPLE)
          PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
 endif()
 
-# --- Umpire as a plugin: the spike (milestone P1, docs/plugin-version.md) ---------
+# --- Umpire as a plugin (milestones P1 and P2, docs/plugin-version.md) ------------
 # A CLAP instrument with its own entry point, as Retune's (~/Dev-MIDI/Retune):
 # it opens its own MIDI input and hosts a CLAP synth through uw-core, so the
 # notes never pass through the host. No DPF: it has no editor of its own (the
 # synth's is embedded). clap-wrapper (Unlikelyware's fork, `unlikelyware`, as
 # Retune pins it) makes the VST3, for Ardour.
-option(UMPIRE_BUILD_PLUGIN "Build Umpire.clap (the P1 spike)" ON)
+option(UMPIRE_BUILD_PLUGIN "Build Umpire.clap" ON)
 option(UMPIRE_BUILD_VST3 "Build Umpire.vst3 via clap-wrapper" ON)
 
 if(UMPIRE_BUILD_PLUGIN)
-    # The engine and the setup, without CLAP: the tests drive them directly.
-    add_library(umpire-plugin-core STATIC src/Plugin/SpikeEngine.cpp src/Plugin/PluginSetup.cpp)
-    target_link_libraries(umpire-plugin-core PUBLIC umpire-clip uw::plugin PRIVATE umpire-warnings)
+    # The engine, the lane and its thread, and the setup, without CLAP: the
+    # tests drive them directly.
+    add_library(umpire-plugin-core STATIC
+        src/Plugin/PluginEngine.cpp
+        src/Plugin/Lane.cpp
+        src/Plugin/LaneKeeper.cpp
+        src/Plugin/PluginSetup.cpp)
+    target_link_libraries(umpire-plugin-core PUBLIC umpire-clip uw::plugin Threads::Threads PRIVATE umpire-warnings)
     set_target_properties(umpire-plugin-core PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 
     # The plugin's own sources, compiled into each binary: the .clap and the .vst3.
