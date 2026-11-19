@@ -28,6 +28,10 @@ public:
     struct Hooks {
         bool fileMenu     = true;   // File (Close window, Quit) and View
         bool nameEditable = true;   // the clip's name field
+        // Set: the name is changed elsewhere (the plugin's native text box,
+        // since a host may keep the keys a text field needs): the field is
+        // read only, and clicking it or "Rename..." beside it calls this.
+        std::function<void()> rename;
         std::function<void()> menuBarStart;   // before Edit (the plugin's Record)
         std::function<void()> editMenuEnd;    // last in Edit (the take's commands)
         std::function<void()> menuBarEnd;     // after the menus

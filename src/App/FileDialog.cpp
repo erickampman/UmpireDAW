@@ -70,7 +70,19 @@ bool FileDialog::start(Mode mode, const std::string& title, const std::string& f
 
     const std::string start = mode == Mode::Save ? (std::filesystem::path(folder) / name).string() : folder + "/";
     std::vector<std::string> args{program};
-    if (program == "zenity") {
+    if (mode == Mode::Text && program == "zenity") {
+        args.push_back("--entry");
+        args.push_back("--title=" + title);
+        args.push_back("--text=" + title);
+        args.push_back("--entry-text=" + name);
+        args.push_back("--ok-label=" + folder);
+    } else if (mode == Mode::Text) {   // kdialog
+        args.push_back("--title");
+        args.push_back(title);
+        args.push_back("--inputbox");
+        args.push_back(title);
+        args.push_back(name);
+    } else if (program == "zenity") {
         args.push_back("--file-selection");
         if (mode != Mode::OpenFile) args.push_back(mode == Mode::Save ? "--save" : "--directory");
         args.push_back("--title=" + title);

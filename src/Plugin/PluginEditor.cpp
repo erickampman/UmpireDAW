@@ -346,6 +346,7 @@ struct PluginEditor::Impl {
     // P4: export and import, through the desktop's file dialog.
     void startExport();
     void startImport();
+    void startRename();
     void dialogDone(const std::string& path);
     void writeExport(const std::string& path);
     void readImport(const std::string& path);
@@ -371,8 +372,8 @@ struct PluginEditor::Impl {
     bool                        openMenu = false;
     // P4: the file dialog (one at a time) and what it's for; what to say.
     FileDialog                  dialog;
-    enum class Asking { Nothing, Export, Import } asking = Asking::Nothing;
-    ClipRefId                   exportRef = 0;
+    enum class Asking { Nothing, Export, Import, Rename } asking = Asking::Nothing;
+    ClipRefId                   exportRef = 0;   // the take exported or renamed
     std::string                 replacePath;   // Linux: an export over a file, waiting for "Replace"
     std::string                 problem;       // shown once, with OK
     bool                        openProblem = false, openReplace = false;
@@ -431,6 +432,9 @@ void PluginEditor::Impl::build() {
         status();
     };
     panels.hooks.frame          = [this] { takePopup(); };
+    // Renaming is in a native text box: a host may keep the keys an ImGui
+    // field needs (REAPER took Backspace and deleted the plugin).
+    panels.hooks.rename         = [this] { startRename(); };
     panels.hooks.inspectorShown = [this] { return selected != 0; };
     model.undoLabel = view.undoLabel;
     model.redoLabel = view.redoLabel;
@@ -593,6 +597,7 @@ void PluginEditor::Impl::takeItems() {
         links.keeper->deleteTake(selected);
         follow(true);
     }
+    if (ImGui::MenuItem("Rename take...", nullptr, false, t != nullptr && !dialog.running())) startRename();
     ImGui::Separator();
     if (ImGui::MenuItem("Export take...", nullptr, false, t != nullptr && !dialog.running())) startExport();
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save the take as a MIDI Clip File (.midi2)");
@@ -629,6 +634,18 @@ void PluginEditor::Impl::startExport() {
     exportRef = t->id;
 }
 
+void PluginEditor::Impl::startRename() {
+    const ClipRef* t = selectedTake();
+    if (t == nullptr || dialog.running()) return;
+    std::string why;
+    if (!dialog.start(FileDialog::Mode::Text, "Rename take", "Rename", t->clip->name, why)) {
+        problem = "Couldn't rename: " + why + ".", openProblem = true;
+        return;
+    }
+    asking    = Asking::Rename;
+    exportRef = t->id;
+}
+
 void PluginEditor::Impl::startImport() {
     std::string why;
     if (!dialog.start(FileDialog::Mode::OpenFile, "Import clip", startFolder(), "*.midi2", why)) {
@@ -641,6 +658,11 @@ void PluginEditor::Impl::startImport() {
 void PluginEditor::Impl::dialogDone(const std::string& chosen) {
     const Asking was = std::exchange(asking, Asking::Nothing);
     if (chosen.empty()) return;   // cancelled
+    if (was == Asking::Rename) {   // "" or the same: nothing (LaneKeeper::renameTake)
+        links.keeper->renameTake(exportRef, chosen);
+        follow(true);
+        return;
+    }
     fs::path path = chosen;
     lastFolder()  = path.parent_path().string();
     if (was == Asking::Import) {

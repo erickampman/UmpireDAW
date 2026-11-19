@@ -24,6 +24,11 @@ public:
         OpenFolder,   // choose an existing folder (a .umpire bundle)
         OpenFile,     // choose an existing file; `name` is a pattern to show, "*.midi2"
         Save,         // choose a new path (Linux's tools don't ask about replacing; macOS's panel does)
+        // A line of text, `name` filled in; `folder` is the OK button's
+        // label ("Rename"). poll() gives what was typed ("" if cancelled).
+        // A real text field, so a host that keeps keys for itself still
+        // lets them reach it (P4: renaming a take in the plugin).
+        Text,
     };
 
     FileDialog() = default;

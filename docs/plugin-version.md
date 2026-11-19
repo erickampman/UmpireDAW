@@ -931,9 +931,20 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
 ```
 
 **Decided with the author (2026-11-19):**
-- **Takes keep their names and scales.** The grid's name field is the
-  take's ("Rename take") and its tuning sliders set the take's scale ("Set
-  scale", shown as "Set by hand"), each an undo step, as in the app. A
+- **Takes keep their names and scales.** The take's name is renamed in a
+  native text box ("Rename take", below) and the tuning sliders set the
+  take's scale ("Set scale", shown as "Set by hand"), each an undo step, as
+  in the app.
+- **Rename take... is a native text box** (decided 2026-11-19, after the
+  author's first try): clicking the inspector's name, its "Rename..."
+  button, or Edit > Rename take... opens a sheet with a text field on the
+  host's window on the Mac (zenity or kdialog's entry on Linux). Editing
+  the name in the inspector's ImGui field lost its keys to the host: in
+  REAPER, Backspace went to REAPER, which deleted the selected effect,
+  Umpire itself (the log showed the instance closed, then remade by
+  REAPER's undo). Hosts pass keys to a real text field, so the box gets
+  them. A click in Umpire's window now also takes the keyboard focus (the
+  view becomes first responder), which helps the grid's keys reach it. A
   take's scale is worked out from its notes when it's recorded or loaded,
   unless it was set by hand. The next take's number is kept too, so a
   deleted take's name isn't given again after a reload.
@@ -995,7 +1006,9 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
   returns the reverse. It runs without the lane's lock, since swapping a
   synth calls the host.
 - **Files**: the app's `FileDialog` (AppKit's panels on the Mac, zenity or
-  kdialog on Linux) is compiled into the plugin. On the Mac the panel is a
+  kdialog on Linux) is compiled into the plugin, and gains a text entry
+  (`Mode::Text`: an NSAlert with a text field, or zenity's or kdialog's
+  entry) for renaming. On the Mac the panel is a
   sheet on the host's window that holds Umpire's view
   (`FileDialog::setParent`): begun as a window of its own, it opened behind
   Umpire's window (the author, 2026-11-19), since a host may float its
@@ -1034,8 +1047,12 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
 
 **Checks in hosts (the author's; the synth makes sound when a take plays):**
 
-1. **Names**: rename a take in the inspector; undo and redo; save, close
-   and reopen: the name is back, and the next take recorded counts on.
+1. **Names**: click a take's name in the inspector: a "Rename take" box
+   on the host's window; Backspace and typing edit it, and nothing in the
+   host happens (in REAPER, with "Send all keyboard input to plugin" off).
+   Undo and redo; save, close and reopen: the name is back, and the next
+   take recorded counts on. And whether the grid's keys (Delete, arrows)
+   now reach Umpire in REAPER after a click in its window.
 2. **Scales**: set a take's EDO in the inspector ("Set by hand"); reopen
    the project: it's kept. A take recorded from KeyboardEDO in 31-EDO shows
    31 rows without setting it.

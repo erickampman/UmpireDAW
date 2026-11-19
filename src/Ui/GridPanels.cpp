@@ -7,6 +7,7 @@
 #include "Window.hpp"
 
 #include "imgui.h"
+#include "imgui_internal.h"   // ClearActiveID
 #include "Ui/Widgets.h"
 
 namespace umpire::ui {
@@ -148,11 +149,26 @@ void GridPanels::inspector(float W, float H) {
 
     beginSection("Clip", colour::kAccent, false);
     if (!textActive()) std::snprintf(nameBuf, sizeof nameBuf, "%s", model.clipName.c_str());
-    ImGui::SetNextItemWidth(-FLT_MIN);
-    // The clip's name, a command when Enter or a click elsewhere ends the edit.
-    ImGui::InputText("##name", nameBuf, sizeof nameBuf, hooks.nameEditable ? 0 : ImGuiInputTextFlags_ReadOnly);
-    if (ImGui::IsItemDeactivatedAfterEdit()) model.setClipName(nameBuf);
-    nameFieldRect = lastItem();
+    if (hooks.rename) {
+        // Renamed elsewhere: the field shows the name, and a click asks.
+        const char* button = "Rename...";
+        ImGui::SetNextItemWidth(-(ImGui::CalcTextSize(button).x + ImGui::GetStyle().FramePadding.x * 2 +
+                                  ImGui::GetStyle().ItemSpacing.x));
+        ImGui::InputText("##name", nameBuf, sizeof nameBuf, ImGuiInputTextFlags_ReadOnly);
+        const bool clicked = ImGui::IsItemClicked();
+        nameFieldRect      = lastItem();
+        ImGui::SameLine();
+        if (ImGui::Button(button) || clicked) {
+            ImGui::ClearActiveID();   // the read-only field lets go
+            hooks.rename();
+        }
+    } else {
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        // The clip's name, a command when Enter or a click elsewhere ends the edit.
+        ImGui::InputText("##name", nameBuf, sizeof nameBuf, hooks.nameEditable ? 0 : ImGuiInputTextFlags_ReadOnly);
+        if (ImGui::IsItemDeactivatedAfterEdit()) model.setClipName(nameBuf);
+        nameFieldRect = lastItem();
+    }
     endSection();
 
     // The tuning, as StageHand's sequence editor: the EDO and the note its

@@ -644,6 +644,10 @@ what P3 left:
   opens, since it loads each one into the host's process; loading a project
   looks only at the saved path and names.
 - State version 4; versions 1 to 3 still load.
+- **Renaming a take is a native text box**, not the inspector's ImGui
+  field (decided after the author's first try): REAPER keeps keys from a
+  plugin's view, so Backspace there deleted Umpire itself. A real text
+  field gets them.
 
 ## Deferred
 

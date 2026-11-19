@@ -247,6 +247,9 @@ void GridCanvas::onNanoDisplay() {
 // default passes it to the subwidgets); the canvas handles what's left.
 
 bool GridCanvas::onMouse(const MouseEvent& ev) {
+    // A click takes the keyboard: embedded in a host's window (the plugin),
+    // the view isn't given it otherwise, and the host keeps the grid's keys.
+    if (ev.press) getWindow().focus();
     if (NanoTopLevelWidget::onMouse(ev)) return true;
     const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
     if (band != nullptr) {   // the band keeps what it took until the button's up

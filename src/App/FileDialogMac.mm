@@ -12,12 +12,18 @@ namespace umpire {
 
 struct FileDialog::Panel {
     NSSavePanel* panel = nil;   // NSOpenPanel is one
+    NSAlert*     alert = nil;   // Mode::Text: an alert with a text field
     bool         done  = false;
     std::string  path;          // "" if cancelled
 };
 
 FileDialog::~FileDialog() {
-    if (panel && !panel->done) [panel->panel cancel:nil];
+    if (!panel || panel->done) return;
+    if (panel->panel != nil) [panel->panel cancel:nil];
+    if (panel->alert != nil) {
+        NSWindow* const sheet = panel->alert.window;
+        if (sheet.sheetParent != nil) [sheet.sheetParent endSheet:sheet returnCode:NSAlertSecondButtonReturn];
+    }
 }
 
 std::string FileDialog::tool() { return "AppKit"; }
@@ -29,6 +35,35 @@ bool FileDialog::start(Mode mode, const std::string& title, const std::string& f
     if (running()) {
         problem = "a file dialog is already open";
         return false;
+    }
+    NSWindow* const owner = parentView != 0 ? [(__bridge NSView*)reinterpret_cast<void*>(parentView) window] : nil;
+    if (mode == Mode::Text) {
+        @autoreleasepool {
+            NSAlert* const alert = [[NSAlert alloc] init];
+            alert.messageText    = [NSString stringWithUTF8String:title.c_str()];
+            [alert addButtonWithTitle:[NSString stringWithUTF8String:folder.empty() ? "OK" : folder.c_str()]];
+            [alert addButtonWithTitle:@"Cancel"];
+            NSTextField* const field = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 280, 24)];
+            field.stringValue        = [NSString stringWithUTF8String:name.c_str()];
+            alert.accessoryView      = field;
+            [alert layout];
+            alert.window.initialFirstResponder = field;
+            auto shown   = std::make_shared<Panel>();
+            shown->alert = alert;
+            panel        = shown;
+            const auto finished = ^(NSModalResponse response) {
+                if (response == NSAlertFirstButtonReturn) shown->path = field.stringValue.UTF8String;
+                shown->done  = true;
+                shown->alert = nil;
+            };
+            if (owner != nil) {
+                [alert beginSheetModalForWindow:owner completionHandler:finished];
+                [alert.window makeFirstResponder:field];
+            } else {
+                finished([alert runModal]);   // the app has no use for it yet
+            }
+        }
+        return true;
     }
     @autoreleasepool {
         NSSavePanel* chooser = nil;
@@ -66,7 +101,6 @@ bool FileDialog::start(Mode mode, const std::string& title, const std::string& f
         };
         // On a parent's window, a sheet: in front of it, and still modeless
         // for the rest of the app (the host goes on).
-        NSWindow* const owner = parentView != 0 ? [(__bridge NSView*)reinterpret_cast<void*>(parentView) window] : nil;
         if (owner != nil) [chooser beginSheetModalForWindow:owner completionHandler:finished];
         else [chooser beginWithCompletionHandler:finished];
     }
