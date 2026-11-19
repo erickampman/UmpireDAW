@@ -320,7 +320,7 @@ private:
 
 struct PluginEditor::Impl {
     Impl(std::uintptr_t parent, unsigned w, unsigned h, double s, EditorLinks l)
-        : links(std::move(l)), scale(s), app(false),
+        : links(std::move(l)), scale(s), parentView(parent), app(false),
           window(app, parent, static_cast<uint>(std::lround(w * s)), static_cast<uint>(std::lround(h * s)), s, true) {}
 
     ~Impl() {
@@ -353,6 +353,7 @@ struct PluginEditor::Impl {
 
     EditorLinks      links;
     double           scale;
+    std::uintptr_t   parentView;   // the host's view we're embedded in
     dgl::Application app;
     dgl::Window      window;
     GridModel        model;
@@ -433,7 +434,8 @@ void PluginEditor::Impl::build() {
     panels.hooks.inspectorShown = [this] { return selected != 0; };
     model.undoLabel = view.undoLabel;
     model.redoLabel = view.redoLabel;
-    if (const char* dir = std::getenv("UMPIRE_PLUGIN_CAPTURE")) captureDir = dir;
+    dialog.setParent(parentView);   // the Mac's panels as sheets on the host's window, in front of it
+        if (const char* dir = std::getenv("UMPIRE_PLUGIN_CAPTURE")) captureDir = dir;
     window.show();
 }
 

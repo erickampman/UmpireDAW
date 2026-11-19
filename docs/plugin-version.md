@@ -995,7 +995,11 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
   returns the reverse. It runs without the lane's lock, since swapping a
   synth calls the host.
 - **Files**: the app's `FileDialog` (AppKit's panels on the Mac, zenity or
-  kdialog on Linux) is compiled into the plugin. On Linux, where the tools
+  kdialog on Linux) is compiled into the plugin. On the Mac the panel is a
+  sheet on the host's window that holds Umpire's view
+  (`FileDialog::setParent`): begun as a window of its own, it opened behind
+  Umpire's window (the author, 2026-11-19), since a host may float its
+  plugin windows above others. The app's panels are as before. On Linux, where the tools
   don't ask, Export asks "Replace it?" itself. Problems (no dialog tool, a
   file that isn't a MIDI Clip File) are said in a prompt with OK.
 - **The log** says "synth: ..." or "synth X isn't here", "input chosen:
@@ -1052,8 +1056,9 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
 7. **The input menu**: choose a source; the status shows it; unplug it
    ("(gone)") and plug it back. Choose one, save, and reopen where it isn't
    there: "(not here)". Default, None.
-8. **In Bitwig on the Mac**, whose plugin host is a separate process: that
-   the file panels open, and in front.
+8. **The file panels open in front**, as a sheet on the plugin's window
+   (REAPER on the Mac: the first try opened behind it, before the sheet);
+   in Bitwig on the Mac too, whose plugin host is a separate process.
 
 **Not in P4:**
 - **Dragging a clip file** onto the lane, and **exporting several takes**

@@ -4,7 +4,7 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 // FileDialog on macOS (FileDialog.h): NSOpenPanel and NSSavePanel, begun
-// modeless, so the main loop (MainLoopMac.mm, which hands AppKit every event)
+// modeless (or as a sheet on the parent view's window, if one is given), so the main loop (MainLoopMac.mm, which hands AppKit every event)
 // keeps ticking while one is up. The completion handler keeps the answer for
 // poll().
 
@@ -58,12 +58,17 @@ bool FileDialog::start(Mode mode, const std::string& title, const std::string& f
         auto shown   = std::make_shared<Panel>();
         shown->panel = chooser;
         panel        = shown;
-        [chooser beginWithCompletionHandler:^(NSModalResponse response) {
+        void (^finished)(NSModalResponse) = ^(NSModalResponse response) {
             if (response == NSModalResponseOK && shown->panel.URL != nil)
                 shown->path = shown->panel.URL.path.fileSystemRepresentation;
             shown->done  = true;
             shown->panel = nil;   // no cycle through this handler
-        }];
+        };
+        // On a parent's window, a sheet: in front of it, and still modeless
+        // for the rest of the app (the host goes on).
+        NSWindow* const owner = parentView != 0 ? [(__bridge NSView*)reinterpret_cast<void*>(parentView) window] : nil;
+        if (owner != nil) [chooser beginSheetModalForWindow:owner completionHandler:finished];
+        else [chooser beginWithCompletionHandler:finished];
     }
     return true;
 }

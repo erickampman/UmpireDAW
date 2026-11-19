@@ -11,6 +11,7 @@
 // saving; these tools do both. On macOS it's AppKit's open and save panels,
 // shown modeless (FileDialogMac.mm; docs/files.md).
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <sys/types.h>
@@ -31,6 +32,13 @@ public:
     FileDialog(const FileDialog&)            = delete;
     FileDialog& operator=(const FileDialog&) = delete;
 
+    // The view the chooser belongs to (the Mac: an NSView). Set, the Mac's
+    // panel opens as a sheet on that view's window, so it's in front of it
+    // (a plugin's window, which a host may float above a free panel: P4,
+    // docs/plugin-version.md). Unset, it's a window of its own, as in the
+    // app. Ignored on Linux.
+    void setParent(std::uintptr_t nativeView) noexcept { parentView = nativeView; }
+
     // Which tool would run ("zenity", "kdialog", "AppKit"), or "" if none is
     // installed.
     static std::string tool();
@@ -46,6 +54,7 @@ public:
     bool poll(std::string& path);
 
 private:
+    std::uintptr_t parentView = 0;
 #ifdef __APPLE__
     struct Panel;   // the panel and, once it closes, its answer
     std::shared_ptr<Panel> panel;
