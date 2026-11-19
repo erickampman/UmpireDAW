@@ -280,8 +280,8 @@ public:
     // The Record parameter (the arm): written by the audio thread (or by
     // params flush and the state, never at once), read by the main thread for
     // the state and the log.
-    std::atomic<bool> armed{false};
-    bool              loggedArmed = false;   // main thread
+    std::atomic<bool> armed{true};          // on in a new instance (plugin-version.md, "The arm")
+    bool              loggedArmed = true;    // main thread
 
     // The Record button pressed in the window: 0 or 1 for the audio thread
     // (or params flush) to apply and tell the host, as a gesture; -1 none.
@@ -1097,7 +1097,7 @@ bool paramsGetInfo(const clap_plugin_t*, std::uint32_t index, clap_param_info_t*
     info->module[0]     = '\0';
     info->min_value     = 0;
     info->max_value     = 1;
-    info->default_value = 0;
+    info->default_value = 1;
     return true;
 }
 

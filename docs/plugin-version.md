@@ -639,9 +639,16 @@ still stands in for one.
 recorded whenever the host recorded, armed or not, and the newest take
 wins: playing into Umpire while recording another track, or two instances
 on one input, would cover the take you meant to keep. So the plugin has one
-CLAP parameter, **Record** (id 1, stepped, off by default, as a host's
-tracks are; automatable). A take records only while the host records *and*
-Record is on:
+CLAP parameter, **Record** (id 1, stepped, on by default; automatable).
+It was off by default, as a host's tracks are, until 2026-11-19, when Eric
+chose on: a new instance should record without a trip to its parameters.
+A saved project keeps the Record it was saved with.
+`test-plugin-render` checks a new instance is on and that one saved off
+loads off. clap-validator 0.4.1 now passes 32, fails 0, skips 12: its
+`param-set-*` tests draw 0 for Record, which is no longer the default.
+Checked by Eric in REAPER and Ardour on Linux (CLAP and VST3); Bitwig
+not checked.
+A take records only while the host records *and* Record is on:
 - Turning it on while the host records punches in there; turning it off
   ends the take there. A change in the block's events splits the block at
   its frame, as a tempo change does, and the position goes on from the

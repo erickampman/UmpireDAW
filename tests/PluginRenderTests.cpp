@@ -326,17 +326,18 @@ int main(int argc, char** argv) {
               back.takes[0].clipFile == saved.takes[0].clipFile &&
               back.synthId == "com.unlikelyware.plainoldsynth" && !back.synthState.empty(),
           error);
-    // The arm, through CLAP: one parameter, Record, off until the host sets
-    // it, kept in the state.
+    // The arm, through CLAP: one parameter, Record, on in a new instance,
+    // turned off by the host and kept off in the state (a new instance's
+    // default doesn't override it).
     {
         Instance g(module->factory());
         const auto* params = static_cast<const clap_plugin_params_t*>(g.plugin->get_extension(g.plugin, CLAP_EXT_PARAMS));
         clap_param_info_t info{};
         double            value = -1;
-        check("one parameter, Record, stepped, off by default",
+        check("one parameter, Record, stepped, on by default",
               params != nullptr && params->count(g.plugin) == 1 && params->get_info(g.plugin, 0, &info) &&
                   std::string(info.name) == "Record" && (info.flags & CLAP_PARAM_IS_STEPPED) != 0 &&
-                  info.default_value == 0 && params->get_value(g.plugin, info.id, &value) && value == 0);
+                  info.default_value == 1 && params->get_value(g.plugin, info.id, &value) && value == 1);
         clap_event_param_value_t armEvent{};
         armEvent.header.size  = sizeof armEvent;
         armEvent.header.type  = CLAP_EVENT_PARAM_VALUE;
@@ -345,21 +346,21 @@ int main(int argc, char** argv) {
         armEvent.port_index   = -1;
         armEvent.channel      = -1;
         armEvent.key          = -1;
-        armEvent.value        = 1;
+        armEvent.value        = 0;
         clap_input_events_t in{&armEvent, [](const clap_input_events_t*) -> std::uint32_t { return 1; },
                                [](const clap_input_events_t* list, std::uint32_t) {
                                    return static_cast<const clap_event_header_t*>(list->ctx);
                                }};
         clap_output_events_t out{nullptr, [](const clap_output_events_t*, const clap_event_header_t*) { return true; }};
         params->flush(g.plugin, &in, &out);
-        check("flush arms it", params->get_value(g.plugin, info.id, &value) && value == 1);
-        plugin::SavedState armedState;
+        check("flush disarms it", params->get_value(g.plugin, info.id, &value) && value == 0);
+        plugin::SavedState disarmedState;
         const auto         bytes = g.save();
-        check("the state keeps the arm", plugin::decodeState(bytes.data(), bytes.size(), armedState, error) && armedState.armed,
-              error);
+        check("the state keeps it off",
+              plugin::decodeState(bytes.data(), bytes.size(), disarmedState, error) && !disarmedState.armed, error);
         Instance h(module->factory());
         h.load(bytes);
-        check("and loads it", h.plugin != nullptr && params->get_value(h.plugin, info.id, &value) && value == 1);
+        check("and loads it off", h.plugin != nullptr && params->get_value(h.plugin, info.id, &value) && value == 0);
     }
 
     // P4: the synth is the instance's, chosen through the state (the window
