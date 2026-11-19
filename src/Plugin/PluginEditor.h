@@ -2,7 +2,8 @@
 
 // The plugin's own window (milestone P3, docs/plugin-version.md, "P3"),
 // embedded in the host's plugin window: a header (Record, Edit, the synth's
-// editor, what's listening, the host's position), the lane of takes in time
+// editor and since P4 its menu, what's listening and its menu, the host's
+// position), the lane of takes in time
 // with the host, and the grid for the selected take (the app's GridCanvas and
 // GridPanels, src/Ui). No DGL or ImGui types here: UmpirePlugin.cpp, the CLAP
 // glue, doesn't see the toolkit.
@@ -15,11 +16,25 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
+
+#include "Plugin/PluginSetup.h"
 
 namespace umpire::plugin {
 
 class LaneKeeper;
 class PluginEngine;
+
+// P4: the synth menu's entries (installed CLAP instruments) and the input
+// menu's (the default, the sources, none).
+struct SynthItem {
+    std::string id, name, vendor;
+};
+struct InputItem {
+    std::string label;
+    InputChoice choice;
+    bool        checked = false;
+};
 
 // What the window reaches in the plugin.
 struct EditorLinks {
@@ -29,8 +44,17 @@ struct EditorLinks {
     std::function<void(bool)>    setArmed;   // the Record button: to the host, as a gesture
     std::function<std::string()> synthName;  // "" with no synth
     std::function<bool()>        synthEditorOpen;
-    std::function<void()>        toggleSynthEditor;   // unset: the synth has no editor
+    std::function<void()>        toggleSynthEditor;   // does nothing if the synth has no editor
+    std::function<bool()>        synthHasEditor;
     std::function<std::string()> inputName;  // "" with no input
+    // P4: choosing the synth and the input.
+    std::function<std::string()>            synthId;        // "" with none
+    std::function<std::string()>            missingSynth;   // the chosen synth's name if it isn't installed
+    std::function<std::vector<SynthItem>()> synths;         // scans CLAP's folders the first time
+    std::function<void(const std::string&)> chooseSynth;    // "" for none; an undo step ("Change synth")
+    std::function<std::vector<InputItem>()> inputs;
+    std::function<void(const InputChoice&)> chooseInput;
+    std::function<bool()>                   inputMissing;   // the source chosen isn't here
 };
 
 class PluginEditor {

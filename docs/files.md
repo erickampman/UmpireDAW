@@ -184,7 +184,9 @@ Agreed with the author before it was built, 2026-11-01.
   would show it as one file, and Open would then choose files, not
   folders.
 - **Importing and exporting a single clip** (`.midi2` to or from a track)
-  is not in the menus yet. `ClipFile` already reads other apps' files.
+  is not in the app's menus yet. `ClipFile` already reads other apps' files.
+  The plugin has both (Export take..., Import clip...; plugin-version.md,
+  "P4").
 - **Recent sessions, autosave, and remembering the last folder between
   runs.**
 - **Clip names and the session's name in the clip files** (Flex Data's

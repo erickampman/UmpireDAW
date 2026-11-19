@@ -18,6 +18,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -52,8 +53,10 @@ public:
 
     // A copy of the lane's takes, oldest first (for the state).
     std::vector<ClipRef> takes() const;
-    // Replaces the lane (a loaded state) and gives the engine what to play.
-    void setTakes(std::vector<ClipRef> takes);
+    // Replaces the lane (a loaded state) and gives the engine what to play
+    // (Lane::setTakes: names kept, "Take n" from `nextNumber`).
+    void setTakes(std::vector<ClipRef> takes, int nextNumber = 0);
+    int  nextTakeNumber() const;
 
     // The lane changed since the last call, a take or an edit (for the
     // host's mark_dirty, which is the main thread's).
@@ -86,13 +89,40 @@ public:
                     const std::vector<NewNote>& added);
     bool deleteTake(ClipRefId ref);     // "Delete take"
     bool bringToFront(ClipRefId ref);   // "Bring to front": heard where it overlaps
+
+    // --- P4: names, scales, files, and steps outside the lane ---
+
+    // "Rename take": false if there's no such take, the name is empty or
+    // it's the same.
+    bool renameTake(ClipRefId ref, const std::string& name);
+    // "Set scale": the take's scale set by hand (ScaleFit::Chosen), clamped
+    // to the EDOs the grid offers.
+    bool setTakeScale(ClipRefId ref, const Scale& scale);
+    // "Import clip": a clip from a MIDI Clip File, the newest take, from
+    // `start` (Lane::addClip). Its id, or 0 if it has no events.
+    ClipRefId importClip(Tick start, Clip clip);
+
+    // A change outside the lane that the plugin's undo covers (the synth
+    // changed). swap() puts back what the step holds and returns the step
+    // that puts back what it replaced (null if it couldn't: then that's the
+    // end of it). Called on the main thread from undo() and redo(), without
+    // the keeper's lock.
+    class OtherStep {
+    public:
+        virtual ~OtherStep()                      = default;
+        virtual std::shared_ptr<OtherStep> swap() = 0;
+    };
+    // After such a change, `undo` the step back.
+    void recordOther(std::string label, std::shared_ptr<OtherStep> undo);
+
     bool undo();
     bool redo();
 
 private:
     struct Step {
-        std::string          label;
-        std::vector<ClipRef> takes;   // the lane on the other side of the step
+        std::string                label;
+        std::vector<ClipRef>       takes;   // the lane on the other side of the step
+        std::shared_ptr<OtherStep> other;   // set: not the lane's (takes unused)
     };
 
     bool pumpLocked();
@@ -102,6 +132,7 @@ private:
     // After a change: what plays, the editor's version, the host's dirty flag.
     void changedLocked();
     bool stepLocked(std::vector<Step>& from, std::vector<Step>& to);
+    bool step(bool back);   // undo (true) or redo
 
     PluginEngine&           engine;
     TakeAdded               onTake;

@@ -144,18 +144,39 @@ bool Lane::addTake(Tick start, Clip clip) {
     return true;
 }
 
-void Lane::setTakes(std::vector<ClipRef> takes) {
+void Lane::setTakes(std::vector<ClipRef> takes, int next) {
     all.clear();
     nextNumber = 1;
+    for (ClipRef& t : takes) {   // a name "Take n" keeps n from being given again
+        if (!t.clip) continue;
+        const std::string& name = t.clip->name;
+        if (name.rfind("Take ", 0) == 0 && name.size() > 5 && name.size() < 15 &&
+            name.find_first_not_of("0123456789", 5) == std::string::npos)
+            nextNumber = std::max(nextNumber, std::stoi(name.substr(5)) + 1);
+    }
+    nextNumber = std::max(nextNumber, next);
     for (ClipRef& t : takes) {
         if (!t.clip) continue;
         Clip clip = *t.clip;
         clip.id   = nextClip++;
-        clip.name = "Take " + std::to_string(nextNumber++);
+        if (clip.name.empty()) clip.name = "Take " + std::to_string(nextNumber++);
         t.id      = nextRef++;
         t.clip    = std::make_shared<const Clip>(std::move(clip));
         all.push_back(std::move(t));
     }
+}
+
+ClipRefId Lane::addClip(Tick start, Clip clip) {
+    if (clip.events.empty()) return 0;
+    clip.id = nextClip++;
+    if (clip.name.empty()) clip.name = "Take " + std::to_string(nextNumber++);
+    workOutScale(clip);
+    ClipRef ref;
+    ref.id    = nextRef++;
+    ref.start = start;
+    ref.clip  = std::make_shared<const Clip>(std::move(clip));
+    all.push_back(std::move(ref));
+    return all.back().id;
 }
 
 std::vector<ClipEvent> flatten(const std::vector<ClipRef>& takes) {

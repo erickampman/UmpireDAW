@@ -5,13 +5,16 @@
 // position: the synth sounds; Pitch 7.25 reaches it whole (the pitch it
 // sounds, measured); a note starts when its beat comes, at 120 bpm
 // and at 90; two instances at once share the synth's module; an offline render (the render extension) gives the same
-// samples as a real-time one; and saving brings the synth's state back.
+// samples as a real-time one; and saving brings the synth's state back. P4:
+// the synth chosen in the state (none, PlainOldSynth swapped in while it
+// runs, one that isn't installed kept as it was).
 //
 // Skipped (77) if PlainOldSynth isn't installed. Its setup file
 // (UMPIRE_PLUGIN_CONF, set by CTest) names the synth and no MIDI input.
 
 #include <clap/clap.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -219,7 +222,7 @@ int main(int argc, char** argv) {
         {5 * kTicksPerQuarter + kTicksPerQuarter * 4 / 5, ump::midi2NoteOff(0, 0, 67)},
     };
     plugin::SavedState saved;
-    saved.takes       = {{0, clipfile::write(events, 6 * kTicksPerQuarter, {120, 4})}};
+    saved.takes       = {plugin::savedTake(0, clipfile::write(events, 6 * kTicksPerQuarter, {120, 4}))};
     const auto state  = plugin::encodeState(saved);
 
     std::vector<float> realtime, offline, slower;
@@ -281,7 +284,7 @@ int main(int argc, char** argv) {
             {3 * kTicksPerQuarter, ump::midi2NoteOff(0, 0, 62)},
         };
         plugin::SavedState table;
-        table.takes = {{0, clipfile::write(tuning, 4 * kTicksPerQuarter, {120, 4})}};
+        table.takes = {plugin::savedTake(0, clipfile::write(tuning, 4 * kTicksPerQuarter, {120, 4}))};
         Instance f(module->factory());
         f.load(plugin::encodeState(table));
         f.start();
@@ -357,6 +360,52 @@ int main(int argc, char** argv) {
         Instance h(module->factory());
         h.load(bytes);
         check("and loads it", h.plugin != nullptr && params->get_value(h.plugin, info.id, &value) && value == 1);
+    }
+
+    // P4: the synth is the instance's, chosen through the state (the window
+    // chooses it the same way): none is silent; PlainOldSynth chosen while
+    // the plugin runs is swapped in by the audio thread and sounds.
+    {
+        const auto peakOf = [](const std::vector<float>& v) {
+            float p = 0;
+            for (const float x : v) p = std::max(p, std::fabs(x));
+            return p;
+        };
+        Instance           g(module->factory());
+        plugin::SavedState none = saved;
+        none.synthChosen        = true;
+        check("a state choosing no synth loads", g.load(plugin::encodeState(none)));
+        g.start();
+        check("and it's silent", peakOf(g.play(120, 3.0)) == 0.0f);
+        auto bytes = g.save();
+        check("it saves none chosen", plugin::decodeState(bytes.data(), bytes.size(), back, error) && back.synthChosen &&
+                                          back.synthId.empty(), error);
+        plugin::SavedState pos = saved;
+        pos.synthChosen        = true;
+        pos.synthId            = "com.unlikelyware.plainoldsynth";
+        check("a state choosing PlainOldSynth loads while it runs", g.load(plugin::encodeState(pos)));
+        check("PlainOldSynth is swapped in and sounds", peakOf(g.play(120, 3.0)) > 0.01f);
+        bytes = g.save();
+        check("it saves PlainOldSynth chosen, with its file and name",
+              plugin::decodeState(bytes.data(), bytes.size(), back, error) && back.synthChosen &&
+                  back.synthId == "com.unlikelyware.plainoldsynth" && back.synthName == "PlainOldSynth" &&
+                  back.synthPath.find("PlainOldSynth") != std::string::npos && !back.synthState.empty(),
+              error);
+        // One that isn't installed: silence, and kept as it was.
+        plugin::SavedState gone = saved;
+        gone.synthChosen        = true;
+        gone.synthId            = "org.example.not-installed";
+        gone.synthPath          = "/nowhere/NotInstalled.clap";
+        gone.synthName          = "NotInstalled";
+        gone.synthState         = {std::byte{7}, std::byte{8}, std::byte{9}};
+        check("a state choosing a synth that isn't here loads", g.load(plugin::encodeState(gone)));
+        check("and it's silent", peakOf(g.play(120, 3.0)) == 0.0f);
+        bytes = g.save();
+        check("the synth that isn't here is kept, state and all",
+              plugin::decodeState(bytes.data(), bytes.size(), back, error) && back.synthChosen &&
+                  back.synthId == gone.synthId && back.synthPath == gone.synthPath && back.synthName == "NotInstalled" &&
+                  back.synthState == gone.synthState,
+              error);
     }
 
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");

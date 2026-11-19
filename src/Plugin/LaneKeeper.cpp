@@ -60,7 +60,7 @@ bool LaneKeeper::pumpLocked() {
 }
 
 void LaneKeeper::recordLocked(std::string label) {
-    undos.push_back({std::move(label), lane.takes()});
+    undos.push_back({std::move(label), lane.takes(), nullptr});
     if (undos.size() > kUndoLimit) undos.erase(undos.begin());
     redos.clear();
 }
@@ -133,21 +133,84 @@ bool LaneKeeper::bringToFront(ClipRefId ref) {
     return true;
 }
 
-bool LaneKeeper::undo() {
+bool LaneKeeper::renameTake(ClipRefId ref, const std::string& name) {
     std::lock_guard<std::mutex> guard(lock);
     pumpLocked();
-    return stepLocked(undos, redos);
+    const ClipRef* take = lane.find(ref);
+    if (take == nullptr || !take->clip || name.empty() || take->clip->name == name) return false;
+    auto copy  = std::make_shared<Clip>(*take->clip);   // the same music: the same id
+    copy->name = name;
+    recordLocked("Rename take");
+    lane.replace(ref, take->start, std::move(copy));
+    changedLocked();
+    return true;
 }
 
-bool LaneKeeper::redo() {
+bool LaneKeeper::setTakeScale(ClipRefId ref, const Scale& scale) {
     std::lock_guard<std::mutex> guard(lock);
     pumpLocked();
-    return stepLocked(redos, undos);
+    const ClipRef* take = lane.find(ref);
+    if (take == nullptr || !take->clip) return false;
+    const Scale clamped{std::clamp(scale.edo, Scale::kMinEdo, Scale::kMaxEdo), std::clamp(scale.referenceNote, 0, 127)};
+    if (take->clip->scale == clamped && take->clip->scaleFit == ScaleFit::Chosen) return false;
+    auto copy      = std::make_shared<Clip>(*take->clip);
+    copy->scale    = clamped;
+    copy->scaleFit = ScaleFit::Chosen;
+    recordLocked("Set scale");
+    lane.replace(ref, take->start, std::move(copy));
+    changedLocked();
+    return true;
+}
+
+ClipRefId LaneKeeper::importClip(Tick start, Clip clip) {
+    std::lock_guard<std::mutex> guard(lock);
+    pumpLocked();
+    if (clip.events.empty()) return 0;
+    recordLocked("Import clip");
+    const ClipRefId ref = lane.addClip(start, std::move(clip));
+    changedLocked();
+    return ref;
+}
+
+void LaneKeeper::recordOther(std::string label, std::shared_ptr<OtherStep> step) {
+    if (!step) return;
+    std::lock_guard<std::mutex> guard(lock);
+    undos.push_back({std::move(label), {}, std::move(step)});
+    if (undos.size() > kUndoLimit) undos.erase(undos.begin());
+    redos.clear();
+    dirty.store(true);
+    changes.fetch_add(1);
+}
+
+bool LaneKeeper::undo() { return step(true); }
+bool LaneKeeper::redo() { return step(false); }
+
+// A lane step is swapped under the lock. A step outside the lane (the synth)
+// is swapped with the lock let go of, since it calls the host, which might
+// call back (a state save takes the lock).
+bool LaneKeeper::step(bool back) {
+    std::unique_lock<std::mutex> guard(lock);
+    pumpLocked();
+    std::vector<Step>& from = back ? undos : redos;
+    if (from.empty() || !from.back().other) return stepLocked(back ? undos : redos, back ? redos : undos);
+    Step taken = std::move(from.back());
+    from.pop_back();
+    guard.unlock();
+    std::shared_ptr<OtherStep> reverse = taken.other->swap();
+    guard.lock();
+    if (reverse) {
+        std::vector<Step>& to = back ? redos : undos;
+        to.push_back({taken.label, {}, std::move(reverse)});
+        if (to.size() > kUndoLimit) to.erase(to.begin());
+    }
+    dirty.store(true);
+    changes.fetch_add(1);
+    return true;
 }
 
 bool LaneKeeper::stepLocked(std::vector<Step>& from, std::vector<Step>& to) {
     if (from.empty()) return false;
-    to.push_back({from.back().label, lane.takes()});
+    to.push_back({from.back().label, lane.takes(), nullptr});
     lane.restore(std::move(from.back().takes));
     from.pop_back();
     changedLocked();
@@ -159,10 +222,15 @@ std::vector<ClipRef> LaneKeeper::takes() const {
     return lane.takes();
 }
 
-void LaneKeeper::setTakes(std::vector<ClipRef> takes) {
+int LaneKeeper::nextTakeNumber() const {
+    std::lock_guard<std::mutex> guard(lock);
+    return lane.nextTakeNumber();
+}
+
+void LaneKeeper::setTakes(std::vector<ClipRef> takes, int nextNumber) {
     std::lock_guard<std::mutex> guard(lock);
     pumpLocked();   // a take that just ended is replaced along with the rest
-    lane.setTakes(std::move(takes));
+    lane.setTakes(std::move(takes), nextNumber);
     undos.clear();   // a loaded state starts a new history
     redos.clear();
     engine.setEvents(flatten(lane.takes()));

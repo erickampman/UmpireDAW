@@ -94,8 +94,8 @@ int main(int argc, char** argv) {
         {6 * kTicksPerQuarter, ump::midi2NoteOff(0, 1, 67)},
     };
     plugin::SavedState in;
-    in.takes             = {{0, clipfile::write(events, 8 * kTicksPerQuarter, {120, 4})},
-                            {10 * kTicksPerQuarter, clipfile::write(events, 7 * kTicksPerQuarter, {120, 4})}};
+    in.takes             = {plugin::savedTake(0, clipfile::write(events, 8 * kTicksPerQuarter, {120, 4})),
+                            plugin::savedTake(10 * kTicksPerQuarter, clipfile::write(events, 7 * kTicksPerQuarter, {120, 4}))};
     const auto  inBytes  = plugin::encodeState(in);
     const auto* inData   = reinterpret_cast<const std::byte*>(inBytes.data());
     check("it loads two takes", plugin->loadState(inData, inBytes.size()));
@@ -105,6 +105,33 @@ int main(int argc, char** argv) {
           plugin::decodeState(reinterpret_cast<const std::uint8_t*>(saved.data()), saved.size(), state, error) &&
               state.takes.size() == 2 && state.takes[0].start == 0 && state.takes[0].clipFile == in.takes[0].clipFile &&
               state.takes[1].start == in.takes[1].start && state.takes[1].clipFile == in.takes[1].clipFile);
+
+    // P4: names and scales come back; a synth that isn't installed is kept
+    // as it was; so is an input that isn't here.
+    in.takes[0].name     = "Verse";
+    in.takes[0].scale    = Scale{31, 57};
+    in.takes[0].scaleFit = ScaleFit::Chosen;
+    in.nextTakeNumber    = 9;
+    in.synthChosen       = true;
+    in.synthId           = "org.example.not-installed";
+    in.synthPath         = "/nowhere/NotInstalled.clap";
+    in.synthName         = "NotInstalled";
+    in.synthState        = {std::byte{1}, std::byte{2}};
+    in.input             = plugin::InputChoice{plugin::InputMode::Named, "No Such Input", "no-such-input"};
+    const auto named     = plugin::encodeState(in);
+    check("a version 4 state loads", plugin->loadState(reinterpret_cast<const std::byte*>(named.data()), named.size()));
+    saved.clear();
+    plugin->saveState(saved);
+    check("names, scales and the next number come back",
+          plugin::decodeState(reinterpret_cast<const std::uint8_t*>(saved.data()), saved.size(), state, error) &&
+              state.takes.size() == 2 && state.takes[0].name == "Verse" && state.takes[0].scale == in.takes[0].scale &&
+              state.takes[0].scaleFit == ScaleFit::Chosen && state.takes[1].name == "Take 9" &&
+              state.takes[1].scaleFit != ScaleFit::Chosen && state.nextTakeNumber == 10,
+          error);
+    check("a synth that isn't installed is kept, state and all",
+          state.synthChosen && state.synthId == in.synthId && state.synthPath == in.synthPath &&
+              state.synthName == in.synthName && state.synthState == in.synthState);
+    check("and so is an input that isn't here", state.input == in.input);
 
     const std::byte junk[] = {std::byte{'R'}, std::byte{'I'}, std::byte{'F'}, std::byte{'F'}, std::byte{0}, std::byte{0},
                               std::byte{0},   std::byte{0}};

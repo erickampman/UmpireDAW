@@ -21,8 +21,15 @@
 // to a log file (logPath() below): the input it opened, takes, the live
 // input's timing, the state, its latency, and a heartbeat counting the
 // host's timer ticks and main-thread callbacks (how the spike checked
-// timer-support with the window closed, check 7). Setup comes from a small
-// text file (configPath(), Plugin/PluginSetup.h).
+// timer-support with the window closed, check 7). What a new instance opens
+// comes from a small text file (configPath(), Plugin/PluginSetup.h).
+//
+// P4 (docs/plugin-version.md, "P4"): the window chooses the synth and the
+// input per instance, and the state keeps them, with the takes' names and
+// scales. A synth chosen while the plugin runs is swapped in by the audio
+// thread (PluginEngine::swapSynth), and "Change synth" is in the plugin's
+// undo with the old synth's state. A synth or input that isn't here is kept
+// as it was, not replaced.
 
 #include <clap/clap.h>
 
@@ -33,6 +40,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <algorithm>
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -41,6 +49,7 @@
 #include <memory>
 #include <mutex>
 #include <new>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -157,6 +166,17 @@ std::string findClap(const std::vector<std::string>& dirs, const std::string& na
 
 std::atomic<int> nextInstance{1};
 
+constexpr const char* kOwnId = "com.unlikelyware.umpire";
+
+// Which synth an instance hosts (P4): the setup file's until one is chosen in
+// the window, and the state keeps the choice. With its state: for undo, and
+// for a synth that isn't installed here, which is kept as it was.
+struct SynthChoice {
+    bool                   chosen = false;   // false: the setup file's
+    std::string            id, path, name;   // nothing named: none
+    std::vector<std::byte> state;
+};
+
 // One factory for every instance in the process, so they share each loaded
 // .clap (its ClapModule): two instances hosting PlainOldSynth load it once,
 // and its clap_entry is deinitialized only when the last of them goes
@@ -218,12 +238,19 @@ public:
 
     std::shared_ptr<uw::ClapPluginFactory> factory;
     std::unique_ptr<uw::HostedPlugin>      synth;
+    // P4: the synth chosen in the window (or the state), and what it needs.
+    std::string                            synthPath;     // the .clap it came from
+    bool                                   synthChosen = false;
+    SynthChoice                            missingSynth;  // id set: the chosen synth isn't here, kept as it was
+    std::vector<std::unique_ptr<uw::HostedPlugin>> retiring;   // swapped out; the audio thread lets go of them
 
     std::unique_ptr<uw::PlatformMidiInput> midi;
     uw::MidiSourceHandle                   source = uw::kInvalidMidiSource;
     std::string                            sourceName;
     std::uint64_t                          seenChanges = 0;
     bool                                   sourceConnected = false;
+    InputChoice                            inputChoice;   // P4: chosen in the window, kept in the state
+    bool                                   inputMissing = false;   // the source chosen isn't here
 
     // Main-loop services forwarded for the synth: the host's ids to ours.
     struct Timer {
@@ -286,12 +313,40 @@ public:
 
     bool init();
     void destroy();
+    void ensureMidi();
     void openInput();
+    void chooseInput(const InputChoice& choice);
+    std::vector<InputItem> inputItems();
+
+    // P4: the synth.
+    SynthChoice setupSynth() const;
+    SynthChoice currentSynth() const;   // with its state as it is now
+    std::unique_ptr<uw::HostedPlugin> loadSynth(const SynthChoice& choice, std::string& path);
+    bool useSynth(const SynthChoice& choice);   // false if it can't change now
+    void chooseSynth(const std::string& id);    // from the window: an undo step
+    void collectRetired();
+    const std::vector<uw::PluginDescriptor>& installedSynths();
     void housekeeping();
     void report();
     void logTake(const ClipRef& take);
 
     static Plugin* self(const clap_plugin_t* p) { return static_cast<Plugin*>(p->plugin_data); }
+};
+
+// "Change synth" in the plugin's undo: the synth it holds is put back, with
+// its state, and the step that puts back the one it replaced is returned.
+class SynthStep final : public LaneKeeper::OtherStep {
+public:
+    SynthStep(Plugin& p, SynthChoice c) : plugin(p), held(std::move(c)) {}
+    std::shared_ptr<LaneKeeper::OtherStep> swap() override {
+        SynthChoice now = plugin.currentSynth();
+        if (!plugin.useSynth(held)) return nullptr;
+        return std::make_shared<SynthStep>(plugin, std::move(now));
+    }
+
+private:
+    Plugin&     plugin;
+    SynthChoice held;
 };
 
 void Plugin::log(const char* format, ...) {
@@ -387,39 +442,11 @@ bool Plugin::init() {
     log("host gives timer-support: %s, posix-fd-support: %s, gui: %s", hostTimer ? "yes" : "no",
         hostFd ? "yes" : "no", hostGui ? "yes" : "no");
 
-    if (config.synth != "none") {
-        factory = sharedFactory();
-        const std::string path = findClap(factory->searchPaths(), config.synth);
-        if (path.empty()) {
-            log("no %s.clap in CLAP's folders: no synth", config.synth.c_str());
-        } else {
-            const std::vector<uw::PluginDescriptor> found = factory->scanFile(path);
-            const uw::PluginDescriptor*             desc  = nullptr;
-            for (const auto& d : found)
-                if (config.synthId.empty() || d.id == config.synthId) {
-                    desc = &d;
-                    break;
-                }
-            if (desc == nullptr) log("%s has no plugin '%s'", path.c_str(), config.synthId.c_str());
-            else if (desc->id == "com.unlikelyware.umpire") log("won't host itself");
-            else {
-                synth = factory->create(*desc, services);
-                log(synth ? "synth: %s (%s), from %s" : "synth %s (%s) wouldn't load, from %s", desc->name.c_str(),
-                    desc->id.c_str(), path.c_str());
-            }
-        }
-    }
-    engine.setSynth(synth.get());
+    useSynth(setupSynth());
 
     if (config.input != "none") {
-        midi = uw::PlatformMidiInput::create("Umpire");
-        if (midi) {
-            midi->setSink(&engine);
-            seenChanges = midi->changes();
-            openInput();
-        } else {
-            log("couldn't reach %s", "the MIDI system");
-        }
+        ensureMidi();
+        if (midi) openInput();
     }
 
     if (hostTimer != nullptr && !hostTimer->register_timer(host, 50, &ownTimer)) ownTimer = CLAP_INVALID_ID;
@@ -437,6 +464,8 @@ void Plugin::destroy() {
     window.reset();
     synthWindow.reset();   // closes the synth's editor
     engine.deactivate();   // the host should have already; harmless if so
+    collectRetired();
+    retiring.clear();
     synth.reset();         // unregisters the synth's timers and fds, through ForwardingHost
     factory.reset();       // after the synth, which holds its module
     if (hostTimer != nullptr) {
@@ -448,15 +477,39 @@ void Plugin::destroy() {
     log("closed");
 }
 
+// The MIDI system, made when an input is first wanted (at init, or when the
+// window lists the sources).
+void Plugin::ensureMidi() {
+    if (midi) return;
+    midi = uw::PlatformMidiInput::create("Umpire");
+    if (!midi) {
+        log("couldn't reach %s", "the MIDI system");
+        return;
+    }
+    midi->setSink(&engine);
+    seenChanges = midi->changes();
+}
+
 void Plugin::openInput() {
     nextInputTry = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    if (!midi || inputChoice.mode == InputMode::None) return;
     const std::vector<uw::MidiSourceInfo> sources = midi->enumerate();
-    const int                             chosen  = chooseSource(sources, config.input);
+    int chosen = -1;
+    if (inputChoice.mode == InputMode::Setup) {
+        chosen = chooseSource(sources, config.input);
+    } else {   // the source chosen: by its id, else by its name; otherwise it's missing, and waited for
+        for (std::size_t i = 0; i < sources.size() && chosen < 0; ++i)
+            if (sources[i].id == inputChoice.id) chosen = static_cast<int>(i);
+        for (std::size_t i = 0; i < sources.size() && chosen < 0; ++i)
+            if (sources[i].name == inputChoice.name) chosen = static_cast<int>(i);
+        inputMissing = chosen < 0;
+    }
+    const std::string wanted = inputChoice.mode == InputMode::Setup ? config.input : inputChoice.name;
     if (chosen < 0) {
         if (sourceName != "-") {   // said once, not every retry
             std::string names;
             for (const auto& s : sources) names += (names.empty() ? "" : ", ") + s.name;
-            log("no input to open (wanted '%s'); there are: %s", config.input.c_str(), names.empty() ? "none" : names.c_str());
+            log("no input to open (wanted '%s'); there are: %s", wanted.c_str(), names.empty() ? "none" : names.c_str());
             sourceName = "-";
         }
         return;
@@ -469,11 +522,206 @@ void Plugin::openInput() {
     }
     sourceName      = info.name;
     sourceConnected = true;
+    inputMissing    = false;
     log("input: '%s' (%s), %s", info.name.c_str(), info.id.c_str(), midi->describe(source).c_str());
+}
+
+// Another input (the window's menu, or a loaded state): the one open closes,
+// and the new one opens now or, if it isn't here, when it comes.
+void Plugin::chooseInput(const InputChoice& choice) {
+    if (midi && source != uw::kInvalidMidiSource) midi->close(source);
+    source          = uw::kInvalidMidiSource;
+    sourceName.clear();
+    sourceConnected = false;
+    inputMissing    = false;
+    inputChoice     = choice;
+    log("input chosen: %s", choice.mode == InputMode::Setup ? "the default"
+                            : choice.mode == InputMode::None ? "none"
+                                                             : ("'" + choice.name + "'").c_str());
+    if (choice.mode == InputMode::None) return;
+    ensureMidi();
+    openInput();
+}
+
+// The window's input menu: the default (what it opens), each source, a
+// chosen one that isn't here, and none.
+std::vector<InputItem> Plugin::inputItems() {
+    ensureMidi();
+    const std::vector<uw::MidiSourceInfo> sources = midi ? midi->enumerate() : std::vector<uw::MidiSourceInfo>{};
+    std::vector<InputItem>                items;
+    const int   fallback = chooseSource(sources, config.input);
+    std::string label    = "Default (" + (fallback >= 0 ? sources[static_cast<std::size_t>(fallback)].name
+                                                         : std::string(config.input == "none" ? "none" : "none found")) + ")";
+    items.push_back({label, InputChoice{}, inputChoice.mode == InputMode::Setup});
+    bool listed = false;
+    for (const uw::MidiSourceInfo& s : sources) {
+        const bool on = inputChoice.mode == InputMode::Named && (s.id == inputChoice.id || (!inputMissing && sourceName == s.name));
+        listed        = listed || on;
+        items.push_back({s.name, InputChoice{InputMode::Named, s.name, s.id}, on});
+    }
+    if (inputChoice.mode == InputMode::Named && !listed) items.push_back({inputChoice.name + " (not here)", inputChoice, true});
+    items.push_back({"None", InputChoice{InputMode::None, {}, {}}, inputChoice.mode == InputMode::None});
+    return items;
+}
+
+// --- the synth (P4) ---------------------------------------------------------------------
+
+SynthChoice Plugin::setupSynth() const {
+    SynthChoice c;
+    if (config.synth == "none") return c;
+    c.id   = config.synthId;
+    c.name = config.synth;   // a .clap's name in CLAP's folders, or a path
+    return c;
+}
+
+SynthChoice Plugin::currentSynth() const {
+    if (!synth) {   // none, or one that isn't here, as it was kept
+        SynthChoice c = missingSynth;
+        c.chosen      = synthChosen;
+        return c;
+    }
+    SynthChoice c;
+    c.chosen = synthChosen;
+    c.id     = synth->descriptor().id;
+    c.path   = synthPath;
+    c.name   = synth->descriptor().name;
+    if (!synth->saveState(c.state)) c.state.clear();
+    return c;
+}
+
+// Every CLAP instrument in CLAP's folders, but Umpire: scanned once for the
+// process, when the window's synth menu first opens. Scanning loads each
+// .clap into the host's process, so nothing else asks for it: loading a
+// state never does.
+struct SynthScan {
+    std::vector<uw::PluginDescriptor> found;
+    bool                              done = false;
+};
+SynthScan& synthScan() {
+    static SynthScan scan;
+    return scan;
+}
+
+const std::vector<uw::PluginDescriptor>& Plugin::installedSynths() {
+    SynthScan& scan = synthScan();
+    if (scan.done) return scan.found;
+    if (!factory) factory = sharedFactory();
+    for (uw::PluginDescriptor& d : factory->scan())
+        if (d.kind == uw::PluginKind::Instrument && d.id != kOwnId) scan.found.push_back(std::move(d));
+    std::sort(scan.found.begin(), scan.found.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+    scan.done = true;
+    log("found %zu instruments in CLAP's folders", scan.found.size());
+    return scan.found;
+}
+
+// The synth a choice names: its .clap where it was, else a .clap of that
+// file's name or the synth's name in CLAP's folders, else the setup file's
+// (an older state names its synth by id alone); then the plugin in it with
+// its id (or its first). Failing that, an instrument with its id among those
+// the synth menu found, if it's been opened. Null: none named, or not here.
+std::unique_ptr<uw::HostedPlugin> Plugin::loadSynth(const SynthChoice& c, std::string& path) {
+    path.clear();
+    if (c.id.empty() && c.path.empty() && c.name.empty()) return nullptr;
+    if (!factory) factory = sharedFactory();
+    std::error_code          ec;
+    std::vector<std::string> files;
+    const auto               add = [&](const std::string& name) {
+        if (name.empty()) return;
+        if (std::string f = findClap(factory->searchPaths(), name); !f.empty() &&
+                                                                    std::find(files.begin(), files.end(), f) == files.end())
+            files.push_back(f);
+    };
+    if (!c.path.empty() && fs::exists(c.path, ec)) files.push_back(c.path);
+    if (!c.path.empty()) add(fs::path(c.path).stem().string());
+    add(c.name);
+    if (!c.id.empty() && config.synth != "none") add(config.synth);
+    std::optional<uw::PluginDescriptor> desc;
+    for (const std::string& file : files) {
+        for (const uw::PluginDescriptor& d : factory->scanFile(file))
+            if ((c.id.empty() || d.id == c.id) && d.id != kOwnId) {
+                desc = d;
+                break;
+            }
+        if (desc) break;
+    }
+    if (!desc && !c.id.empty())
+        for (const uw::PluginDescriptor& d : synthScan().found)
+            if (d.id == c.id) {
+                desc = d;
+                break;
+            }
+    if (!desc) return nullptr;
+    std::unique_ptr<uw::HostedPlugin> made = factory->create(*desc, services);
+    if (!made) log("synth %s (%s) wouldn't load, from %s", desc->name.c_str(), desc->id.c_str(), desc->path.c_str());
+    else path = desc->path;
+    return made;
+}
+
+// Hosts the synth `c` names, with its state, in place of the one now: at once
+// if the plugin isn't active, else from the audio thread's next block (the
+// old one is let go of there, and destroyed in collectRetired()). One that
+// isn't here is kept as it was, state and all, and the plugin is silent.
+bool Plugin::useSynth(const SynthChoice& c) {
+    std::string                       path;
+    std::unique_ptr<uw::HostedPlugin> next = loadSynth(c, path);
+    if (next && !c.state.empty() && !next->loadState(c.state.data(), c.state.size()))
+        log("%s didn't take its saved state", next->descriptor().name.c_str());
+    if (synthWindow) {   // the old synth's editor goes with it
+        synthWindow.reset();
+        log("synth's window closed");
+    }
+    const PluginEngine::Swap swap = engine.swapSynth(next.get());
+    if (swap == PluginEngine::Swap::Busy) {
+        log("the synth can't change now: the host hasn't processed the last change yet");
+        return false;
+    }
+    if (swap == PluginEngine::Swap::Pending && synth) retiring.push_back(std::move(synth));
+    synth       = std::move(next);   // Done: the old one goes now
+    synthPath   = path;
+    synthChosen = c.chosen;
+    missingSynth = {};
+    if (synth) {
+        log("synth: %s (%s), from %s", synth->descriptor().name.c_str(), synth->descriptor().id.c_str(), path.c_str());
+    } else if (!c.id.empty() || !c.name.empty()) {
+        missingSynth = c;
+        log("synth %s (%s) isn't here: none, and its state is kept", c.name.c_str(), c.id.c_str());
+    } else {
+        log("synth: none");
+    }
+    if (engine.active()) {
+        // The latency is read at activation: a new one needs the host to restart us.
+        const std::uint32_t now = synth && engine.synthHasNotes() ? synth->latencyFrames() : 0;
+        if (now != latency) host->request_restart(host);
+        host->request_process(host);   // so the audio thread takes it, even if the host let it sleep
+    }
+    return true;
+}
+
+void Plugin::chooseSynth(const std::string& id) {
+    const bool same = synth ? synth->descriptor().id == id : (id.empty() && missingSynth.id.empty() && missingSynth.name.empty());
+    if (same) return;
+    SynthChoice was = currentSynth();
+    SynthChoice next;
+    next.chosen = true;
+    next.id     = id;
+    for (const uw::PluginDescriptor& d : installedSynths())
+        if (d.id == id) {
+            next.path = d.path;
+            next.name = d.name;
+        }
+    if (!useSynth(next)) return;
+    keeper.recordOther("Change synth", std::make_shared<SynthStep>(*this, std::move(was)));
+}
+
+// Synths the audio thread has let go of: destroyed here, on the main thread.
+void Plugin::collectRetired() {
+    while (uw::HostedPlugin* done = engine.retiredSynth())
+        std::erase_if(retiring, [done](const auto& p) { return p.get() == done; });
 }
 
 // The main thread's work, from our timer and from main-thread callbacks.
 void Plugin::housekeeping() {
+    collectRetired();
     if (synth) synth->idle();
     if (synthWindow && !synthWindow->isOpen()) {   // closed by its close button
         synthWindow.reset();
@@ -572,7 +820,11 @@ bool pluginActivate(const clap_plugin_t* p, double sampleRate, std::uint32_t, st
     return true;
 }
 
-void pluginDeactivate(const clap_plugin_t* p) { Plugin::self(p)->engine.deactivate(); }
+void pluginDeactivate(const clap_plugin_t* p) {
+    Plugin* self = Plugin::self(p);
+    self->engine.deactivate();
+    self->collectRetired();
+}
 bool pluginStartProcessing(const clap_plugin_t*) { return true; }
 void pluginStopProcessing(const clap_plugin_t* p) { Plugin::self(p)->engine.stopProcessing(); }
 void pluginReset(const clap_plugin_t* p) { Plugin::self(p)->engine.reset(); }
@@ -717,14 +969,25 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
     std::size_t clipBytes = 0;
     const clipfile::Tempo tempo{self->engine.lastTempo(), self->engine.lastBeatsPerBar()};
     for (const ClipRef& take : self->keeper.takes()) {
-        saved.takes.push_back({take.start, clipfile::write(take.clip->events, take.clip->length, tempo)});
-        clipBytes += saved.takes.back().clipFile.size();
+        SavedTake t;
+        t.start    = take.start;
+        t.clipFile = clipfile::write(take.clip->events, take.clip->length, tempo);
+        t.name     = take.clip->name;
+        t.scale    = take.clip->scale;
+        t.scaleFit = take.clip->scaleFit;
+        clipBytes += t.clipFile.size();
+        saved.takes.push_back(std::move(t));
     }
-    if (self->synth) {
-        saved.synthId = self->synth->descriptor().id;
-        if (!self->synth->saveState(saved.synthState)) saved.synthState.clear();
-    }
-    saved.armed = self->armed.load();
+    saved.nextTakeNumber = static_cast<std::uint32_t>(self->keeper.nextTakeNumber());
+    // The synth: the one hosted, or one chosen that isn't here, kept as it was.
+    SynthChoice synth  = self->currentSynth();
+    saved.synthChosen  = synth.chosen;
+    saved.synthId      = std::move(synth.id);
+    saved.synthPath    = std::move(synth.path);
+    saved.synthName    = std::move(synth.name);
+    saved.synthState   = std::move(synth.state);
+    saved.armed        = self->armed.load();
+    saved.input        = self->inputChoice;
     const std::vector<std::uint8_t> bytes = encodeState(saved);
     std::size_t                     at    = 0;
     while (at < bytes.size()) {
@@ -732,8 +995,8 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
         if (n <= 0) return false;
         at += static_cast<std::size_t>(n);
     }
-    self->log("saved: %zu takes, %zu bytes of clips, synth state %zu bytes, record %s", saved.takes.size(), clipBytes,
-              saved.synthState.size(), saved.armed ? "on" : "off");
+    self->log("saved: %zu takes, %zu bytes of clips, synth %s, state %zu bytes, record %s", saved.takes.size(), clipBytes,
+              saved.synthId.empty() ? "none" : saved.synthId.c_str(), saved.synthState.size(), saved.armed ? "on" : "off");
     return true;
 }
 
@@ -764,6 +1027,12 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
         auto clip    = std::make_shared<Clip>();
         clip->events = read.events;
         clip->length = read.length;
+        clip->name   = saved.takes[i].name;   // empty (an older state): "Take n"
+        workOutScale(*clip);                  // the candidates, and the scale unless it was set by hand
+        if (saved.takes[i].scaleFit == ScaleFit::Chosen) {
+            clip->scale    = saved.takes[i].scale;
+            clip->scaleFit = ScaleFit::Chosen;
+        }
         events += clip->events.size();
         ClipRef ref;
         ref.start = saved.takes[i].start;
@@ -771,19 +1040,39 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
         takes.push_back(std::move(ref));
     }
     const std::size_t takeCount = takes.size();
-    self->keeper.setTakes(std::move(takes));
+    self->keeper.setTakes(std::move(takes), static_cast<int>(saved.nextTakeNumber));
     self->armed.store(saved.armed);
     if (const auto* params = static_cast<const clap_host_params_t*>(self->host->get_extension(self->host, CLAP_EXT_PARAMS)))
         params->rescan(self->host, CLAP_PARAM_RESCAN_VALUES);
 
+    // The synth: the one the state chose, else the setup file's. The one
+    // hosted now stays if it's that one, and takes the state's.
+    const bool same = saved.synthChosen ? (self->synth ? self->synth->descriptor().id == saved.synthId
+                                                       : saved.synthId.empty() && self->missingSynth.id.empty() &&
+                                                             self->missingSynth.name.empty())
+                                        : !self->synthChosen;
     bool synthLoaded = false;
-    if (self->synth && !saved.synthState.empty()) {
-        if (saved.synthId != self->synth->descriptor().id)
-            self->log("the state's synth is %s, not %s: its state isn't loaded", saved.synthId.c_str(),
-                      self->synth->descriptor().id.c_str());
-        else synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
+    if (same) {
+        self->synthChosen = saved.synthChosen;
+        if (self->synth && !saved.synthState.empty()) {
+            if (saved.synthId != self->synth->descriptor().id)
+                self->log("the state's synth is %s, not %s: its state isn't loaded", saved.synthId.c_str(),
+                          self->synth->descriptor().id.c_str());
+            else synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
+        }
+    } else if (saved.synthChosen) {
+        SynthChoice wanted{true, saved.synthId, saved.synthPath, saved.synthName, saved.synthState};
+        self->useSynth(wanted);
+        synthLoaded = self->synth && !saved.synthState.empty();
+    } else {   // back to the setup file's: the state's synth state, if it's that one's
+        self->useSynth(self->setupSynth());
+        if (self->synth && !saved.synthState.empty() && saved.synthId == self->synth->descriptor().id)
+            synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
     }
-    self->log("loaded: %zu takes, %zu events; synth state %s; record %s", takeCount, events,
+    if (!(saved.input == self->inputChoice)) self->chooseInput(saved.input);
+    self->log("loaded: %zu takes, %zu events; synth %s, state %s; record %s", takeCount, events,
+              self->synth ? self->synth->descriptor().name.c_str()
+                          : self->missingSynth.name.empty() ? "none" : (self->missingSynth.name + " (not here)").c_str(),
               synthLoaded ? "loaded" : "not loaded", saved.armed ? "on" : "off");
     return true;
 }
@@ -1076,11 +1365,29 @@ bool guiSetParent(const clap_plugin_t* p, const clap_window_t* parentWindow) {
     links.setArmed        = [self](bool on) { self->pressRecord(on); };
     links.synthName       = [self] { return self->synth ? self->synth->descriptor().name : std::string(); };
     links.synthEditorOpen = [self] { return self->synthWindow != nullptr; };
-    if (self->synth && self->synth->hasEditor()) links.toggleSynthEditor = [self] { self->toggleSynthWindow(); };
+    links.toggleSynthEditor = [self] { self->toggleSynthWindow(); };
+    links.synthHasEditor    = [self] { return self->synth && self->synth->hasEditor(); };
     links.inputName = [self] {
+        if (self->inputMissing) return self->inputChoice.name + " (not here)";
         return self->source == uw::kInvalidMidiSource ? std::string()
                                                       : self->sourceName + (self->sourceConnected ? "" : " (gone)");
     };
+    links.inputMissing = [self] { return self->inputMissing; };
+    links.inputs       = [self] { return self->inputItems(); };
+    links.chooseInput  = [self](const InputChoice& choice) {
+        self->chooseInput(choice);
+        if (self->hostState != nullptr) self->hostState->mark_dirty(self->host);
+    };
+    links.synthId      = [self] { return self->synth ? self->synth->descriptor().id : std::string(); };
+    links.missingSynth = [self] {
+        return self->synth ? std::string() : self->missingSynth.name.empty() ? self->missingSynth.id : self->missingSynth.name;
+    };
+    links.synths = [self] {
+        std::vector<SynthItem> items;
+        for (const uw::PluginDescriptor& d : self->installedSynths()) items.push_back({d.id, d.name, d.vendor});
+        return items;
+    };
+    links.chooseSynth = [self](const std::string& id) { self->chooseSynth(id); };
     unsigned w = 0, h = 0;
     double   scale = 1;
     windowSize(self, w, h, scale);
@@ -1135,7 +1442,7 @@ const char* kFeatures[] = {CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_S
 
 const clap_plugin_descriptor_t kDescriptor = {
     CLAP_VERSION_INIT,
-    "com.unlikelyware.umpire",
+    kOwnId,
     "Umpire",
     "Unlikelyware",
     "https://unlikelyware.com",

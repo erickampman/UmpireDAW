@@ -64,28 +64,44 @@ PluginEngine::~PluginEngine() = default;   // `owned` frees every PlayData, the 
 
 // --- main thread -----------------------------------------------------------------------
 
+std::unique_ptr<PluginEngine::SynthSlot> PluginEngine::makeSlot(uw::HostedPlugin* plugin) {
+    auto slot    = std::make_unique<SynthSlot>();
+    slot->plugin = plugin;
+    if (plugin != nullptr && plugin->activate(sampleRate, maxFrames)) {
+        slot->active                = true;
+        const uw::PortLayout layout = plugin->portLayout();
+        slot->notePort              = layout.noteInputs.empty() ? -1 : 0;
+        slot->midi2 = !layout.noteInputs.empty() && (layout.noteInputs[0].supportedDialects & uw::NoteDialect::Midi2) != 0;
+        const int main = uw::mainAudioOutput(layout);
+        slot->channels = main >= 0 ? layout.audioOutputs[static_cast<std::size_t>(main)].channelCount : 0;
+    }
+    slot->scratch.assign(slot->channels, std::vector<float>(maxFrames, 0.0f));
+    slot->pointers.resize(slot->channels);
+    for (std::uint32_t c = 0; c < slot->channels; ++c) slot->pointers[c] = slot->scratch[c].data();
+    return slot;
+}
+
 bool PluginEngine::activate(double rate, std::uint32_t frames) {
     sampleRate = rate > 0 ? rate : 48000.0;
     maxFrames  = frames;
-    synthActive = false;
-    if (synth != nullptr && synth->activate(sampleRate, maxFrames)) {
-        synthActive                  = true;
-        const uw::PortLayout layout  = synth->portLayout();
-        synthNotePort                = layout.noteInputs.empty() ? -1 : 0;
-        synthMidi2    = !layout.noteInputs.empty() && (layout.noteInputs[0].supportedDialects & uw::NoteDialect::Midi2) != 0;
-        const int main = uw::mainAudioOutput(layout);
-        synthChannels  = main >= 0 ? layout.audioOutputs[static_cast<std::size_t>(main)].channelCount : 0;
-    } else {
-        synthNotePort = -1;
-        synthChannels = 0;
-    }
-    scratch.assign(synthChannels, std::vector<float>(maxFrames, 0.0f));
-    scratchPointers.resize(synthChannels);
-    for (std::uint32_t c = 0; c < synthChannels; ++c) scratchPointers[c] = scratch[c].data();
+    auto slot  = makeSlot(synth);
+    const bool ok = synth == nullptr || slot->active;
+    running = latest = slot.get();
+    slots.push_back(std::move(slot));
     wasPlaying = wasRolling = false;
     sounding.reset();
     isActive = true;
-    return synth == nullptr || synthActive;
+    return ok;
+}
+
+// Deactivates a slot's synth and frees the slot; a synth that isn't the
+// latest given is the caller's to destroy (retiredSynth()).
+void PluginEngine::retireSlot(SynthSlot* slot) {
+    if (slot == nullptr) return;
+    if (slot->active) slot->plugin->deactivate();
+    if (slot->plugin != nullptr && slot->plugin != synth) retired.push_back(slot->plugin);
+    if (latest == slot) latest = nullptr;
+    std::erase_if(slots, [slot](const auto& s) { return s.get() == slot; });
 }
 
 void PluginEngine::deactivate() {
@@ -94,9 +110,50 @@ void PluginEngine::deactivate() {
     // ended here: Bitwig deactivates around a change of render mode, say.
     if (recordingSlot >= 0) endTake(expectedTick);
     takeBlocked = false;
-    if (synthActive) synth->deactivate();
-    synthActive = false;
-    isActive    = false;
+    // Swaps the audio thread never took: the newest is the synth now.
+    SynthSlot* slot = nullptr;
+    while (slotIn.pop(slot)) {
+        retireSlot(running);
+        running = slot;
+    }
+    while (slotOut.pop(slot)) retireSlot(slot);
+    slotsInFlight = 0;
+    retireSlot(running);
+    running = latest = nullptr;
+    isActive = false;
+}
+
+PluginEngine::Swap PluginEngine::swapSynth(uw::HostedPlugin* next) {
+    if (!isActive) {
+        synth = next;
+        return Swap::Done;
+    }
+    retiredSynth();   // what's come back makes room
+    if (slotsInFlight >= 4) return Swap::Busy;
+    uw::HostedPlugin* const was = synth;
+    synth                       = next;
+    auto slot                   = makeSlot(next);
+    if (!slotIn.push(slot.get())) {   // can't happen below the limit; undone if it does
+        synth = was;
+        if (slot->active) next->deactivate();
+        return Swap::Busy;
+    }
+    ++slotsInFlight;
+    latest = slot.get();
+    slots.push_back(std::move(slot));
+    return Swap::Pending;
+}
+
+uw::HostedPlugin* PluginEngine::retiredSynth() {
+    SynthSlot* back = nullptr;
+    while (slotOut.pop(back)) {
+        if (slotsInFlight > 0) --slotsInFlight;
+        retireSlot(back);
+    }
+    if (retired.empty()) return nullptr;
+    uw::HostedPlugin* const plugin = retired.back();
+    retired.pop_back();
+    return plugin;
 }
 
 // --- the lane side ---------------------------------------------------------------------
@@ -315,6 +372,21 @@ void PluginEngine::recordLive(const Piece& p) noexcept {
     }
 }
 
+// A synth swapped in (swapSynth()): the old one stops here, on the audio
+// thread as CLAP says, and goes back to be deactivated. The lane starts again
+// on the new one from where it is, its tuning chased.
+void PluginEngine::adoptSynth() noexcept {
+    SynthSlot* next = nullptr;
+    while (slotIn.pop(next)) {
+        if (running != nullptr) {
+            if (running->active) running->plugin->stopProcessing();
+            slotOut.push(running);   // room: no more than four are in flight
+        }
+        running     = next;
+        dataChanged = true;
+    }
+}
+
 void PluginEngine::adoptPlayData() noexcept {
     PlayData* next = nullptr;
     while (toAudio.pop(next)) {
@@ -330,6 +402,7 @@ void PluginEngine::process(const Block& b) noexcept {
         return;
     }
     outCount = 0;
+    adoptSynth();
     adoptPlayData();
     gatherLive(b);
 
@@ -438,31 +511,33 @@ void PluginEngine::runSynth(const Block& b) noexcept {
         outEvents[j] = e;
     }
 
-    if (!synthActive) {
+    SynthSlot* const slot = running;
+    if (slot == nullptr || !slot->active) {
         for (std::uint32_t c = 0; c < b.outChannels; ++c) std::fill_n(b.out[c], b.frames, 0.0f);
         return;
     }
 
     std::size_t n = 0;
-    if (synthNotePort >= 0) {
+    if (slot->notePort >= 0) {
         uw::MidiMessage converted[ump::kMaxTranslatedMessages];
         for (std::size_t i = 0; i < outCount; ++i) {
             const uw::MidiMessage& m = outEvents[i].message;
             std::size_t            count = 1;
             converted[0]                 = m;
-            if (!synthMidi2 && isMidi2(m)) count = ump::downconvert(m, converted, std::size(converted));
+            if (!slot->midi2 && isMidi2(m)) count = ump::downconvert(m, converted, std::size(converted));
             for (std::size_t k = 0; k < count && n < synthEvents.size(); ++k) {
                 uw::Event& e   = synthEvents[n++];
                 e              = uw::Event{};
                 e.sampleOffset = outEvents[i].offset;
                 e.type         = uw::EventType::Midi;
                 e.midi         = converted[k];
-                e.portIndex    = static_cast<std::uint16_t>(synthNotePort);
+                e.portIndex    = static_cast<std::uint16_t>(slot->notePort);
             }
         }
     }
 
-    for (std::uint32_t c = 0; c < synthChannels; ++c) std::fill_n(scratchPointers[c], b.frames, 0.0f);
+    const std::uint32_t channels = slot->channels;
+    for (std::uint32_t c = 0; c < channels; ++c) std::fill_n(slot->pointers[c], b.frames, 0.0f);
 
     const HostTransport& t = b.transport;
     uw::ProcessContext   ctx;
@@ -476,28 +551,28 @@ void PluginEngine::runSynth(const Block& b) noexcept {
     ctx.time.beatPosition         = t.songBeats;
     ctx.time.barStartBeats        = t.barStartBeats;
     ctx.time.barNumber            = t.barNumber;
-    ctx.audioOut = uw::AudioBuffer{scratchPointers.data(), synthChannels, b.frames};
+    ctx.audioOut = uw::AudioBuffer{slot->pointers.data(), channels, b.frames};
     ctx.eventsIn = uw::EventBlock{synthEvents.data(), static_cast<std::uint32_t>(n)};
-    synth->process(ctx);
+    slot->plugin->process(ctx);
 
     for (std::uint32_t c = 0; c < b.outChannels; ++c) {
-        if (synthChannels == 0) {
+        if (channels == 0) {
             std::fill_n(b.out[c], b.frames, 0.0f);
             continue;
         }
-        const float* from = scratchPointers[std::min(c, synthChannels - 1)];   // a mono synth goes to both sides
+        const float* from = slot->pointers[std::min(c, channels - 1)];   // a mono synth goes to both sides
         std::copy_n(from, b.frames, b.out[c]);
     }
 }
 
 void PluginEngine::stopProcessing() noexcept {
-    if (synthActive) synth->stopProcessing();
+    if (running != nullptr && running->active) running->plugin->stopProcessing();
 }
 
 void PluginEngine::reset() noexcept {
     sounding.reset();
     wasPlaying = false;
-    if (synthActive) synth->reset();
+    if (running != nullptr && running->active) running->plugin->reset();
 }
 
 } // namespace umpire::plugin

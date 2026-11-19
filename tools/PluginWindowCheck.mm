@@ -97,7 +97,7 @@ plugin::SavedTake take(Tick start, double lengthBeats, int note, int count) {
         events.push_back({beats(0.5 * i + 0.25), ump::midi2NoteOff(0, 0, static_cast<std::uint8_t>(note + i % 7))});
     }
     std::stable_sort(events.begin(), events.end(), [](const ClipEvent& a, const ClipEvent& b) { return a.tick < b.tick; });
-    return {start, clipfile::write(events, beats(lengthBeats), {120, 4})};
+    return plugin::savedTake(start, clipfile::write(events, beats(lengthBeats), {120, 4}));
 }
 
 std::vector<std::uint32_t> armEvents;   // what the plugin told the host: 1 begin, 2 value on, 3 value off, 4 end

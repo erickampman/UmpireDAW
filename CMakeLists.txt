@@ -255,9 +255,13 @@ if(UMPIRE_BUILD_PLUGIN)
     function(umpire_add_plugin_sources TARGET_NAME)
         # The window (P3, Plugin/PluginEditor.h): the grid's UI, DGL and ImGui.
         target_sources(${TARGET_NAME} PRIVATE src/Plugin/UmpirePlugin.cpp src/Plugin/PluginEditor.cpp)
+        # P4: Export take and Import clip use the app's file dialogs (docs/files.md).
         if(APPLE)
-            target_sources(${TARGET_NAME} PRIVATE src/Plugin/PluginEditorMac.mm)
+            target_sources(${TARGET_NAME} PRIVATE src/Plugin/PluginEditorMac.mm src/App/FileDialogMac.mm)
+            target_link_libraries(${TARGET_NAME} PRIVATE "-framework UniformTypeIdentifiers")
             target_compile_definitions(${TARGET_NAME} PRIVATE GL_SILENCE_DEPRECATION)
+        else()
+            target_sources(${TARGET_NAME} PRIVATE src/App/FileDialog.cpp)
         endif()
         target_link_libraries(${TARGET_NAME} PRIVATE umpire-plugin-core umpire-grid-ui uw::clap-host uw::midi
                               uw::editor-window umpire-warnings)

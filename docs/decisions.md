@@ -617,6 +617,34 @@ recommended option each time, and "bring it back" for older takes:
   keeps Pitch 7.25 per key as the spec says, rather than the chase working
   around it: PlainOldSynth now does (plugin-version.md, "P2").
 
+## State and files (milestone P4, decided 2026-11-19)
+
+The scope was proposed on the Mac and agreed with the author before it was
+built ([plugin-version.md](plugin-version.md), "P4"). The takes and the
+synth's state were already in the plugin's state, so P4 took all four of
+what P3 left:
+- **Takes keep their names and scales**, edited in the grid's inspector,
+  each an undo step ("Rename take", "Set scale"), as in the app.
+- **Export take... and Import clip...** as MIDI Clip Files, through the
+  app's `FileDialog`; an import goes on the lane at the playhead, as the
+  newest take.
+- **The synth and the input are chosen per instance** in the window (a menu
+  beside each), not only in `plugin.conf`, which now sets what a new
+  instance starts with. **The choice is kept in the project** (the plugin's
+  state), not machine-wide.
+- **"Change synth" is undoable, with the old synth's patch.** The input
+  change isn't an undo step: it changes no music.
+- **What isn't here is kept, not replaced** (hide controls, never state):
+  a project's synth that isn't installed is shown as missing and saved back
+  with its patch; an input that isn't here is waited for.
+- **The synth changes while the host plays**: swapped on the audio thread
+  through queues, never a lock, the old one stopped there and destroyed on
+  the main thread.
+- **Scanning every installed plugin** happens only when the synth menu
+  opens, since it loads each one into the host's process; loading a project
+  looks only at the saved path and names.
+- State version 4; versions 1 to 3 still load.
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

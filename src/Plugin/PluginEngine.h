@@ -117,6 +117,22 @@ public:
     // The synth the engine plays (null: none, silence). Not owned. Set while
     // inactive.
     void setSynth(uw::HostedPlugin* plugin) { synth = plugin; }
+    // Another synth, while the engine may be running (P4: the synth chosen in
+    // the window). Inactive, it's setSynth() and Done: the old one may go at
+    // once. Active, `next` is activated here (its state already loaded) and
+    // handed to the audio thread, which takes it at its next block, stops
+    // the old one there and hands it back: Pending, and the old one must live
+    // until retiredSynth() returns it. The audio thread never waits for it.
+    enum class Swap {
+        Done,      // inactive: the old synth may go now
+        Pending,   // the audio thread takes it at its next block
+        Busy,      // too many swaps not yet taken (the host isn't processing): nothing changed
+    };
+    Swap swapSynth(uw::HostedPlugin* next);
+    // A synth the audio thread has let go of since swapSynth(), deactivated
+    // now and the caller's to destroy; null when there's none.
+    uw::HostedPlugin* retiredSynth();
+    uw::HostedPlugin* currentSynth() const noexcept { return synth; }
     // Allocates for blocks of up to `maxFrames` and activates the synth.
     // False only if the synth wouldn't activate (the engine still runs, silent).
     bool activate(double sampleRate, std::uint32_t maxFrames);
@@ -124,8 +140,8 @@ public:
     bool active() const noexcept { return isActive; }
     // What the synth's note port takes, once active: MIDI 2.0, or only MIDI 1.0
     // (then it gets the lane downconverted, without per-note pitch).
-    bool synthTakesMidi2() const noexcept { return synthMidi2; }
-    bool synthHasNotes() const noexcept { return synthNotePort >= 0; }
+    bool synthTakesMidi2() const noexcept { return latest != nullptr && latest->midi2; }
+    bool synthHasNotes() const noexcept { return latest != nullptr && latest->notePort >= 0; }
 
     // The render extension: offline, live input is ignored.
     void setOffline(bool offline) { offlineMode.store(offline, std::memory_order_relaxed); }
@@ -174,6 +190,21 @@ private:
         std::uint32_t   offset = 0;
         uw::MidiMessage message;
     };
+    // A synth as the audio thread runs it: made and freed on the main thread,
+    // with what it needs to run a block.
+    struct SynthSlot {
+        uw::HostedPlugin*               plugin   = nullptr;
+        bool                            active   = false;
+        bool                            midi2    = true;
+        int                             notePort = -1;
+        std::uint32_t                   channels = 0;
+        std::vector<std::vector<float>> scratch;
+        std::vector<float*>             pointers;
+    };
+    // Activates `plugin` (if any) and lays out its slot: main thread.
+    std::unique_ptr<SynthSlot> makeSlot(uw::HostedPlugin* plugin);
+    void                       adoptSynth() noexcept;
+    void                       retireSlot(SynthSlot* slot);
     enum : int { kTakeIdle = 0, kTakeRecording = 1, kTakeReady = 2 };
     struct TakeBuffer {
         std::atomic<int>       state{kTakeIdle};
@@ -206,14 +237,21 @@ private:
     void   runSynth(const Block& block) noexcept;
     void   adoptPlayData() noexcept;
 
-    uw::HostedPlugin* synth      = nullptr;
+    uw::HostedPlugin* synth      = nullptr;   // main thread: the latest given
     bool              isActive   = false;
     double            sampleRate = 48000.0;
     std::uint32_t     maxFrames  = 0;
-    bool              synthActive = false;
-    bool              synthMidi2 = true;
-    int               synthNotePort = -1;
-    std::uint32_t     synthChannels = 0;
+
+    // The synth's slots: `running` is the audio thread's while active (the
+    // main thread's otherwise); `latest` the main thread's newest. New ones
+    // go to the audio thread through slotIn and old ones come back through
+    // slotOut; `slots` owns them all (main thread).
+    std::vector<std::unique_ptr<SynthSlot>> slots;
+    SynthSlot*                              running = nullptr;
+    SynthSlot*                              latest  = nullptr;
+    uw::SpscQueue<SynthSlot*, 8>            slotIn, slotOut;
+    std::size_t                             slotsInFlight = 0;   // main thread: given, not yet back
+    std::vector<uw::HostedPlugin*>          retired;              // main thread: deactivated, for the caller
 
     std::atomic<bool> offlineMode{false};
 
@@ -254,8 +292,6 @@ private:
     std::vector<Out>                outEvents;
     std::size_t                     outCount = 0;
     std::vector<uw::Event>          synthEvents;
-    std::vector<std::vector<float>> scratch;
-    std::vector<float*>             scratchPointers;
 
     // Stats (audio thread writes, main thread reads and clears).
     std::atomic<std::uint64_t> statCount{0}, statClamped{0}, statDropped{0};

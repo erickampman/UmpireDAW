@@ -25,8 +25,16 @@ public:
     // A take recorded from `start`: added as the newest, named "Take n". A
     // take with nothing in it leaves nothing (false).
     bool addTake(Tick start, Clip clip);
-    // Replaces every take (a loaded state). Names and ids are given anew.
-    void setTakes(std::vector<ClipRef> takes);
+    // Replaces every take (a loaded state). Ids are given anew; a take keeps
+    // its name, and one without is named "Take n". The next take is
+    // `nextNumber`, or one past the highest "Take n" if that's more (0: that).
+    void setTakes(std::vector<ClipRef> takes, int nextNumber = 0);
+    // The number the next take recorded is named with ("Take n"), for the state.
+    int nextTakeNumber() const { return nextNumber; }
+    // A clip from a file (P4: Import clip), added as the newest at `start`,
+    // with its name (or "Take n" if it has none) and its scale worked out.
+    // Its id, or 0 if it has no events.
+    ClipRefId addClip(Tick start, Clip clip);
 
     // --- P3: the editor's edits. Each keeps the take's id and place; false
     // if there's no such take. ---

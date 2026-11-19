@@ -6,7 +6,9 @@
   On the Mac its grid-window input checks fail, as before P3 (plugin-version.md, "P3")
 - plugin window (Mac): ninja -C build umpire-plugin-window-check, then
   UMPIRE_PLUGIN_CONF=build/test-plugin.conf UMPIRE_PLUGIN_LOG=none UMPIRE_PLUGIN_CAPTURE=DIR
-  build/umpire-plugin-window-check build/Umpire.clap DIR (opens a window; silent)
+  build/umpire-plugin-window-check build/Umpire.clap DIR (opens a window; silent).
+  Its clicks reach the window only while nothing else has the keys: run it
+  with the Mac otherwise idle (2026-11-19, P4)
 
 ## Toward a first useful version
 
@@ -167,7 +169,22 @@ S2 and R1 to R6.
   the 2 expected failures) and the VST3 validator (47 of 47). Left: the
   checks in hosts (the author's, 8), and Linux's build.*
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
-  synth's state, clip export
+  synth's state, clip export. *Built 2026-11-19 on the Mac
+  (plugin-version.md, "P4"; decisions.md, "State and files"; the scope
+  agreed with the author first): takes keep their names and scales (the
+  grid's name field and tuning are the take's, "Rename take" and "Set
+  scale" undo steps); Export take... and Import clip... (a .midi2, at the
+  playhead) through the app's file dialogs; the synth chosen per instance
+  from a menu beside its button, swapped while the host plays (the audio
+  thread lets go of the old one, lock-free), "Change synth" undoable with
+  its patch; the input chosen from a menu beside its name; both kept in
+  the state, and a synth or input that isn't here kept as it was and shown
+  as missing; state version 4 (1 to 3 still load). Checked headless (10 of
+  10), clap-validator (30, the 2 expected failures) and the VST3 validator
+  (47 of 47). tools/PluginWindowCheck.mm couldn't click into its window
+  here (P3's build failed the same way the same day: the Mac was in use,
+  so the check's window couldn't take the keys); to run again on an idle
+  Mac. Left: the checks in hosts (the author's), and Linux's build.*
 - P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms; the
   other open-source hosts (Qtractor, Carla, Zrythm)
 

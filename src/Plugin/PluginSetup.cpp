@@ -25,11 +25,18 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return lower(haystack).find(lower(needle)) != std::string::npos;
 }
 
-constexpr std::uint32_t kVersion = 3;   // 1: the spike's one clip; 2: no flags
+constexpr std::uint32_t kVersion = 4;   // 1: the spike's one clip; 2: no flags; 3: no names, scales, choices
 
 void put32(std::vector<std::uint8_t>& out, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
 }
+
+void putString(std::vector<std::uint8_t>& out, const std::string& s) {
+    put32(out, static_cast<std::uint32_t>(s.size()));
+    out.insert(out.end(), s.begin(), s.end());
+}
+
+constexpr std::uint32_t kArmed = 1u, kSynthChosen = 2u;
 
 } // namespace
 
@@ -73,12 +80,21 @@ std::vector<std::uint8_t> encodeState(const SavedState& state) {
         put32(out, static_cast<std::uint32_t>(start >> 32));
         put32(out, static_cast<std::uint32_t>(take.clipFile.size()));
         out.insert(out.end(), take.clipFile.begin(), take.clipFile.end());
+        putString(out, take.name);
+        put32(out, static_cast<std::uint32_t>(take.scale.edo));
+        put32(out, static_cast<std::uint32_t>(take.scale.referenceNote));
+        put32(out, static_cast<std::uint32_t>(take.scaleFit));
     }
-    put32(out, static_cast<std::uint32_t>(state.synthId.size()));
-    out.insert(out.end(), state.synthId.begin(), state.synthId.end());
+    put32(out, state.nextTakeNumber);
+    putString(out, state.synthId);
     put32(out, static_cast<std::uint32_t>(state.synthState.size()));
     for (const std::byte b : state.synthState) out.push_back(static_cast<std::uint8_t>(b));
-    put32(out, state.armed ? 1u : 0u);
+    put32(out, (state.armed ? kArmed : 0u) | (state.synthChosen ? kSynthChosen : 0u));
+    putString(out, state.synthPath);
+    putString(out, state.synthName);
+    put32(out, static_cast<std::uint32_t>(state.input.mode));
+    putString(out, state.input.name);
+    putString(out, state.input.id);
     return out;
 }
 
@@ -95,6 +111,13 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
         if (size - at < n) return false;
         p = data + at;
         at += n;
+        return true;
+    };
+    const auto str = [&](std::string& out) {
+        std::uint32_t      len = 0;
+        const std::uint8_t* q  = nullptr;
+        if (!get32(len) || !bytes(len, q)) return false;
+        out.assign(reinterpret_cast<const char*>(q), len);
         return true;
     };
     state = SavedState{};
@@ -115,7 +138,11 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
             error = "the state ends inside the clip";
             return false;
         }
-        if (n > 0) state.takes.push_back({0, std::vector<std::uint8_t>(p, p + n)});
+        if (n > 0) {
+            SavedTake take;
+            take.clipFile.assign(p, p + n);
+            state.takes.push_back(std::move(take));
+        }
     } else {
         std::uint32_t takes = 0;
         if (!get32(takes)) {
@@ -128,8 +155,26 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
                 error = "the state ends inside take " + std::to_string(i + 1);
                 return false;
             }
-            const auto start = static_cast<std::int64_t>(static_cast<std::uint64_t>(high) << 32 | low);
-            state.takes.push_back({start, std::vector<std::uint8_t>(p, p + n)});
+            SavedTake take;
+            take.start    = static_cast<std::int64_t>(static_cast<std::uint64_t>(high) << 32 | low);
+            take.clipFile.assign(p, p + n);
+            if (version >= 4) {
+                std::uint32_t edo = 0, reference = 0, fit = 0;
+                if (!str(take.name) || !get32(edo) || !get32(reference) || !get32(fit)) {
+                    error = "the state ends inside take " + std::to_string(i + 1);
+                    return false;
+                }
+                const bool known = fit <= static_cast<std::uint32_t>(ScaleFit::Chosen);
+                if (edo >= Scale::kMinEdo && edo <= Scale::kMaxEdo && reference <= 127 && known) {
+                    take.scale    = Scale{static_cast<int>(edo), static_cast<int>(reference)};
+                    take.scaleFit = static_cast<ScaleFit>(fit);
+                }   // otherwise worked out again, as an older state's
+            }
+            state.takes.push_back(std::move(take));
+        }
+        if (version >= 4 && !get32(state.nextTakeNumber)) {
+            error = "the state ends after its takes";
+            return false;
         }
     }
     if (!get32(n) || !bytes(n, p)) {
@@ -149,8 +194,20 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
             error = "the state ends before its flags";
             return false;
         }
-        state.armed = (flags & 1u) != 0;
+        state.armed = (flags & kArmed) != 0;
+        if (version >= 4) state.synthChosen = (flags & kSynthChosen) != 0;
     }
+    if (version < 4) {   // the synth was named by its id only; none named, the setup file's
+        state.synthChosen = !state.synthId.empty();
+        return true;
+    }
+    std::uint32_t mode = 0;
+    if (!str(state.synthPath) || !str(state.synthName) || !get32(mode) || !str(state.input.name) ||
+        !str(state.input.id)) {
+        error = "the state ends inside its choice of synth and input";
+        return false;
+    }
+    state.input.mode = mode <= static_cast<std::uint32_t>(InputMode::None) ? static_cast<InputMode>(mode) : InputMode::Setup;
     return true;
 }
 

@@ -12,7 +12,11 @@
 // through LaneKeeper and heard, a note moved before the take, delete and
 // bring to front, undo and redo of each and of a recorded take, the covered
 // spans the lane draws, the grid in song time (GridModel's origin), and the
-// host's position for the playhead.
+// host's position for the playhead. P4 (testNamesAndScales, testStateV4,
+// testOtherSteps, testSynthSwap): names and scales kept and edited as undo
+// steps, an imported clip, the state's version 4 and version 3 read, a step
+// outside the lane (the synth changed) undone and redone, and the synth
+// swapped while the engine runs, the old one let go of on the audio thread.
 // Silent: no MIDI hardware, no audio, no window.
 
 #include <chrono>
@@ -57,6 +61,8 @@ public:
     };
     std::vector<std::vector<Got>> blocks;
     bool                          active = false;
+    int                           stops  = 0;   // stopProcessing() calls (P4: a synth swapped out)
+    void setId(const std::string& id) { desc.id = id; }
 
     std::vector<Got> last() const { return blocks.empty() ? std::vector<Got>{} : blocks.back(); }
 
@@ -78,7 +84,7 @@ public:
         for (std::uint32_t c = 0; c < ctx.audioOut.channelCount; ++c)
             for (std::uint32_t f = 0; f < ctx.frameCount; ++f) ctx.audioOut.channels[c][f] = 0.0f;
     }
-    void   stopProcessing() noexcept override {}
+    void   stopProcessing() noexcept override { ++stops; }
     double paramValue(std::uint32_t) const override { return 0; }
     void   flushParams(const uw::EventBlock&, uw::EventSink*) override {}
     bool   saveState(std::vector<std::byte>&) const override { return true; }
@@ -342,7 +348,7 @@ void testSetup() {
 
 void testState() {
     SavedState s;
-    s.takes      = {{-3360, {1, 2, 3, 4, 5}}, {std::int64_t{1} << 40, {6}}};
+    s.takes      = {savedTake(-3360, {1, 2, 3, 4, 5}), savedTake(std::int64_t{1} << 40, {6})};
     s.synthId    = "com.unlikelyware.plainoldsynth";
     s.synthState = {std::byte{9}, std::byte{8}};
     const auto  bytes = encodeState(s);
@@ -774,6 +780,215 @@ void testEditor() {
     check("stopped", !engine.hostPlaying());
 }
 
+// --- P4 ---------------------------------------------------------------------------------
+
+void testNamesAndScales() {
+    FakeSynth    synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    LaneKeeper keeper(engine);
+
+    // A loaded lane keeps its names; the next take counts on from the
+    // highest "Take n", or from what the state says if that's more.
+    ClipRef named, numbered, unnamed;
+    named.clip     = std::make_shared<Clip>(clipOf(beats(1), {{0, ump::midi2NoteOn(0, 0, 60, 0x8000)}}));
+    numbered       = named;
+    unnamed        = named;
+    auto c         = std::make_shared<Clip>(*named.clip);
+    c->name        = "Verse";
+    named.clip     = c;
+    c              = std::make_shared<Clip>(*numbered.clip);
+    c->name        = "Take 7";
+    numbered.clip  = c;
+    keeper.setTakes({named, numbered, unnamed});
+    auto v = keeper.view();
+    check("names are kept on load, an unnamed take numbered after the highest",
+          v.takes.size() == 3 && v.takes[0].clip->name == "Verse" && v.takes[1].clip->name == "Take 7" &&
+              v.takes[2].clip->name == "Take 8" && keeper.nextTakeNumber() == 9,
+          v.takes.size() == 3 ? v.takes[2].clip->name : "");
+    keeper.setTakes({named}, 12);
+    check("the state's next number wins when it's more", keeper.nextTakeNumber() == 12);
+
+    v                  = keeper.view();
+    const ClipRefId id = v.takes[0].id;
+    check("rename", keeper.renameTake(id, "Chorus") && keeper.view().takes[0].clip->name == "Chorus" &&
+                        keeper.view().undoLabel == "Rename take");
+    check("an empty or the same name isn't a step", !keeper.renameTake(id, "") && !keeper.renameTake(id, "Chorus"));
+    check("undo a rename", keeper.undo() && keeper.view().takes[0].clip->name == "Verse");
+    check("set scale", keeper.setTakeScale(id, Scale{31, 57}) && keeper.view().takes[0].clip->scale == (Scale{31, 57}) &&
+                           keeper.view().takes[0].clip->scaleFit == ScaleFit::Chosen && keeper.view().undoLabel == "Set scale");
+    check("set scale clamps", keeper.setTakeScale(id, Scale{500, 200}) &&
+                                  keeper.view().takes[0].clip->scale == (Scale{Scale::kMaxEdo, 127}));
+    keeper.undo();
+    keeper.undo();
+    check("undo a scale", keeper.view().takes[0].clip->scaleFit != ScaleFit::Chosen);
+
+    // Import: the newest take, from where it's put, named as given, its
+    // scale worked out, heard, and one step.
+    Clip file    = clipOf(beats(2), {{0, ump::midi2NoteOn(0, 0, 64, 0x8000)}, {beats(1), ump::midi2NoteOff(0, 0, 64)}});
+    file.name    = "riff";
+    const ClipRefId in = keeper.importClip(beats(3), file);
+    v                  = keeper.view();
+    check("import adds the newest take", in != 0 && v.takes.back().id == in && v.takes.back().start == beats(3) &&
+                                             v.takes.back().clip->name == "riff" &&
+                                             v.takes.back().clip->scaleFit == ScaleFit::WorkedOut &&
+                                             v.undoLabel == "Import clip");
+    Clip nameless = file;
+    nameless.name.clear();
+    const ClipRefId in2 = keeper.importClip(0, nameless);
+    check("an imported clip without a name is a numbered take", keeper.view().takes.back().id == in2 &&
+                                                                    keeper.view().takes.back().clip->name == "Take 12");
+    keeper.undo();
+    check("an empty clip isn't imported", keeper.importClip(0, Clip{}) == 0 && keeper.view().undoLabel == "Import clip");
+    Host host(engine);
+    host.play(3);
+    host.block();
+    bool heard = false;
+    for (const auto& g : synth.last()) heard = heard || (ump::isNoteOn(g.message) && ump::noteNumber(g.message) == 64);
+    check("the imported clip is heard", heard);
+    keeper.undo();
+    check("undo the import", keeper.view().takes.size() == 1);
+}
+
+void testStateV4() {
+    SavedState s;
+    s.takes = {savedTake(0, {1, 2}), savedTake(beats(4), {3})};
+    s.takes[0].name     = "Verse";
+    s.takes[0].scale    = Scale{31, 57};
+    s.takes[0].scaleFit = ScaleFit::Chosen;
+    s.nextTakeNumber    = 5;
+    s.synthId           = "org.example.synth";
+    s.synthState        = {std::byte{1}};
+    s.synthChosen       = true;
+    s.synthPath         = "/Library/Audio/Plug-Ins/CLAP/Example.clap";
+    s.synthName         = "Example";
+    s.armed             = true;
+    s.input             = InputChoice{InputMode::Named, "KeyLab 88", "KeyLab:MIDI"};
+    const auto  bytes   = encodeState(s);
+    SavedState  back;
+    std::string error;
+    check("version 4 round-trips",
+          decodeState(bytes.data(), bytes.size(), back, error) && back.takes.size() == 2 && back.takes[0].name == "Verse" &&
+              back.takes[0].scale == s.takes[0].scale && back.takes[0].scaleFit == ScaleFit::Chosen &&
+              back.takes[1].name.empty() && back.takes[1].start == beats(4) && back.nextTakeNumber == 5 &&
+              back.synthId == s.synthId && back.synthState == s.synthState && back.synthChosen && back.synthPath == s.synthPath &&
+              back.synthName == "Example" && back.armed && back.input == s.input,
+          error);
+    for (std::size_t cut = 8; cut < bytes.size(); cut += 7)
+        if (decodeState(bytes.data(), cut, back, error)) {
+            check("a cut-off version 4 is refused", false, std::to_string(cut));
+            break;
+        }
+    // None chosen: an empty id that counts.
+    SavedState none;
+    none.synthChosen = true;
+    const auto noneBytes = encodeState(none);
+    check("none chosen round-trips", decodeState(noneBytes.data(), noneBytes.size(), back, error) && back.synthChosen &&
+                                         back.synthId.empty() && back.input.mode == InputMode::Setup);
+    // A scale out of range is worked out again, not kept.
+    s.takes[0].scale = Scale{2, 60};
+    const auto bad   = encodeState(s);
+    check("a scale out of range isn't kept", decodeState(bad.data(), bad.size(), back, error) &&
+                                                 back.takes[0].scaleFit == ScaleFit::Default);
+
+    // P2's version 3: a synth named by id counts as chosen; none named, the setup file's.
+    const std::uint8_t v3[] = {'U', 'M', 'P', 'P', 3, 0, 0, 0, 0, 0, 0, 0,   // no takes
+                               1, 0, 0, 0, 'x', 0, 0, 0, 0, 1, 0, 0, 0};     // synth "x", no state, armed
+    check("version 3: a named synth is chosen", decodeState(v3, sizeof v3, back, error) && back.synthChosen &&
+                                                    back.synthId == "x" && back.armed && back.input.mode == InputMode::Setup &&
+                                                    back.nextTakeNumber == 0,
+          error);
+    const std::uint8_t v3none[] = {'U', 'M', 'P', 'P', 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    check("version 3: no synth named is the setup file's", decodeState(v3none, sizeof v3none, back, error) &&
+                                                               !back.synthChosen,
+          error);
+}
+
+// A step outside the lane, as the plugin's "Change synth" is: each swap
+// puts back what it holds and returns what it replaced.
+struct Swapped final : LaneKeeper::OtherStep {
+    Swapped(int& now, int held) : now(now), held(held) {}
+    std::shared_ptr<LaneKeeper::OtherStep> swap() override {
+        const int was = now;
+        now           = held;
+        return std::make_shared<Swapped>(now, was);
+    }
+    int& now;
+    int  held;
+};
+
+void testOtherSteps() {
+    FakeSynth    synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    LaneKeeper keeper(engine);
+    ClipRef    take;
+    take.clip = std::make_shared<Clip>(clipOf(beats(1), {{0, ump::midi2NoteOn(0, 0, 60, 0x8000)}}));
+    keeper.setTakes({take});
+    const ClipRefId id = keeper.view().takes[0].id;
+    keeper.takeDirty();
+
+    int synthNow = 2;   // "changed" from 1 to 2
+    keeper.recordOther("Change synth", std::make_shared<Swapped>(synthNow, 1));
+    check("a step outside the lane is named and dirties", keeper.view().undoLabel == "Change synth" && keeper.takeDirty());
+    keeper.renameTake(id, "After");
+    keeper.undo();
+    check("lane steps undo around it", keeper.view().undoLabel == "Change synth" && synthNow == 2);
+    check("undo swaps it back", keeper.undo() && synthNow == 1 && keeper.view().redoLabel == "Change synth");
+    check("redo swaps it again", keeper.redo() && synthNow == 2 && keeper.view().undoLabel == "Change synth");
+    check("a new step clears redo", keeper.undo() && keeper.renameTake(id, "Other") && keeper.view().redoLabel.empty());
+}
+
+void testSynthSwap() {
+    FakeSynth a, b, c, d;
+    a.setId("test.a"), b.setId("test.b"), c.setId("test.c"), d.setId("test.d");
+    PluginEngine engine;
+    engine.setSynth(&a);
+    check("inactive: at once", engine.swapSynth(&b) == PluginEngine::Swap::Done && engine.currentSynth() == &b);
+    engine.activate(kRate, 4096);
+    Host       host(engine);
+    LaneKeeper keeper(engine);
+    ClipRef    take;
+    take.clip = std::make_shared<Clip>(clipOf(beats(8), {{beats(0.5), ump::midi2NoteOn(0, 0, 60, 0x8000)},
+                                                          {beats(6), ump::midi2NoteOff(0, 0, 60)}}));
+    keeper.setTakes({take});
+    host.play(0);
+    for (int i = 0; i < 30; ++i) host.block();   // past the note-on
+    check("b plays", b.active && !b.blocks.empty());
+
+    check("active: pending", engine.swapSynth(&c) == PluginEngine::Swap::Pending && engine.currentSynth() == &c && c.active);
+    check("nothing back before the audio thread takes it", engine.retiredSynth() == nullptr && b.active);
+    const std::size_t bBlocks = b.blocks.size();
+    host.block();
+    check("the audio thread stops the old one and plays the new", b.stops == 1 && b.blocks.size() == bBlocks &&
+                                                                       c.blocks.size() == 1);
+    // The lane carries on in the new synth: its sounding note isn't
+    // restarted (it began before), but nothing is left hanging either.
+    check("the old one comes back deactivated", engine.retiredSynth() == &b && !b.active && engine.retiredSynth() == nullptr);
+
+    // Swaps the host never processes: four wait, the fifth is refused.
+    FakeSynth more[4];
+    int       pending = 0;
+    for (FakeSynth& m : more)
+        if (engine.swapSynth(&m) == PluginEngine::Swap::Pending) ++pending;
+    check("four swaps can wait", pending == 4);
+    check("then it's busy", engine.swapSynth(&d) == PluginEngine::Swap::Busy && !d.active && engine.currentSynth() == &more[3]);
+    // Deactivated with them waiting: the newest is the synth, the rest go back.
+    engine.stopProcessing();
+    engine.deactivate();
+    int back = 0;
+    while (uw::HostedPlugin* p = engine.retiredSynth()) back += p != &more[3];
+    check("deactivated: the newest stays, the others come back", back == 4 && !c.active && !more[0].active &&
+                                                                     !more[3].active && engine.currentSynth() == &more[3]);
+    check("and it's the synth when activated again", engine.activate(kRate, 4096) && more[3].active);
+    check("none: silence, and the old one comes back", engine.swapSynth(nullptr) == PluginEngine::Swap::Pending);
+    host.block();
+    check("none: nothing reaches a synth", engine.retiredSynth() == &more[3] && !engine.synthHasNotes());
+    engine.deactivate();
+}
+
 int main() {
     testLiveInput();
     testMidi1Synth();
@@ -787,6 +1002,10 @@ int main() {
     testLaneKeeper();
     testArm();
     testEditor();
+    testNamesAndScales();
+    testStateV4();
+    testOtherSteps();
+    testSynthSwap();
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

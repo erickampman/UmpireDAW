@@ -4,7 +4,8 @@
 the Mac the same day; the spike (P1) was built and checked headless there,
 then checked by the author in REAPER and Bitwig on both platforms and in
 Ardour on Linux ("In hosts", below), and it passed. P2 (recording and
-playback) and P3 (the editor) are built on the Mac ("If it works", below). The rest of this section is the proposal as written. What's left of the
+playback), P3 (the editor) and P4 (state and files) are built on the Mac
+("If it works", below). The rest of this section is the proposal as written. What's left of the
 standalone plan (milestones 12 to 18, the tempo map and stem export, plugin
 routing) is most of a DAW, and the author has to build it alone. This
 proposes a smaller route to the same goal: put Umpire inside a host that
@@ -555,6 +556,14 @@ the timer question belongs anyway.
   REAPER, turn on "Send all keyboard input to plugin" for the grid's keys,
   or use the Edit menu and right-click. The synth's editor opens from the
   button with its name, in a window of its own.
+- **Choosing the synth and the input** (P4): the ▾ beside each in Umpire's
+  header. The choice is saved with the project, so each track can have its
+  own synth; `plugin.conf` only sets what a new instance starts with. The
+  first time the synth menu opens, Umpire looks at every CLAP plugin
+  installed, which takes a moment. A project's synth that isn't installed
+  shows as "not installed": nothing sounds, and its patch is kept.
+- **Takes as files** (P4): Edit > Export take... saves a take as a MIDI
+  Clip File (`.midi2`); Import clip... puts one on the lane at the playhead.
 - **On Linux with PipeWire**, the block size comes from PipeWire, not the
   host: start the host with `pw-jack -p 256` (or set PipeWire's quantum)
   for a short delay between playing and hearing.
@@ -891,12 +900,171 @@ take plays when the host plays):**
 **Not in P3:**
 - **Names and scales of takes** aren't saved (P4: state and files), so the
   grid's name field is read only and its tuning is the window's, worked out
-  again for each take.
+  again for each take. *Done in P4.*
 - **Meters other than 4/4**: the grid's bars are sixteen sixteenths, and
   the lane's follow them.
 - **Choosing the input and the synth** in the window: still the setup file.
+  *Done in P4.*
 - **Linux**: not built there yet; the X11 side (`set_scale`, sizes in
   pixels) is written but untried.
+
+### P4: state and files (built 2026-11-19, on the Mac)
+
+The takes and the synth's state were already in the plugin's state (the
+takes as MIDI Clip Files since P1 and P2), so P4 is what P3 left. The scope
+was agreed with the author before it was built (decisions.md, "State and
+files"): all four of the candidates, the choices kept in the project, and a
+synth change undoable with its patch.
+
+```
+┌ Record │ Edit │ PlainOldSynth ▾                       KeyboardEDO ▾   9.2.1 ┐
+                                 ┌──────────────────┐  ┌───────────────────────┐
+                                 │ PlainOldSynth  ✓ │  │ Default (KeyboardEDO) │
+                                 │ StruckSynth      │  │───────────────────────│
+                                 │ Surge XT         │  │ KeyboardEDO         ✓ │
+                                 │──────────────────│  │ KeyLab 88             │
+                                 │ None             │  │───────────────────────│
+                                 └──────────────────┘  │ None                  │
+                                                       └───────────────────────┘
+Edit: Undo · Redo · ─ · Bring take to front · Delete take · ─ · Export take... · Import clip...
+Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
+```
+
+**Decided with the author (2026-11-19):**
+- **Takes keep their names and scales.** The grid's name field is the
+  take's ("Rename take") and its tuning sliders set the take's scale ("Set
+  scale", shown as "Set by hand"), each an undo step, as in the app. A
+  take's scale is worked out from its notes when it's recorded or loaded,
+  unless it was set by hand. The next take's number is kept too, so a
+  deleted take's name isn't given again after a reload.
+- **Export take... and Import clip...**, in Edit and in a take's
+  right-click menu. Export writes the take as a MIDI Clip File (M2-116-U,
+  files.md), from the take's own start, with the host's tempo and meter
+  for other apps; it suggests the take's name. Import puts a `.midi2` on
+  the lane as the newest take, at the host's playhead (where it stands
+  when stopped), named after the file, one undo step ("Import clip"), and
+  chooses it for the grid. Both start in the last folder used, else
+  `~/Music`.
+- **The synth is chosen per instance**, from a menu (▾) beside the synth's
+  button: the CLAP instruments in CLAP's folders, and None. So two tracks
+  can host different synths; before, every instance hosted `plugin.conf`'s.
+  **"Change synth" is undoable** with its patch: undo brings back the old
+  synth with the state it had.
+- **The input is chosen per instance**, from a menu (▾) beside its name:
+  Default (the setup file's, or the automatic choice, named with what it
+  opens), each MIDI source, and None. Not an undo step (it changes no
+  music), but it marks the project changed.
+- **Both choices are kept in the project** (the plugin's state). A new
+  instance starts from `plugin.conf` as before. **A synth or input that
+  isn't on this machine is kept, not replaced**: the header shows "Surge XT
+  not installed" (amber; nothing sounds, and saving keeps its patch as it
+  was) or "KeyLab 88 (not here)" (it opens when it comes). This also fixes
+  P1's loss: a project opened where its synth isn't installed (or isn't
+  the setup file's) used to drop the synth's state at the next save.
+
+**How it's built:**
+- **The state, version 4** (`PluginSetup.h` has the layout): each take
+  adds its name, its scale's EDO and reference note, and how the scale was
+  arrived at (only "set by hand" is used on load; the rest is worked out
+  again); then the next take's number; the flags gain "the synth was
+  chosen"; and at the end the synth's `.clap` path and name, and the input
+  (how it's chosen, its name and its id). Versions 1 to 3 still load: their
+  takes are named "Take n", a synth named by id counts as chosen, and none
+  named is the setup file's.
+- **Finding a saved synth** looks only where it's cheap: the saved `.clap`
+  path, a `.clap` of that file's name or the synth's name in CLAP's
+  folders, and the setup file's synth (an older state has only the id).
+  Scanning every installed CLAP loads each one into the host's process, so
+  only the synth menu does that, once per process, the first time it's
+  opened (it can take a moment). A synth found by that scan is found by id
+  from then on.
+- **The synth is swapped while the host plays, lock-free.** On the main
+  thread the new synth is made, given its state, and activated; the engine
+  (`PluginEngine::swapSynth`) hands it to the audio thread through a
+  queue. At its next block the audio thread stops the old one
+  (`stop_processing`, which CLAP says is the audio thread's), plays the new
+  one, and hands the old back; the main thread deactivates and destroys it
+  (`retiredSynth()`, from housekeeping and deactivate). The lane goes on in
+  the new synth from where it is, its tuning chased, as after a jump.
+  Inactive, the swap is immediate. If the host has stopped processing
+  (asleep), the plugin asks it to process (`request_process`); four swaps
+  can wait, a fifth is refused with a log line. A new latency asks the
+  host for a restart, as before.
+- **Undo across the lane and the synth**: `LaneKeeper` takes steps outside
+  the lane (`OtherStep`): each undo or redo swaps back what it holds and
+  returns the reverse. It runs without the lane's lock, since swapping a
+  synth calls the host.
+- **Files**: the app's `FileDialog` (AppKit's panels on the Mac, zenity or
+  kdialog on Linux) is compiled into the plugin. On Linux, where the tools
+  don't ask, Export asks "Replace it?" itself. Problems (no dialog tool, a
+  file that isn't a MIDI Clip File) are said in a prompt with OK.
+- **The log** says "synth: ..." or "synth X isn't here", "input chosen:
+  ...", and "saved:" and "loaded:" name the synth.
+
+**Checked on the Mac (headless, silent):**
+- `ninja -C build && ctest --test-dir build --output-on-failure`: 10 of 10.
+  `test-plugin-engine` adds: names kept on load, numbering on from the
+  highest "Take n"; rename and set scale (clamped) and their undo; import as
+  the newest take, named, its scale worked out, heard, undone; state
+  version 4 round-tripped, cut short at every 7th byte and refused, a scale
+  out of range not kept, version 3 read; a step outside the lane undone and
+  redone among lane steps; the synth swapped inactive (at once) and active
+  (the audio thread stops the old one and plays the new; it comes back
+  deactivated), four swaps waiting and a fifth refused, deactivating with
+  swaps waiting, and None. `test-plugin-clap`: names, scales and the next
+  number through the plugin's state; a synth that isn't installed and an
+  input that isn't here kept as they were. `test-plugin-render`: a state
+  choosing no synth is silent; one choosing PlainOldSynth, loaded while the
+  plugin runs, swaps it in and it sounds; one choosing a synth that isn't
+  installed is silent and saves it back unchanged.
+- **clap-validator 0.4.1**: 30 passed, 2 failed, 12 skipped, with no synth
+  and with PlainOldSynth: the same two expected `param-set-*` failures.
+- **Steinberg's VST3 validator**: 47 passed, 0 failed, both ways.
+- **`tools/PluginWindowCheck.mm`**: its window opened and drew the new
+  header (the ▾ menus, "No synth", "No input"), but none of its clicks
+  landed, so its Record, grid and undo checks failed. P3's commit, built
+  and run the same day, failed the same way, so it's the machine, not P4:
+  the Mac was in use, and the check's window didn't get the keys. To run
+  again with the Mac otherwise idle. The menus, rename and the dialogs
+  aren't in it (the synth menu would scan every installed plugin).
+
+**Checks in hosts (the author's; the synth makes sound when a take plays):**
+
+1. **Names**: rename a take in the inspector; undo and redo; save, close
+   and reopen: the name is back, and the next take recorded counts on.
+2. **Scales**: set a take's EDO in the inspector ("Set by hand"); reopen
+   the project: it's kept. A take recorded from KeyboardEDO in 31-EDO shows
+   31 rows without setting it.
+3. **Export**: Export take... writes `Take 1.midi2`; it opens in the
+   standalone app's grid (umpire-daw, or another app that reads MIDI Clip
+   Files) with the same notes. On Linux, export over it: "Replace it?".
+4. **Import**: put the playhead on bar 5, Import clip... that file: a new
+   take at bar 5, chosen, heard; undo takes it away.
+5. **The synth menu**: choose another installed instrument (a moment's
+   wait the first time); it plays at once, while the host plays too. Undo:
+   PlainOldSynth comes back with its patch (change the patch first, in its
+   window). Two tracks with different synths; save and reopen: each keeps
+   its own.
+6. **A missing synth**: with `plugin.conf`'s synth installed, open a
+   project whose synth isn't (or rename its `.clap` for a moment): "... not
+   installed" in amber, silence; save, put the `.clap` back, reopen: the
+   synth and its patch are back.
+7. **The input menu**: choose a source; the status shows it; unplug it
+   ("(gone)") and plug it back. Choose one, save, and reopen where it isn't
+   there: "(not here)". Default, None.
+8. **In Bitwig on the Mac**, whose plugin host is a separate process: that
+   the file panels open, and in front.
+
+**Not in P4:**
+- **Dragging a clip file** onto the lane, and **exporting several takes**
+  or the whole lane: one take at a time, through the menu.
+- **Clip names in the clip files** (Flex Data's Clip Name), as in the
+  standalone app (files.md): the name is in the state, and an exported
+  file's name is the take's.
+- **Rescanning for synths** installed while the host runs: the menu's list
+  is made once per process.
+- **Other formats**: the menu lists CLAP instruments only (no VST3 or AU
+  synths, which uw-core can't host yet).
 
 **What it replaces:** milestones 13 to 18, T1, S1, S2 and the plugin-routing
 proposal (R1 to R6). Milestone 12 becomes a question for P2. Zoom (Z1)

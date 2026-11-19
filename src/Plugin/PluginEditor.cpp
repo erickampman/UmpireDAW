@@ -5,6 +5,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <utility>
 #include <vector>
@@ -14,6 +17,8 @@
 
 #include "imgui.h"
 
+#include "App/ClipFile.h"
+#include "App/FileDialog.h"
 #include "App/GridModel.h"
 #include "Plugin/Lane.h"
 #include "Plugin/LaneKeeper.h"
@@ -45,6 +50,33 @@ std::string position(Tick t) {
     std::snprintf(text, sizeof text, "%lld.%lld.%lld", static_cast<long long>(bar + 1), static_cast<long long>(beat + 1),
                   static_cast<long long>(sixteenth + 1));
     return text;
+}
+
+namespace fs = std::filesystem;
+
+// Where Export and Import start: the last folder used in this process, else
+// ~/Music, else home.
+std::string& lastFolder() {
+    static std::string folder;
+    return folder;
+}
+
+std::string startFolder() {
+    std::error_code ec;
+    if (!lastFolder().empty() && fs::is_directory(lastFolder(), ec)) return lastFolder();
+    const char*    home  = std::getenv("HOME");
+    const fs::path base  = home != nullptr ? home : "/";
+    const fs::path music = base / "Music";
+    return (fs::is_directory(music, ec) ? music : base).string();
+}
+
+// A take's name as a file name: what a file system or a shell would choke on
+// becomes a dash.
+std::string fileName(const std::string& name) {
+    std::string out;
+    for (const char c : name) out += (c == '/' || c == '\\' || c == ':' || static_cast<unsigned char>(c) < 32) ? '-' : c;
+    while (!out.empty() && (out[0] == '.' || out[0] == ' ')) out.erase(0, 1);
+    return out.empty() ? "Take" : out;
 }
 
 } // namespace
@@ -311,6 +343,13 @@ struct PluginEditor::Impl {
     void status();
     void takeItems();
     void takePopup();
+    // P4: export and import, through the desktop's file dialog.
+    void startExport();
+    void startImport();
+    void dialogDone(const std::string& path);
+    void writeExport(const std::string& path);
+    void readImport(const std::string& path);
+    void prompts();
 
     EditorLinks      links;
     double           scale;
@@ -329,6 +368,15 @@ struct PluginEditor::Impl {
     bool                        lastArmed    = false, lastRecording = false, lastSynthOpen = false;
     ClipRefId                   menuFor = 0;
     bool                        openMenu = false;
+    // P4: the file dialog (one at a time) and what it's for; what to say.
+    FileDialog                  dialog;
+    enum class Asking { Nothing, Export, Import } asking = Asking::Nothing;
+    ClipRefId                   exportRef = 0;
+    std::string                 replacePath;   // Linux: an export over a file, waiting for "Replace"
+    std::string                 problem;       // shown once, with OK
+    bool                        openProblem = false, openReplace = false;
+    std::vector<SynthItem>      synthList;
+    std::vector<InputItem>      inputList;
     // UMPIRE_PLUGIN_CAPTURE=DIR: a frame a second written there (frame-N.ppm),
     // for tools/PluginWindowCheck.mm, which can't screenshot without the
     // Screen Recording permission. Unset (always, in a host): nothing.
@@ -371,7 +419,10 @@ void PluginEditor::Impl::build() {
     canvas->setBand(&band);
     ui::GridPanels& panels      = canvas->panels();
     panels.hooks.fileMenu       = false;
-    panels.hooks.nameEditable   = false;   // a take's name is its number (P4: names in the state)
+    // P4: the take's name and scale are the take's, each an undo step; the
+    // grid shows them when the lane comes back changed (follow()).
+    model.renameClip  = [this](const std::string& name) { links.keeper->renameTake(selected, name); };
+    model.chooseScale = [this](int edo, int reference) { links.keeper->setTakeScale(selected, Scale{edo, reference}); };
     panels.hooks.menuBarStart   = [this] { record(); };
     panels.hooks.editMenuEnd    = [this] { takeItems(); };
     panels.hooks.menuBarEnd     = [this] {
@@ -439,38 +490,90 @@ void PluginEditor::Impl::record() {
     ImGui::SameLine();
 }
 
+// The synth's button (its window), or what's missing, then its menu.
 void PluginEditor::Impl::synthButton() {
-    const std::string name = links.synthName ? links.synthName() : std::string();
-    if (name.empty()) {
-        ImGui::TextDisabled("No synth");
-        return;
-    }
-    const bool  open = links.synthEditorOpen && links.synthEditorOpen();
-    const float h    = ImGui::GetFrameHeight() * 0.86f;
-    const float w    = ImGui::CalcTextSize(name.c_str()).x + 2.0f * ImGui::GetFontSize();
-    ImGui::SetCursorPosY((ImGui::GetFrameHeight() - h) / 2 + 1);
-    if (!links.toggleSynthEditor) {
+    const std::string name    = links.synthName ? links.synthName() : std::string();
+    const std::string missing = links.missingSynth ? links.missingSynth() : std::string();
+    const float       h       = ImGui::GetFrameHeight() * 0.86f;
+    const float       y       = (ImGui::GetFrameHeight() - h) / 2 + 1;
+    ImGui::SetCursorPosY(y);
+    if (!name.empty() && links.synthHasEditor && links.synthHasEditor()) {
+        const bool  open = links.synthEditorOpen && links.synthEditorOpen();
+        const float w    = ImGui::CalcTextSize(name.c_str()).x + 2.0f * ImGui::GetFontSize();
+        if (ui::toggle("##synth", name.c_str(), open, col::kNote, ImVec2(w, h))) links.toggleSynthEditor();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(open ? "Close the synth's window" : "Open the synth's window");
+    } else if (!name.empty()) {
         ImGui::TextDisabled("%s", name.c_str());
-        return;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("This synth has no window of its own");
+    } else if (!missing.empty()) {
+        // Hide controls, never state: the project's synth isn't here, so nothing sounds.
+        ImGui::TextColored(col::kAccent, "%s not installed", missing.c_str());
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("The project's synth isn't installed here, so nothing sounds.\n"
+                              "Its patch is kept and saved with the project.\nChoose a synth to replace it.");
+    } else {
+        ImGui::TextDisabled("No synth");
     }
-    if (ui::toggle("##synth", name.c_str(), open, col::kNote, ImVec2(w, h))) links.toggleSynthEditor();
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip(open ? "Close the synth's window" : "Open the synth's window");
+    if (!links.synths || !links.chooseSynth) return;
+    ImGui::SameLine(0, 2);
+    ImGui::SetCursorPosY(y);
+    if (ImGui::ArrowButton("##synths", ImGuiDir_Down)) {
+        synthList = links.synths();   // the first time, CLAP's folders are scanned
+        ImGui::OpenPopup("##synthmenu");
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Choose the synth");
+    if (ImGui::BeginPopup("##synthmenu")) {
+        const std::string current = links.synthId ? links.synthId() : std::string();
+        if (synthList.empty()) ImGui::TextDisabled("No CLAP instruments found");
+        for (const SynthItem& item : synthList)
+            if (ImGui::MenuItem(item.name.c_str(), item.vendor.c_str(), item.id == current) && item.id != current)
+                links.chooseSynth(item.id);
+        ImGui::Separator();
+        if (ImGui::MenuItem("None", nullptr, current.empty() && missing.empty())) links.chooseSynth("");
+        ImGui::EndPopup();
+    }
 }
 
-// At the right: recording, what's listening, and where the host is.
+// At the right: recording, what's listening (and its menu), and where the host is.
 void PluginEditor::Impl::status() {
-    const std::string input = links.inputName ? links.inputName() : std::string();
-    const std::string at    = position(links.engine->position());
-    const bool        rec   = links.engine->recording();
-    const float       right = ImGui::GetWindowWidth() - ImGui::GetStyle().ItemSpacing.x * 2;
-    const float       posW  = ImGui::CalcTextSize("0000.0.0").x;
-    const float       inW   = ImGui::CalcTextSize(input.empty() ? "No input" : input.c_str()).x;
-    const float       recW  = rec ? ImGui::CalcTextSize("Recording").x + ImGui::GetFontSize() * 1.5f : 0;
-    const float       x     = right - posW - inW - recW - ImGui::GetFontSize() * 2;
+    const std::string input   = links.inputName ? links.inputName() : std::string();
+    const bool        missing = links.inputMissing && links.inputMissing();
+    const std::string label   = input.empty() ? "No input" : input;
+    const std::string at      = position(links.engine->position());
+    const bool        rec     = links.engine->recording();
+    const bool        menu    = links.inputs && links.chooseInput;
+    const float       right   = ImGui::GetWindowWidth() - ImGui::GetStyle().ItemSpacing.x * 2;
+    const float       posW    = ImGui::CalcTextSize("0000.0.0").x;
+    const float       inW     = ImGui::CalcTextSize(label.c_str()).x + (menu ? ImGui::GetFrameHeight() + 2 : 0);
+    const float       recW    = rec ? ImGui::CalcTextSize("Recording").x + ImGui::GetFontSize() * 1.5f : 0;
+    const float       x       = right - posW - inW - recW - ImGui::GetFontSize() * 2;
     if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
     if (rec) ui::badge("Recording", col::kRecord);
-    if (input.empty()) ImGui::TextDisabled("No input");
-    else ImGui::TextDisabled("%s", input.c_str());
+    if (missing) ImGui::TextColored(col::kAccent, "%s", label.c_str());
+    else ImGui::TextDisabled("%s", label.c_str());
+    if (missing && ImGui::IsItemHovered())
+        ImGui::SetTooltip("The input chosen isn't here. It opens when it comes back; choose another from the menu.");
+    if (menu) {
+        ImGui::SameLine(0, 2);
+        const float y = ImGui::GetCursorPosY();
+        if (ImGui::ArrowButton("##inputs", ImGuiDir_Down)) {
+            inputList = links.inputs();
+            ImGui::OpenPopup("##inputmenu");
+        }
+        ImGui::SetCursorPosY(y);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Choose the input");
+        if (ImGui::BeginPopup("##inputmenu")) {
+            for (std::size_t i = 0; i < inputList.size(); ++i) {
+                if (i + 1 == inputList.size()) ImGui::Separator();   // None
+                const InputItem& item = inputList[i];
+                ImGui::PushID(static_cast<int>(i));
+                if (ImGui::MenuItem(item.label.c_str(), nullptr, item.checked) && !item.checked) links.chooseInput(item.choice);
+                ImGui::PopID();
+                if (i == 0) ImGui::Separator();   // after the default
+            }
+            ImGui::EndPopup();
+        }
+    }
     ImGui::SetCursorPosX(right - posW);
     ImGui::TextColored(links.engine->hostPlaying() ? col::kAccent : col::kSlate, "%s", at.c_str());
 }
@@ -488,19 +591,138 @@ void PluginEditor::Impl::takeItems() {
         links.keeper->deleteTake(selected);
         follow(true);
     }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Export take...", nullptr, false, t != nullptr && !dialog.running())) startExport();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Save the take as a MIDI Clip File (.midi2)");
+    if (ImGui::MenuItem("Import clip...", nullptr, false, !dialog.running())) startImport();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("A MIDI Clip File (.midi2), as the newest take, at the playhead");
 }
 
 void PluginEditor::Impl::takePopup() {
     if (std::exchange(openMenu, false)) ImGui::OpenPopup("##take");
-    if (!ImGui::BeginPopup("##take")) return;
-    const ClipRef* t = selectedTake();
-    if (t != nullptr && t->id == menuFor) {
-        ImGui::TextDisabled("%s", t->clip->name.c_str());
-        takeItems();
-    } else {
-        ImGui::CloseCurrentPopup();
+    if (ImGui::BeginPopup("##take")) {
+        const ClipRef* t = selectedTake();
+        if (t != nullptr && t->id == menuFor) {
+            ImGui::TextDisabled("%s", t->clip->name.c_str());
+            takeItems();
+        } else {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
-    ImGui::EndPopup();
+    prompts();
+}
+
+// --- export and import (P4) -------------------------------------------------------------
+
+void PluginEditor::Impl::startExport() {
+    const ClipRef* t = selectedTake();
+    if (t == nullptr) return;
+    std::string why;
+    if (!dialog.start(FileDialog::Mode::Save, "Export take", startFolder(), fileName(t->clip->name) + ".midi2", why)) {
+        problem = "Couldn't export: " + why + ".", openProblem = true;
+        return;
+    }
+    asking    = Asking::Export;
+    exportRef = t->id;
+}
+
+void PluginEditor::Impl::startImport() {
+    std::string why;
+    if (!dialog.start(FileDialog::Mode::OpenFile, "Import clip", startFolder(), "*.midi2", why)) {
+        problem = "Couldn't import: " + why + ".", openProblem = true;
+        return;
+    }
+    asking = Asking::Import;
+}
+
+void PluginEditor::Impl::dialogDone(const std::string& chosen) {
+    const Asking was = std::exchange(asking, Asking::Nothing);
+    if (chosen.empty()) return;   // cancelled
+    fs::path path = chosen;
+    lastFolder()  = path.parent_path().string();
+    if (was == Asking::Import) {
+        readImport(path.string());
+        return;
+    }
+    if (was != Asking::Export) return;
+    if (path.extension() != ".midi2") path += ".midi2";
+#ifndef __APPLE__
+    // Linux's dialogs don't ask before replacing a file; the Mac's panel does.
+    std::error_code ec;
+    if (fs::exists(path, ec)) {
+        replacePath = path.string();
+        openReplace = true;
+        return;
+    }
+#endif
+    writeExport(path.string());
+}
+
+// The take as a MIDI Clip File (App/ClipFile.h), from its own start, with the
+// host's tempo and meter for other apps.
+void PluginEditor::Impl::writeExport(const std::string& path) {
+    const ClipRef* take = nullptr;
+    for (const ClipRef& t : view.takes)
+        if (t.id == exportRef) take = &t;
+    if (take == nullptr || !take->clip) {
+        problem = "Couldn't export: the take is gone.", openProblem = true;
+        return;
+    }
+    const clipfile::Tempo           tempo{links.engine->lastTempo(), links.engine->lastBeatsPerBar()};
+    const std::vector<std::uint8_t> bytes = clipfile::write(take->clip->events, take->clip->length, tempo);
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    out.close();
+    if (!out) problem = "Couldn't write " + path + ".", openProblem = true;
+}
+
+void PluginEditor::Impl::readImport(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    if (!in && !in.eof()) {
+        problem = "Couldn't read " + path + ".", openProblem = true;
+        return;
+    }
+    const clipfile::Read read = clipfile::read(bytes.data(), bytes.size());
+    if (!read.ok) {
+        problem = "Couldn't import " + fs::path(path).filename().string() + ": " + read.error + ".", openProblem = true;
+        return;
+    }
+    Clip clip;
+    clip.events = read.events;
+    clip.length = read.length;
+    clip.name   = fs::path(path).stem().string();
+    const ClipRefId ref = links.keeper->importClip(links.engine->position(), std::move(clip));
+    if (ref == 0) {
+        problem = fs::path(path).filename().string() + " has nothing in it to import.", openProblem = true;
+        return;
+    }
+    follow(true);
+    choose(ref);
+}
+
+// What the window says, with OK; and, on Linux, "Replace it?".
+void PluginEditor::Impl::prompts() {
+    if (std::exchange(openProblem, false)) ImGui::OpenPopup("Umpire##problem");
+    if (std::exchange(openReplace, false)) ImGui::OpenPopup("Replace?##replace");
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings;
+    if (ImGui::BeginPopupModal("Umpire##problem", nullptr, flags)) {
+        ImGui::TextUnformatted(problem.c_str());
+        if (ImGui::Button("OK") || ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+            ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
+    if (ImGui::BeginPopupModal("Replace?##replace", nullptr, flags)) {
+        ImGui::Text("%s is already there. Replace it?", fs::path(replacePath).filename().c_str());
+        if (ImGui::Button("Replace") || ImGui::IsKeyPressed(ImGuiKey_Enter)) {
+            ImGui::CloseCurrentPopup();
+            writeExport(replacePath);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+    }
 }
 
 PluginEditor::PluginEditor(std::unique_ptr<Impl> i) : impl(std::move(i)) {}
@@ -517,6 +739,11 @@ std::unique_ptr<PluginEditor> PluginEditor::open(std::uintptr_t parent, unsigned
 void PluginEditor::idle() {
     Impl& m = *impl;
     m.follow();
+    if (std::string path; m.dialog.poll(path)) {
+        m.dialogDone(path);
+        m.canvas->panels().wake(2);
+        m.canvas->repaint();
+    }
     // The playhead and the header: redrawn when they change.
     const Tick at      = m.links.engine->position();
     const bool playing = m.links.engine->hostPlaying();
