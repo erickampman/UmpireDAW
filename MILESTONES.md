@@ -223,8 +223,8 @@ Asked for 2026-11-01: Umpire had no zoom; the track view's beat
   and the grid zoom separately, from 1/8x to 8x; the plugin's state
   (version 5) keeps both without marking the project changed. *Built
   2026-11-20 on the Mac* (plugin-version.md, "Z1"; decisions.md, "Zoom").
-  Left: the author's checks in hosts (a pinch in REAPER, Bitwig, Logic),
-  and Linux (Ctrl-wheel)
+  Zoom and scrolling work in Logic and REAPER (the author, 2026-11-20).
+  Left: the author's check in Bitwig, and Linux (Ctrl-wheel)
 - Later: the zoom levels of ui-direction.md ("Zoom replaces opening
   things": Sections, Bars, Notes, Expression), editing notes in the lane
 

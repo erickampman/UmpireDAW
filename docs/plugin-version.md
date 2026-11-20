@@ -1329,7 +1329,11 @@ two-finger drag up the grid (only the rows move) and a sideways one over
 the keys (nothing moves sideways), passing in the runs where the wheel
 reaches the grid. **The author's check**: in Logic, drag up and down in the
 grid, and over its keys; then sideways; a diagonal drag goes the way it
-starts.
+starts. *Passed in Logic and REAPER (the author, 2026-11-20).*
+
+**In hosts (the author, 2026-11-20):** zoom works, and so does scrolling
+after the axis fix, in Logic (the AUv2) and REAPER. Bitwig is still to
+check.
 
 **Not in Z1:**
 - **Vertical zoom** (the grid's row height, `kRowH`), and keys for zooming
