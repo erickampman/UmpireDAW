@@ -211,17 +211,26 @@ S2 and R1 to R6.
 - P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms (and
   Logic and MainStage on the Mac, for the AUv2); the other open-source
   hosts (Qtractor, Carla, Zrythm)
-- PR. [ ] REAPER's pre-roll: nothing recorded before REAPER itself records.
+- PR. [ ] REAPER's pre-roll: what a take keeps from before REAPER records.
   Found by the author, 2026-11-20: with pre-roll on, Take 2 began at bar -1
   (the log: "from beat -8.02 to beat 23.34, first note-on at beat -1.00"),
   since REAPER says it records through the pre-roll and never sets
   `CLAP_TRANSPORT_IS_WITHIN_PRE_ROLL` (the log's transport line: "playing,
-  recording", no "pre-roll"), and Umpire honours only that flag. Proposed:
-  Logic's count-in rule (`recordStartOnPlay`) for hosts that say they record
-  too, when recording starts with playback: from earlier than where the host
-  stood, by at most six bars, record from where it stood; punching in while
-  playing is unchanged. The whole-beat test would go for these hosts:
-  REAPER's -8.02 is 0.02 beats off (about 10 ms at 120 bpm, likely its
+  recording", no "pre-roll"), and Umpire honours only that flag. Undecided:
+  what, if anything, a take keeps from before where the host stood. Not
+  necessarily nothing: Digital Performer had a mode that kept notes played
+  just before 1:1:00 when they were only a little early, and a note played
+  a little early in the pre-roll may be meant for the downbeat. Against it:
+  for Logic the author found recording earlier than Logic does "too
+  confusing" (an earlier try kept count-in notes, and was replaced). Options: drop everything before (one
+  way: Logic's count-in rule, `recordStartOnPlay`, for hosts that say they
+  record too, when recording starts with playback: from earlier than where
+  the host stood, by at most six bars, record from where it stood), keep
+  only notes a little early (how early, and whether they move to the
+  downbeat), or keep the pre-roll as now. Whatever is chosen, Logic's
+  count-in may want the same. Punching in while playing is unchanged. If
+  the cut is found from where the host stood, the whole-beat test would go
+  for these hosts: REAPER's -8.02 is 0.02 beats off (about 10 ms at 120 bpm, likely its
   output latency), outside the 1/64-beat tolerance. To check: whether REAPER
   runs the plugin while stopped (otherwise only "never before bar 1"
   applies), and Bitwig's pre-roll. The other way, REAPER's own CLAP
