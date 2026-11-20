@@ -95,6 +95,24 @@ struct LiveStats {
 
 // A take as it ended: its events in ticks from `start` (where recording
 // began, on the host's timeline), and its length to where it ended.
+// Where a take recorded on play (RecordMode::Play: Logic, GarageBand) starts
+// recording, given where the host began playing and where it last stood
+// stopped. Those hosts never say they record or count in, but a count-in
+// shows: Record with a count-in starts playing a whole number of beats (up
+// to six bars) before where the host stood, while Play starts from there. So
+// then recording starts where it stood, as the host's own does. Never before
+// the song's start (bar 1). Decided with the author, 2026-11-20: nothing is
+// recorded before the host itself records (plugin-version.md, "AUv2 for
+// Logic").
+Tick recordStartOnPlay(Tick playFrom, bool stoppedSeen, Tick stoppedAt, double quartersPerBar);
+
+// How the last take recorded on play began, for the log.
+struct TakeStart {
+    std::uint64_t serial = 0;   // one more each take recorded on play
+    Tick          playFrom = 0, stoppedAt = 0, recordFrom = 0;
+    bool          stoppedSeen = false;
+};
+
 struct FinishedTake {
     Tick start = 0;
     Clip clip;   // events from `start`; length to the take's end
@@ -164,7 +182,10 @@ public:
     // and sent by a later call to collectGarbage().
     void setEvents(const std::vector<ClipEvent>& songEvents);
     // The oldest take that has ended since the last call: false if none.
+    // One recorded on play keeps nothing before where recording started
+    // (recordStartOnPlay), and starts on its first note's beat.
     bool collectTake(FinishedTake& out);
+    TakeStart lastTakeStart() const;
     // Frees what the audio thread has let go of, and sends what setEvents()
     // couldn't. Call now and then.
     void collectGarbage();
@@ -222,6 +243,8 @@ private:
         std::vector<ClipEvent> events;       // song ticks
         std::size_t            count = 0;
         Tick                   start = 0, end = 0;
+        bool                   fromFirstNote = false;   // recorded on play: starts on its first note's beat
+        Tick                   recordFrom = 0;          // nothing before it is kept (on play: a count-in)
     };
     // One piece of a block: frames [first, first + frames) at one transport.
     struct Piece {
@@ -241,7 +264,7 @@ private:
     void   gatherLive(const Block& block) noexcept;
     void   recordLive(const Piece& p) noexcept;
     void   processPiece(Piece& p) noexcept;
-    void   startTake(Tick at) noexcept;
+    void   startTake(Tick at, bool fromFirstNote, Tick recordFrom) noexcept;
     void   record(Tick tick, const uw::MidiMessage& m) noexcept;
     void   endTake(Tick at) noexcept;
     void   runSynth(const Block& block) noexcept;
@@ -311,6 +334,13 @@ private:
     std::atomic<int>           seenBeatsPerBar{4};
     std::atomic<Tick>          seenPosition{0};
     std::atomic<bool>          seenPlaying{false};
+    // Audio thread: where the host last stood stopped (a count-in's end).
+    Tick                       stoppedAt   = 0;
+    bool                       stoppedSeen = false;
+    // How the last take on play began (audio thread writes; the log reads).
+    std::atomic<std::uint64_t> startSerial{0};
+    std::atomic<Tick>          startPlayFrom{0}, startStoppedAt{0}, startRecordFrom{0};
+    std::atomic<bool>          startStoppedSeen{false};
 };
 
 } // namespace umpire::plugin

@@ -287,6 +287,7 @@ public:
     // (CLAP_TRANSPORT_*; ~0u for no transport), and the last logged.
     std::atomic<std::uint32_t> transportFlags{~0u};
     std::uint32_t              loggedTransportFlags = ~0u - 1;   // main thread
+    std::uint64_t              loggedTakeStart      = 0;          // main thread: TakeStart::serial
 
     // The Record button pressed in the window: 0 or 1 for the audio thread
     // (or params flush) to apply and tell the host, as a gesture; -1 none.
@@ -755,6 +756,21 @@ void Plugin::housekeeping() {
     // Which of the host's transport flags it gives, when they change: recording
     // needs playing, beats and recording (with the arm), so a host that leaves
     // one out shows here.
+    // Where a take recorded on play began: where the host played from, where
+    // it had stood, and where recording started (after a count-in, or bar 1).
+    if (const TakeStart ts = engine.lastTakeStart(); ts.serial != loggedTakeStart) {
+        loggedTakeStart  = ts.serial;
+        const auto beats = [](Tick t) { return static_cast<double>(t) / static_cast<double>(kTicksPerQuarter); };
+        const char* why  = ts.recordFrom == ts.playFrom ? "as played"
+                           : ts.stoppedSeen && ts.recordFrom == ts.stoppedAt ? "after a count-in"
+                                                                             : "from bar 1";
+        if (ts.stoppedSeen)
+            log("take on play: the host played from beat %.2f, had stood at beat %.2f; recording from beat %.2f (%s)",
+                beats(ts.playFrom), beats(ts.stoppedAt), beats(ts.recordFrom), why);
+        else
+            log("take on play: the host played from beat %.2f; recording from beat %.2f (%s)", beats(ts.playFrom),
+                beats(ts.recordFrom), why);
+    }
     if (const std::uint32_t f = transportFlags.load(std::memory_order_relaxed); f != loggedTransportFlags) {
         loggedTransportFlags = f;
         if (f == ~0u) {

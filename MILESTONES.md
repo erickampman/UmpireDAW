@@ -203,8 +203,10 @@ S2 and R1 to R6.
   size is checked each tick (it had gone blank in Logic when dragged from
   the Retina screen to a 1x monitor). Checked by the author in Logic Pro 13
   (Pitch 7.25, recording on play, the window between screens) and MainStage
-  5 (Pitch 7.25). Left: in Logic, the count-in (Take 1 began at beat -4),
-  cycle recording, live input on a track that isn't selected, a bounce; in
+  5 (Pitch 7.25). The count-in: nothing is recorded before Logic itself
+  records (a count-in found from where Logic stood; never before bar 1), and
+  a take starts on its first note's beat (Take 1 had begun at beat -4).
+  Untried in Logic: a count-in before a later bar. Left: in Logic, cycle recording, live input on a track that isn't selected, a bounce; in
   MainStage, record off.*
 - P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms (and
   Logic and MainStage on the Mac, for the AUv2); the other open-source

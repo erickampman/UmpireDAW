@@ -388,6 +388,143 @@ void testRecordOnPlay() {
     check("record = in the setup file", parseConfig("record = Play\n").record == "play");
 }
 
+// Logic's count-in (record on play): Logic never says it records or counts
+// in, but Record with a count-in starts playing whole bars before where it
+// stood, so recording starts where it stood, as Logic's own does; nothing
+// before it is kept (decided with the author, 2026-11-20), nor anything
+// before bar 1. The take then starts on its first note's beat. A host that
+// says when it records keeps the take's start where recording began.
+void testCountIn() {
+    const Tick q = kTicksPerQuarter;
+    check("a count-in of a bar: recording from where the host stood", recordStartOnPlay(4 * q, true, 8 * q, 4) == 8 * q);
+    check("of six bars too", recordStartOnPlay(0, true, 24 * q, 4) == 24 * q);
+    check("not seven", recordStartOnPlay(0, true, 28 * q, 4) == 0);
+    check("of two beats", recordStartOnPlay(6 * q, true, 8 * q, 4) == 8 * q);
+    check("stood mid-beat: not a count-in", recordStartOnPlay(2 * q, true, 5 * q + q / 3, 4) == 2 * q);
+    check("played from where it stood: as played", recordStartOnPlay(8 * q, true, 8 * q, 4) == 8 * q);
+    check("never before bar 1", recordStartOnPlay(-4 * q, false, 0, 4) == 0 && recordStartOnPlay(-8 * q, true, -4 * q, 4) == 0);
+
+    FakeSynth    synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    engine.setRecordMode(RecordMode::Play);
+    Host       host(engine);
+    const auto standAt = [&](double beat) {
+        host.transport.playing  = false;
+        host.transport.hasBeats = true;
+        host.transport.songBeats = beat;
+        host.block();
+    };
+    const auto playTo = [&](double beat) {
+        while (host.transport.songBeats < beat - 1e-9) host.block();
+    };
+    const auto send = [&](const uw::MidiMessage& m) { engine.onMidi(1, at(host.now - 5'000'000, m)); };
+    const auto note = [&](std::uint8_t key, double from, double to) {
+        playTo(from);
+        send(ump::midi2NoteOn(0, 0, key, 0x8000));
+        playTo(to);
+        send(ump::midi2NoteOff(0, 0, key));
+    };
+    const auto stop = [&] {
+        host.transport.playing = false;
+        host.block();
+    };
+    const auto notes = [](const FinishedTake& t) {
+        int n = 0;
+        for (const ClipEvent& e : t.clip.events) n += ump::isNoteOn(e.message) ? 1 : 0;
+        return n;
+    };
+    const auto onlyKey = [](const FinishedTake& t, std::uint8_t key) {
+        for (const ClipEvent& e : t.clip.events)
+            if ((ump::isNoteOn(e.message) || ump::isNoteOff(e.message)) && ump::noteNumber(e.message) != key) return false;
+        return true;
+    };
+
+    // Recording from bar 1 with a bar's count-in (Logic plays from -4): a
+    // pitch at -3, a note in the count-in, one held across the downbeat,
+    // then one at beat 1.
+    standAt(0);
+    host.play(-4.0);
+    host.block();
+    playTo(-3.0);
+    send(pitch725(60, 0x12345678));
+    note(60, -0.9, -0.6);
+    playTo(-0.3);
+    send(ump::midi2NoteOn(0, 0, 61, 0x8000));
+    playTo(0.4);
+    send(pitch725(61, 0x22222222));
+    send(ump::midi2NoteOff(0, 0, 61));
+    note(64, 1.0, 1.5);
+    playTo(3.0);
+    stop();
+    FinishedTake take;
+    bool         got = engine.collectTake(take);
+    check("bar 1's count-in: nothing in it is kept", got && notes(take) == 1 && onlyKey(take, 64) &&
+                                                         !isPitch725(take.clip.events.front().message),
+          std::to_string(notes(take)) + " notes");
+    check("nor the note held across the downbeat, its pitch or its end", got && take.clip.events.size() == 2);
+    check("the take starts on its first note's beat", got && take.start == q, std::to_string(take.start));
+    TakeStart s = engine.lastTakeStart();
+    check("the log is told", s.serial == 1 && s.playFrom == -4 * q && s.stoppedSeen && s.stoppedAt == 0 && s.recordFrom == 0);
+
+    // Recording from bar 3 (beat 8), counted in from bar 2: a note in the
+    // count-in, then one at 9.3.
+    standAt(8.0);
+    host.play(4.0);
+    host.block();
+    note(62, 6.0, 6.5);
+    note(65, 9.3, 9.8);
+    playTo(11.0);
+    stop();
+    got = engine.collectTake(take);
+    check("a later bar's count-in: nothing in it is kept", got && notes(take) == 1 && onlyKey(take, 65));
+    check("the take starts on its first note's beat (9)", got && take.start == 9 * q, std::to_string(take.start));
+
+    // Played from somewhere else than where it stood (stopped mid-beat):
+    // not a count-in, recorded as played.
+    standAt(5.37);
+    host.play(2.0);
+    host.block();
+    note(66, 2.5, 3.0);
+    playTo(4.0);
+    stop();
+    got = engine.collectTake(take);
+    check("not a count-in: recorded as played", got && notes(take) == 1 && take.start == 2 * q, std::to_string(take.start));
+
+    // A host that says when it records: the take starts where it began.
+    engine.setRecordMode(RecordMode::Host);
+    host.play(4.0, true);
+    host.block();
+    note(67, 6.3, 6.8);
+    playTo(8.0);
+    stop();
+    got = engine.collectTake(take);
+    check("recorded with the host, the take starts where recording began", got && take.start == 4 * q,
+          std::to_string(take.start));
+
+    // Never having stood anywhere, from before bar 1: nothing before it.
+    PluginEngine fresh;
+    fresh.setSynth(&synth);
+    fresh.activate(kRate, 4096);
+    fresh.setRecordMode(RecordMode::Play);
+    Host other(fresh);
+    other.play(-4.0);
+    other.block();
+    while (other.transport.songBeats < -1.0) other.block();
+    fresh.onMidi(1, at(other.now - 5'000'000, ump::midi2NoteOn(0, 0, 70, 0x8000)));
+    while (other.transport.songBeats < 0.5) other.block();
+    fresh.onMidi(1, at(other.now - 5'000'000, ump::midi2NoteOff(0, 0, 70)));
+    fresh.onMidi(1, at(other.now - 5'000'000, ump::midi2NoteOn(0, 0, 71, 0x8000)));
+    while (other.transport.songBeats < 1.0) other.block();
+    fresh.onMidi(1, at(other.now - 5'000'000, ump::midi2NoteOff(0, 0, 71)));
+    other.transport.playing = false;
+    other.block();
+    got = fresh.collectTake(take);
+    check("before bar 1 nothing is kept, even unseen", got && notes(take) == 1 && onlyKey(take, 71) && take.start == 0,
+          std::to_string(take.start));
+}
+
 // Record off (live hosts): nothing records, whatever the host says, and the
 // lane plays with the host.
 void testRecordOff() {
@@ -1153,6 +1290,7 @@ int main() {
     testRecording();
     testPlayback();
     testRecordOnPlay();
+    testCountIn();
     testRecordOff();
     testSetup();
     testState();

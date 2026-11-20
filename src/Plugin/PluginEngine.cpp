@@ -22,6 +22,15 @@ uw::MidiMessage noteOff(int key) {
 
 bool isMidi2(const uw::MidiMessage& m) { return ump::messageType(m) == ump::MessageType::Midi2ChannelVoice; }
 
+// Addressed to one key: what goes with a note (and is cut with it).
+bool isPerNote(const uw::MidiMessage& m) {
+    if (!ump::isChannelVoice(m)) return false;
+    const ump::Status s = ump::status(m);
+    if (s == ump::Status::PolyPressure) return true;
+    return isMidi2(m) && (s == ump::Status::RegisteredPerNoteController || s == ump::Status::AssignablePerNoteController ||
+                          s == ump::Status::PerNotePitchBend || s == ump::Status::PerNoteManagement);
+}
+
 // Pitch 7.25: MIDI 2.0 registered per-note controller 3 (as App/Player.cpp).
 bool isPitch725(const uw::MidiMessage& m) {
     return isMidi2(m) && ump::status(m) == ump::Status::RegisteredPerNoteController && (m.words[0] & 0xFF) == 3;
@@ -182,13 +191,53 @@ bool PluginEngine::collectTake(FinishedTake& out) {
         if (t.state.load(std::memory_order_acquire) == kTakeReady && (oldest == nullptr || t.serial < oldest->serial))
             oldest = &t;
     if (oldest == nullptr) return false;
-    out             = FinishedTake{};
-    out.start       = oldest->start;
-    out.clip.length = oldest->end - oldest->start;
+    out = FinishedTake{};
     out.clip.events.assign(oldest->events.begin(), std::next(oldest->events.begin(), static_cast<std::ptrdiff_t>(oldest->count)));
-    for (ClipEvent& e : out.clip.events) e.tick -= oldest->start;
     std::stable_sort(out.clip.events.begin(), out.clip.events.end(),
                      [](const ClipEvent& a, const ClipEvent& b) { return a.tick < b.tick; });
+    // Recorded on play (Logic, GarageBand: they never say when they record,
+    // nor when they count in), nothing before where recording started
+    // (recordStartOnPlay: after a count-in, before bar 1) is kept: not its
+    // notes, nor the rest of a note begun before it. Then the take starts on
+    // the beat of its first note, not where the host began playing; what
+    // came before that beat (controllers, pitch) moves to it. Decided with
+    // the author, 2026-11-20 (plugin-version.md, "AUv2 for Logic").
+    Tick       start = oldest->start;
+    const Tick from  = std::clamp(oldest->recordFrom, oldest->start, oldest->end);
+    if (from > start) {
+        std::vector<bool> cut(kKeys, false);   // keys whose note-on was before `from`
+        std::vector<ClipEvent> kept;
+        kept.reserve(out.clip.events.size());
+        for (const ClipEvent& e : out.clip.events) {
+            const uw::MidiMessage& m       = e.message;
+            const bool             perNote = ump::isNoteOn(m) || ump::isNoteOff(m) || isPerNote(m);
+            const auto             key     = perNote ? static_cast<std::size_t>(noteKey(m)) : 0;
+            if (e.tick < from) {
+                if (ump::isNoteOn(m)) cut[key] = true;
+                continue;
+            }
+            if (ump::isNoteOn(m)) cut[key] = false;
+            else if (perNote && cut[key]) {
+                if (ump::isNoteOff(m)) cut[key] = false;
+                continue;
+            }
+            kept.push_back(e);
+        }
+        out.clip.events = std::move(kept);
+        start           = from;
+    }
+    if (oldest->fromFirstNote) {
+        const auto on = std::find_if(out.clip.events.begin(), out.clip.events.end(),
+                                     [](const ClipEvent& e) { return ump::isNoteOn(e.message); });
+        if (on != out.clip.events.end()) {
+            const Tick q    = kTicksPerQuarter;
+            const Tick beat = on->tick >= 0 ? on->tick / q * q : -((-on->tick + q - 1) / q) * q;
+            start           = std::clamp(beat, start, oldest->end);
+        }
+    }
+    out.start       = start;
+    out.clip.length = oldest->end - start;
+    for (ClipEvent& e : out.clip.events) e.tick = std::max<Tick>(e.tick - start, 0);
     oldest->state.store(kTakeIdle, std::memory_order_release);
     return true;
 }
@@ -271,13 +320,37 @@ void PluginEngine::playRange(Tick from, Tick to, const Piece& p) noexcept {
     }
 }
 
-void PluginEngine::startTake(Tick at) noexcept {
+Tick recordStartOnPlay(Tick playFrom, bool stoppedSeen, Tick stoppedAt, double quartersPerBar) {
+    Tick from = playFrom;
+    if (stoppedSeen && stoppedAt > playFrom) {
+        const Tick   q     = kTicksPerQuarter;
+        const Tick   gap   = stoppedAt - playFrom;
+        const double bars  = static_cast<double>(gap) / static_cast<double>(q) / std::max(quartersPerBar, 0.25);
+        const Tick   beats = (gap + q / 2) / q;
+        if (bars <= 6.0 + 1e-6 && std::llabs(gap - beats * q) <= q / 64) from = stoppedAt;
+    }
+    return std::max<Tick>(from, 0);
+}
+
+TakeStart PluginEngine::lastTakeStart() const {
+    TakeStart s;
+    s.serial      = startSerial.load(std::memory_order_acquire);
+    s.playFrom    = startPlayFrom.load(std::memory_order_relaxed);
+    s.stoppedAt   = startStoppedAt.load(std::memory_order_relaxed);
+    s.recordFrom  = startRecordFrom.load(std::memory_order_relaxed);
+    s.stoppedSeen = startStoppedSeen.load(std::memory_order_relaxed);
+    return s;
+}
+
+void PluginEngine::startTake(Tick at, bool fromFirstNote, Tick recordFrom) noexcept {
     for (int i = 0; i < 2; ++i) {
         TakeBuffer& t = takes[i];
         if (t.state.load(std::memory_order_acquire) != kTakeIdle) continue;
         t.count = 0;
         t.start = at;
         t.end   = at;
+        t.fromFirstNote = fromFirstNote;
+        t.recordFrom    = recordFrom;
         liveHeld.reset();
         t.state.store(kTakeRecording, std::memory_order_relaxed);
         recordingSlot = i;
@@ -464,6 +537,10 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     const RecordMode mode      = recordMode();
     const bool onPlay          = mode == RecordMode::Play;
     const bool rec = rolling && mode != RecordMode::Off && (t.recording || onPlay) && p.armed && !offline();
+    if (!rolling && t.hasBeats) {   // where it stands: a count-in ends here
+        stoppedAt   = std::llround(t.songBeats * static_cast<double>(kTicksPerQuarter));
+        stoppedSeen = true;
+    }
 
     // A jump: a locate, a loop wrap. Tempo changes move the position a
     // little against the last piece's guess, so only more than half a piece
@@ -478,7 +555,18 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     if (!rec) takeBlocked = false;
     if (rec && recordingSlot < 0 && (!takeBlocked || jumped)) {
         takeBlocked = false;
-        startTake(p.tick);
+        Tick from   = p.tick;
+        if (onPlay) {
+            // A fresh start may follow a count-in; a jump (a cycle) doesn't.
+            const double qpb = t.tsigDen > 0 && t.tsigNum > 0 ? t.tsigNum * 4.0 / t.tsigDen : 4.0;
+            from             = wasRolling ? std::max<Tick>(p.tick, 0) : recordStartOnPlay(p.tick, stoppedSeen, stoppedAt, qpb);
+            startPlayFrom.store(p.tick, std::memory_order_relaxed);
+            startStoppedAt.store(stoppedAt, std::memory_order_relaxed);
+            startRecordFrom.store(from, std::memory_order_relaxed);
+            startStoppedSeen.store(stoppedSeen && !wasRolling, std::memory_order_relaxed);
+            startSerial.fetch_add(1, std::memory_order_release);
+        }
+        startTake(p.tick, onPlay, from);
     }
     p.recording = recordingSlot >= 0;
 

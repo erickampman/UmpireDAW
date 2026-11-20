@@ -1194,6 +1194,57 @@ kept: it records (on play) and plays Pitch 7.25 there, and in MainStage.
   comes back by itself), and Logic quit and reopened, with Umpire chosen
   in the Plug-in Manager and "Reset & Rescan Selection" if Logic marked it
   as failed.
+- **The count-in** (decided with the author, 2026-11-20): Take 1 in Logic
+  began at beat -4, since Logic counts in from bar 1 by playing from beat -4
+  (the log: "from beat -4.00 to beat 23.50, first note-on at beat -1.00"),
+  with no pre-roll flag, and Umpire, recording on play, recorded from where
+  Logic began playing. **Nothing is recorded before Logic itself records**
+  (the author: recording earlier than Logic "is too confusing"; and in
+  Logic's own regions, the author found, a note played in the count-in
+  isn't kept). Logic never says it records or counts in, but the count-in
+  shows: while stopped, Logic reports where the playhead stands, which is
+  where its recording will begin; Play starts from there, while Record with
+  a count-in starts a whole number of beats (bars, here up to six) earlier.
+  So a take that starts on play from earlier than where Logic stood, by a
+  whole number of beats and at most six bars, records from where it stood
+  (`recordStartOnPlay`); and nothing before bar 1 is recorded on play in any
+  case. What's before that point is dropped, notes and all, with the rest
+  of a note begun before it (its per-note messages and its end). The take
+  then starts on the beat of its first note, so the silence before it
+  doesn't hide older takes. A cycle's later passes (a jump) start where they
+  start.
+  **The count-in's length is measured, not read**: no Audio Unit API gives
+  Logic's count-in setting, so Umpire takes it as the gap between where
+  Logic stood and where it began playing: a bar, two, or a few beats all
+  work. Its limits: a count-in longer than six bars (Umpire's limit, not
+  Logic's) or not a whole number of beats isn't taken for one, and is
+  recorded; and Umpire knows where Logic stood only if Logic ran it while
+  stopped (it does for the selected or record-armed track, live mode),
+  otherwise only "nothing before bar 1" applies, and a count-in before a
+  later bar is recorded. The log's "take on play" line says which ("had
+  stood at beat y" or not, and "after a count-in", "from bar 1" or "as
+  played"). Hosts that say when they record (REAPER, Bitwig) are unchanged:
+  the take starts where recording began. The log says, for each take on
+  play, "the host played from beat x, had stood at beat y; recording from
+  beat z (after a count-in / from bar 1 / as played)". An earlier try the
+  same day (the take starting on its first note's beat, a note played in
+  the count-in kept) recorded notes in bar 0 in Logic (the author's Takes 8
+  and 9); replaced. In `PluginEngine` (the count-in's end found on the audio
+  thread; the cutting in `collectTake`, off it). `test-plugin-engine`
+  (testCountIn): the rule's cases (a bar, six bars and not seven, two beats,
+  stood mid-beat, never before bar 1); from bar 1, a pitch, a note in the
+  count-in and one held across the downbeat all dropped, the take from its
+  first note's beat; from bar 3 counted in from bar 2, the count-in's note
+  dropped; played from elsewhere, recorded as played; with the host, from
+  where recording began; and before bar 1, nothing, with no stopped
+  position seen. **The author's check**: record in Logic with the count-in
+  on, from bar 1 and from a later bar, playing during the count-in: nothing
+  from it in the take; and the log's "take on play" line. *Left for later
+  (the author, 2026-11-20: "too far in the weeds"): the first try from bar
+  3 never counted in from bar 2, since Logic had put its playhead back at
+  bar 1 before recording (the log: "played from beat 0.00, had stood at
+  beat 0.00"), maybe for its cycle; Umpire recorded from bar 1, as Logic
+  did. A count-in before a later bar is untried in Logic.*
 - **The author's checks in Logic**: it appears in Logic's instrument list
   under Unlikelyware; KeyboardEDO plays through it with Pitch 7.25 heard;
   the delay and jitter in the heartbeat on a selected track, and on one
