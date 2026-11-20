@@ -7,7 +7,9 @@
 // grid (a note added), Undo. It writes a screenshot after each step
 // (screencapture -l, of its window only) and says what the plugin did:
 // the Record gestures it sent the host, and the take's notes in the saved
-// state after the edit and after the undo.
+// state after the edit and after the undo. Since Z1, Command-wheel over the
+// grid and then over the lane: each zooms only itself, the state keeps both,
+// and neither marks the project changed.
 //
 //   UMPIRE_PLUGIN_CONF=build/test-plugin.conf UMPIRE_PLUGIN_LOG=none \
 //       UMPIRE_PLUGIN_CAPTURE=DIR build/umpire-plugin-window-check build/Umpire.clap DIR
@@ -58,10 +60,15 @@ void hostGuiClosed(const clap_host_t*, bool) {}
 const clap_host_gui_t kHostGui = {hostHintsChanged, hostRequestResize, hostRequestShowHide, hostRequestShowHide,
                                   hostGuiClosed};
 
+int  dirtyMarks = 0;   // the plugin's mark_dirty calls: the project changed
+void hostMarkDirty(const clap_host_t*) { ++dirtyMarks; }
+const clap_host_state_t kHostState = {hostMarkDirty};
+
 // No timer-support, as Bitwig on the Mac: the window runs its own timer.
 const void* hostGetExtension(const clap_host_t*, const char* id) {
     if (std::strcmp(id, CLAP_EXT_PARAMS) == 0) return &kHostParams;
     if (std::strcmp(id, CLAP_EXT_GUI) == 0) return &kHostGui;
+    if (std::strcmp(id, CLAP_EXT_STATE) == 0) return &kHostState;
     return nullptr;
 }
 void hostRequestRestart(const clap_host_t*) {}
@@ -230,6 +237,41 @@ int main(int argc, char** argv) {
             [window sendEvent:e];
         }
     };
+    // Command-wheel at (x, y) points from the content's top left, `lines`
+    // notches (up positive). There's no NSEvent constructor for a scroll, so
+    // it's made from a CGEvent at the point on the screen. If AppKit doesn't
+    // give that event our window, its locationInWindow is the screen point,
+    // which NSWindow and pugl read as the window's: then it's made again at
+    // the screen point whose numbers are the window point's.
+    const auto commandWheel = [&](double x, double y, int lines) {
+        const NSPoint inWindow = [[window contentView] convertPoint:NSMakePoint(x, [[window contentView] frame].size.height - y)
+                                                               toView:nil];
+        const double  mainH    = [[[NSScreen screens] firstObject] frame].size.height;
+        const auto    make     = [&](NSPoint screen) {
+            CGEventRef cg = CGEventCreateScrollWheelEvent(nullptr, kCGScrollEventUnitLine, 1, lines);
+            CGEventSetFlags(cg, kCGEventFlagMaskCommand);
+            CGEventSetLocation(cg, CGPointMake(screen.x, mainH - screen.y));
+            NSEvent* e = [NSEvent eventWithCGEvent:cg];
+            CFRelease(cg);
+            return e;
+        };
+        NSEvent* e = make([window convertPointToScreen:inWindow]);
+        if ([e window] != window) e = make(inWindow);
+        [window sendEvent:e];
+    };
+    const auto savedZoom = [&] {
+        std::vector<std::uint8_t> out;
+        clap_ostream_t            s{&out, writeStream};
+        state->save(p, &s);
+        plugin::SavedState back;
+        std::string        error;
+        plugin::decodeState(out.data(), out.size(), back, error);
+        return back.zoom;
+    };
+    const auto zoomText = [](plugin::ViewZoom z) {
+        return "lane " + std::to_string(z.lane) + ", grid " + std::to_string(z.grid);
+    };
+    int dirtyBefore = 0;
     const auto notesOfTake = [&](std::size_t index) {
         std::vector<std::uint8_t> out;
         clap_ostream_t            s{&out, writeStream};
@@ -242,7 +284,8 @@ int main(int argc, char** argv) {
     };
 
     // The steps, a second apart: lane alone; Take 1 selected; Record on; a
-    // note added in the grid; undone; on a screen of another scale; back.
+    // note added in the grid; undone; the grid zoomed in, then the lane out
+    // (Z1); on a screen of another scale; back.
     bool    moved      = false;
     NSPoint homeOrigin = NSZeroPoint;
     std::vector<std::function<void()>> steps = {
@@ -268,6 +311,21 @@ int main(int argc, char** argv) {
         [&] {
             shot("5-undone");
             check("Cmd+Z undoes it, through the lane", notesOfTake(0) == 16, std::to_string(notesOfTake(0)));
+            dirtyBefore = dirtyMarks;
+            commandWheel(300, 400, 2);   // over the grid: in
+        },
+        [&] {
+            shot("6-grid-zoomed");
+            const plugin::ViewZoom z = savedZoom();
+            check("Cmd-wheel over the grid zooms the grid in, not the lane", z.grid > 1.2f && z.lane == 1.0f, zoomText(z));
+            commandWheel(300, 62, -2);   // over the lane: out
+        },
+        [&] {
+            shot("7-lane-zoomed");
+            const plugin::ViewZoom z = savedZoom();
+            check("Cmd-wheel over the lane zooms the lane out, not the grid", z.lane < 0.8f && z.grid > 1.2f, zoomText(z));
+            check("zooming doesn't mark the project changed", dirtyMarks == dirtyBefore,
+                  std::to_string(dirtyMarks - dirtyBefore) + " marks");
             // Then to a screen of another backing scale, if there is one (a
             // Retina laptop and a 1x monitor), and back: the window should
             // draw there as here.
@@ -284,13 +342,13 @@ int main(int argc, char** argv) {
             if (!moved) std::printf("no screen of another scale: the move isn't checked\n");
         },
         [&] {
-            if (moved) shot("6-other-screen");
+            if (moved) shot("8-other-screen");
         },
         [&] {
             if (moved) [window setFrameOrigin:homeOrigin];
         },
         [&] {
-            if (moved) shot("7-back");
+            if (moved) shot("9-back");
         },
         [&] {
             gui->destroy(p);

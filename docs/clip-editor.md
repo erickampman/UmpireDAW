@@ -71,6 +71,11 @@ each case.
   through time): the wheel scrolls the rows, and Shift+wheel or a sideways
   swipe scrolls through time, a beat a notch. That's the track view's rule,
   and StageHand's sequence editor's. The keyboard at the left stays put.
+  Since Z1 (2026-11-20), Command-wheel (Ctrl-wheel on Linux) or a pinch on
+  a Mac trackpad zooms the columns about the pointer, 1/8x to 8x
+  (plugin-version.md, "Z1"); the track view zooms the same way. A
+  two-finger drag keeps to the axis it starts on, and over the keys only
+  scrolls the rows (Ui/ScrollAxis.h).
 - **Edit menu:** Undo and Redo, named ("Undo Move notes"), then Delete note
   (or Delete notes), then Delete all notes, which replaces Clear all. File >
   New clip is gone: the window is its clip's.

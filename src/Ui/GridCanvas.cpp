@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "Ui/GridPanels.h"
+#include "Ui/Zoom.h"
 
 namespace umpire::ui {
 
@@ -79,13 +80,13 @@ int GridCanvas::pitchAt(float y) {
     return model.rows() - 1 - static_cast<int>(std::floor((y - gridY() + scrollY) / kRowH));
 }
 int GridCanvas::stepAt(float x) {
-    return static_cast<int>(std::floor((x - gridX() + scrollX) / kStepW));
+    return static_cast<int>(std::floor((x - gridX() + scrollX) / stepW()));
 }
 Tick GridCanvas::tickAt(float x) {
-    return static_cast<Tick>(std::floor((x - gridX() + scrollX) / kStepW * static_cast<float>(GridModel::kStep)));
+    return static_cast<Tick>(std::floor((x - gridX() + scrollX) / stepW() * static_cast<float>(GridModel::kStep)));
 }
 float GridCanvas::tickX(Tick t) {
-    return static_cast<float>(static_cast<double>(t) / GridModel::kStep) * kStepW;
+    return static_cast<float>(static_cast<double>(t) / GridModel::kStep) * stepW();
 }
 
 int GridCanvas::edgeAt(float x, float y) {
@@ -147,7 +148,7 @@ void GridCanvas::onNanoDisplay() {
         if (const Tick ph = band->playhead(); playing && ph >= 0 && ph < model.endTick() && !handScrolled && gw > 0) {
             const float x = tickX(ph);
             if (x < scrollX || x >= scrollX + gw) {
-                scrollX = x - kStepW;
+                scrollX = x - stepW();
                 clampScrollX();
             }
         }
@@ -191,10 +192,14 @@ void GridCanvas::onNanoDisplay() {
     }
     // The columns and the notes scroll sideways under the keyboard.
     scissor(gx, gy, gw, gh);
-    for (int step = 0; step <= model.steps; ++step) {
-        const float x = gx + static_cast<float>(step) * kStepW - scrollX;
-        if (x < gx - kStepW) continue;
+    // Zoomed out, a column's line goes when its columns are under 6 px
+    // apart: the sixteenths', then the beats'; the bars' stay.
+    const float sw    = stepW();
+    const int   every = sw >= 6 ? 1 : sw * 4 >= 6 ? 4 : 16;
+    for (int step = std::max(0, static_cast<int>(std::floor(scrollX / sw)) - 1); step <= model.steps; ++step) {
+        const float x = gx + static_cast<float>(step) * sw - scrollX;
         if (x > gx + gw) break;
+        if (step % every != 0) continue;
         beginPath();
         moveTo(x, gy);
         lineTo(x, gy + gh);
@@ -372,7 +377,11 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
 }
 
 // As the track view (and StageHand's sequence editor): the wheel scrolls the
-// rows; Shift+wheel, or a sideways swipe, scrolls through time, a beat a notch.
+// rows; Shift+wheel, or a sideways swipe, scrolls through time, a beat a notch
+// (at zoom 1: the same distance on screen, zoomed); Command-wheel (Ctrl on
+// Linux) or a pinch zooms the columns about the pointer (Ui/Zoom.h). A
+// two-finger drag keeps to the axis it started on (Ui/ScrollAxis.h), and over
+// the keys it only scrolls the rows.
 bool GridCanvas::onScroll(const ScrollEvent& ev) {
     if (NanoTopLevelWidget::onScroll(ev)) return true;
     if (band != nullptr) {
@@ -383,22 +392,51 @@ bool GridCanvas::onScroll(const ScrollEvent& ev) {
         }
         if (gridH() <= 0) return false;
     }
-    const bool sideways = (ev.mod & dgl::kModifierShift) != 0 || ev.delta.getX() != 0;
+#ifdef __APPLE__
+    const bool command = (ev.mod & dgl::kModifierSuper) != 0;   // Cmd
+#else
+    const bool command = (ev.mod & dgl::kModifierControl) != 0;
+#endif
+    if (Zoom::zooms(command, (ev.flags & dgl::kFlagMagnify) != 0)) {
+        // About the pointer; over the keys, about the grid's left edge.
+        const float x       = static_cast<float>(ev.pos.getX()) / sf();
+        const float pointer = std::clamp(x - gridX(), 0.0f, gridW());
+        const float before  = stepW();
+        *zoomFactor         = Zoom::by(*zoomFactor, Zoom::notches(ev.delta.getX(), ev.delta.getY()));
+        scrollX             = Zoom::about(scrollX, pointer, before, stepW());
+        handScrolled        = true;   // as a scroll: no paging until the next play
+        clampScrollX();
+        repaint();
+        return true;
+    }
+    const double dx = ev.delta.getX(), dy = ev.delta.getY();
+    const bool   overKeys = static_cast<float>(ev.pos.getX()) / sf() < gridX();
+    const bool   shift    = (ev.mod & dgl::kModifierShift) != 0;
+    // Asked even when not used, so the gesture's timing stays current.
+    const bool   locked   = axes.axisFor(dx, dy, ev.time) == ScrollAxis::Axis::Horizontal;
+    const bool   sideways = !overKeys && (shift || locked);
     if (sideways) {
         handScrolled = true;
-        const double d = ev.delta.getX() != 0 ? ev.delta.getX() : ev.delta.getY();
+        const double d = shift ? (dx != 0 ? dx : dy) : dx;
+        // A beat a notch at zoom 1, the same distance on screen zoomed.
         scrollX -= static_cast<float>(d) * kStepW * 4;
         clampScrollX();
     } else {
-        scrollY = std::clamp(scrollY - static_cast<float>(ev.delta.getY()) * kRowH * 3, 0.0f,
+        scrollY = std::clamp(scrollY - static_cast<float>(dy) * kRowH * 3, 0.0f,
                              std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gridH()));
     }
     repaint();
     return true;
 }
 
+void GridCanvas::setZoom(float factor) {
+    *zoomFactor = Zoom::clamp(factor);
+    clampScrollX();
+    repaint();
+}
+
 void GridCanvas::clampScrollX() {
-    scrollX = std::clamp(scrollX, 0.0f, std::max(0.0f, static_cast<float>(model.steps) * kStepW - gridW()));
+    scrollX = std::clamp(scrollX, 0.0f, std::max(0.0f, static_cast<float>(model.steps) * stepW() - gridW()));
 }
 
 bool GridCanvas::onKeyboard(const KeyboardEvent& ev) {

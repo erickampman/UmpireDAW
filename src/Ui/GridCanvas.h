@@ -17,6 +17,7 @@
 
 #include "App/GridModel.h"
 #include "Ui/Probe.h"
+#include "Ui/ScrollAxis.h"
 
 namespace umpire::ui {
 
@@ -56,6 +57,13 @@ public:
     void        setBand(GridBand* b) noexcept { band = b; }
     // Scroll to the grid's start (another clip shown).
     void        scrollHome() noexcept { scrollX = 0; }
+    // The horizontal zoom (Ui/Zoom.h): a factor on kStepW. Command-wheel or
+    // a pinch over the grid changes it, about the pointer. The canvas keeps
+    // its own unless linked to one that outlives it (the plugin's, which its
+    // state saves); null goes back to its own.
+    float       zoom() const noexcept { return *zoomFactor; }
+    void        setZoom(float factor);
+    void        linkZoom(float* factor) noexcept { zoomFactor = factor != nullptr ? factor : &ownZoom; }
     bool    dragging() const noexcept { return drag != Drag::None && drag != Drag::Click; }
     int     hoverPitch() const noexcept { return hoverRow; }
 
@@ -83,6 +91,7 @@ private:
     int   stepAt(float x);
     Tick  tickAt(float x);
     float tickX(Tick t);   // logical, from the grid's left
+    float stepW() const noexcept { return kStepW * *zoomFactor; }   // a sixteenth, zoomed
     // The note whose right edge is under (x, y): a press there resizes.
     int   edgeAt(float x, float y);
     void  setPointer(DGL_NAMESPACE::MouseCursor cursor);
@@ -91,7 +100,7 @@ private:
     void  clampScrollX();
     void  changed();   // the model changed here: redraw, and the panels too
 
-    static constexpr float kKeysW = 44, kRowH = 14, kStepW = 22;
+    static constexpr float kKeysW = 44, kRowH = 14, kStepW = 22;   // kStepW: a sixteenth at zoom 1
     static constexpr float kEdge = 5;    // how near a note's right end grabs it
     static constexpr float kSlop = 4;    // how far a press goes before it's a drag
 
@@ -121,6 +130,9 @@ private:
     bool                    bandPressed  = false;   // the band took the press
     bool                    handScrolled = false;   // scrolled while playing: no paging until the next play
     bool                    wasPlaying   = false;
+    ScrollAxis              axes;   // a two-finger drag keeps to one axis
+    float                   ownZoom      = 1;
+    float*                  zoomFactor   = &ownZoom;
 };
 
 } // namespace umpire::ui

@@ -1182,6 +1182,18 @@ kept: it records (on play) and plays Pitch 7.25 there, and in MainStage.
   transport played. The setup file's `record =` overrides it (another live
   host, say). StageHand could tell Umpire itself, through a CLAP extension of
   its own, rather than by its name: later, if wanted.
+- **"Umpire isn't available" after a reinstall** (2026-11-20, installing Z1):
+  `install-auv2` had copied a bundle whose `Info.plist` had no
+  `AudioComponents`, so macOS didn't see an Audio Unit (`auval`: "didn't
+  find the component"). clap-wrapper copies its generated plist into the
+  bundle only when the binary links, and a CMake re-run after the link
+  (here, adding a test to CMakeLists.txt) rewrites the bundle's from the
+  plain template. **Fixed**: `install-auv2` now copies the generated plist
+  into the installed bundle itself. After a reinstall, macOS may need its
+  component registry restarted (`killall -9 AudioComponentRegistrar`; it
+  comes back by itself), and Logic quit and reopened, with Umpire chosen
+  in the Plug-in Manager and "Reset & Rescan Selection" if Logic marked it
+  as failed.
 - **The author's checks in Logic**: it appears in Logic's instrument list
   under Unlikelyware; KeyboardEDO plays through it with Pitch 7.25 heard;
   the delay and jitter in the heartbeat on a selected track, and on one
@@ -1190,6 +1202,143 @@ kept: it records (on play) and plays Pitch 7.25 there, and in MainStage.
   playback from the host's position, a locate and a cycle wrap; the window
   and the synth's window; save and reopen a project; a bounce (the log says
   "render: offline").
+
+### Z1: zoom (built 2026-11-20, on the Mac)
+
+Zoom had been asked for since 2026-11-01 (MILESTONES.md, "Zoom"). Since the
+plugin is the product, it matters most in the plugin's window: the lane of
+takes and the take's grid. The app's track view and grid windows got it too,
+since the grid is shared and the track view cost little.
+
+**Decided with the author (2026-11-20; the recommended option each time):**
+- **The lane and the grid zoom separately.** Command-wheel (Ctrl-wheel on
+  Linux) or a pinch zooms whichever is under the pointer, about the pointer:
+  the time under it stays under it. They keep different scales, the lane for
+  the overview (16 px a beat at 1) and the grid for editing (22 px a
+  sixteenth, 88 a beat).
+- **From an eighth to eight times** today's widths: the lane 2 to 128 px a
+  beat, the grid 2.75 to 176 px a sixteenth, the track view 3 to 192 px a
+  beat. A notch is 1.25x, as StageHand's sequence editor.
+- **The plugin's state keeps both** (version 5), so a project opens at the
+  zoom it was saved with, but **a zoom doesn't mark the project changed**:
+  it changes no music. Versions 1 to 4 open at 1.
+- **The app's track view zooms too**, the same way; the `.umpire` session
+  doesn't keep it.
+
+**How it behaves:**
+- A wheel notch zooms 1.25x; a trackpad's Command-swipe zooms by its smooth
+  delta; a pinch follows the fingers (spread to zoom in). One event zooms at
+  most four notches (2.4x), so a flick or a wheel's acceleration doesn't jump
+  the whole range.
+- Over the grid's keys, the grid zooms about its left edge; over the track
+  view's headers (which are ImGui's), the wheel stays theirs.
+- **A zoom counts as scrolling by hand**: while the host plays, the lane and
+  the grid stop paging after one, until the next play, as after Shift+wheel.
+  Otherwise zooming in about a point away from the playhead would be
+  undone by the next page turn.
+- Shift+wheel and sideways swipes scroll the same distance on screen at any
+  zoom (a beat a notch at 1 in the grid, a bar in the lane).
+- **Zoomed out, lines thin out**: the grid draws its sixteenths' lines only
+  while they're 6 px apart or more, then its beats', and always its bars';
+  the lane and the track view number every 2nd, 4th, 8th... bar so the
+  numbers don't run together, and drop the bars' (lane) or beats' (track
+  view) lines under 6 px.
+
+**How it's built:**
+- **`src/Ui/Zoom.h`**: the factor's range, a notch, the scroll that keeps the
+  pointer's time in place, and which events zoom; no toolkit, for the tests.
+  `GridCanvas` has `zoom()`, `setZoom()` and `linkZoom()` (the plugin links
+  it to a factor it keeps, so it outlives the window); `LaneBand` reads the
+  plugin's through `EditorLinks::zoom`; `TrackCanvas` keeps its own.
+- **The plugin** keeps a `ViewZoom` (the lane's and the grid's factors) on
+  the main thread; the window reads it as it draws, so a state loaded while
+  it's open shows at once. The state (`PluginSetup.h`) ends with the two as
+  floats; out of range is clamped, not a number reads as 1. The "saved:" log
+  line says the zoom.
+- **The pinch, in the forks.** pugl dropped `magnifyWithEvent:`. The pugl
+  fork (`erickampman/pugl`, `src/mac.m`) now passes it on as a scroll event
+  flagged `PUGL_IS_MAGNIFY` (DGL's `kFlagMagnify`, in the DPF fork's
+  `dgl/Base.hpp`), with Command added to its modifiers and its `dy` in
+  Command-wheel notches of 1.25x: `log(1 + magnification) / log(1.25)`. So
+  pugl's and DGL's events are unchanged, and an app that zooms on
+  Command-wheel zooms on a pinch without knowing the flag. StageHand, when
+  it moves its DPF pin, zooms on a pinch too, but by a fixed 1.25x an event
+  (its sequence editor ignores the delta), so too fast: it should use the
+  delta (the DPF fork's README.fork.md says so). The pugl fork's commit is
+  pushed before the DPF fork's pin, and that before Umpire's.
+
+**Checked on the Mac (headless, silent):**
+- `ninja -C build && ctest --test-dir build --output-on-failure`: 11 of 11.
+  The new `test-zoom`: a notch, the range's ends, a flick capped, a pinch
+  following the fingers, the time under the pointer kept in and out and at
+  the left edge, the grid's sixteenths the same way, and which events zoom.
+  `test-plugin-engine` (testStateV5): version 5 round-trips, version 4 reads
+  at 1, a state cut inside the zoom is refused, a zoom out of range is
+  clamped and one that isn't a number is 1. `test-plugin-clap`: the zoom
+  comes back through the plugin's own state, and a version 4 state opens at
+  1.
+- **`tools/PluginWindowCheck.mm`**, with the Mac idle: all its steps pass,
+  and two new ones. Command-wheel over the grid zooms the grid in (1.56) and
+  not the lane; Command-wheel over the lane zooms the lane out (0.64) and not
+  the grid; the host is never told the project changed (it now counts
+  `mark_dirty`). Its frames show the grid's wider columns and the lane at 17
+  bars where it showed 11. The move to a 1x screen and back passes as
+  before.
+- `build/umpire-daw --self-test`: the track view's checks pass, with new
+  ones: Command-wheel zooms the lanes in about the pointer, leaving the
+  rows; a pinch (a flagged scroll, as the pugl fork sends) zooms back out;
+  zooming out stops at an eighth. The grid window's new checks
+  (Command-wheel in about the pointer, a pinch out) pass in the runs where
+  the wheel reaches the grid; in the others its Shift+wheel check fails
+  too, after the Mac-only input failures P3 found (28 to 31 a run, varying),
+  so it's that.
+- A real pinch can't be sent from a test (AppKit has no public way to make
+  a gesture event), so the pinch itself is the author's check.
+
+**Checks in hosts (the author's, by eye; silent unless the host plays):**
+
+1. **Pinch** on a trackpad over the grid, then over the lane, in REAPER and
+   Bitwig (CLAP) and Logic (AUv2): each zooms only itself, smoothly, about
+   the fingers; spread zooms in. And over the app's track view and grid
+   window.
+2. **Command-wheel** with a mouse (and Command-swipe on a trackpad): the
+   same, a notch 1.25x. On Linux, Ctrl-wheel.
+3. **The range**: zoom all the way out and in: it stops; the bar numbers
+   and grid lines stay readable.
+4. **Saved**: zoom, save, close and reopen the project: the zoom is back.
+   Zooming alone doesn't make the host ask to save (REAPER's title bar
+   asterisk, Bitwig's dot).
+5. **While playing**: a zoom stops the paging until the next play.
+6. **A host that takes Command-wheel** for itself: if one zooms its own
+   timeline instead, say which.
+
+**Scrolling keeps to one axis** (2026-11-20, after the author's first try in
+Logic: in the grid, a two-finger drag up or down slid sideways instead).
+The grid and the track view took any event with a sideways delta as a
+sideways scroll, and a trackpad's vertical drag has a little in most of its
+events, so most of the drag became small sideways steps. Now
+(`src/Ui/ScrollAxis.h`) a gesture keeps the axis its first event chose
+(the larger delta, vertical on a tie) while its events keep coming,
+momentum included; a pause of a quarter second starts a new one. A whole
+notch on the other axis with nothing on the locked one (a tilt wheel)
+switches it. Over the grid's keys, scrolling only moves the rows. Shift
+still scrolls through time. `test-zoom` checks the rule (a noisy vertical
+drag stays vertical, a sideways one after a pause stays sideways, a tilt
+wheel switches, a stray fraction doesn't); the grid's self-test, a noisy
+two-finger drag up the grid (only the rows move) and a sideways one over
+the keys (nothing moves sideways), passing in the runs where the wheel
+reaches the grid. **The author's check**: in Logic, drag up and down in the
+grid, and over its keys; then sideways; a diagonal drag goes the way it
+starts.
+
+**Not in Z1:**
+- **Vertical zoom** (the grid's row height, `kRowH`), and keys for zooming
+  (Command-plus and minus; hosts keep many keys).
+- **The zoom levels** of ui-direction.md ("Zoom replaces opening things":
+  Sections, Bars, Notes, Expression), and editing notes in the lane:
+  later, as MILESTONES.md says.
+- **The app's session** (`.umpire`) doesn't keep the track view's zoom, nor
+  a grid window's.
 
 ## Open questions
 

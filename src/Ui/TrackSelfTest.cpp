@@ -120,10 +120,12 @@ struct TrackSelfTest {
         }
         pump(100);
     }
-    bool scroll(double x, double y, double dy) {
+    bool scroll(double x, double y, double dy, std::uint32_t mod = 0, std::uint32_t flags = 0) {
         motion(x, y);   // the pointer is there first, as with a real wheel
         dgl::Widget::ScrollEvent ev;
-        ev.time = ++time;
+        ev.time  = ++time;
+        ev.mod   = mod;
+        ev.flags = flags;
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
         ev.delta                = dgl::Point<double>(0, dy);
         const bool taken        = canvas.onScroll(ev);
@@ -363,6 +365,32 @@ struct TrackSelfTest {
                 if (view().rows[i].id == first.id) index = static_cast<int>(i);
             check("scrolled, headers still line up with lanes", std::abs(first.row.y0 - canvas.rowY(index) * sf()) < 1.0);
             screenshot("t05-scrolled.ppm");
+        }
+
+        // --- Z1: Command-wheel (Ctrl on Linux) zooms the time about the
+        // pointer; a pinch (the pugl fork's flagged scroll) too
+        {
+#ifdef __APPLE__
+            const std::uint32_t command = dgl::kModifierSuper;
+#else
+            const std::uint32_t command = dgl::kModifierControl;
+#endif
+            const float  rowsBefore = canvas.scroll();
+            const Tick   under      = canvas.xTick(static_cast<float>(laneX() / sf()));
+            scroll(laneX(), laneY(1), 2, command);
+            check("Command-wheel zooms the lanes in", std::abs(canvas.zoom - 1.5625f) < 1e-3f, std::to_string(canvas.zoom));
+            check("about the pointer", std::abs(canvas.tickX(under) - laneX() / sf()) < 1.0,
+                  std::to_string(canvas.tickX(under) - laneX() / sf()));
+            check("and doesn't scroll the rows", canvas.scroll() == rowsBefore);
+            scroll(laneX(), laneY(1), -2, 0, dgl::kFlagMagnify);
+            check("a pinch zooms back out", std::abs(canvas.zoom - 1.0f) < 1e-3f, std::to_string(canvas.zoom));
+            check("still about the pointer", std::abs(canvas.tickX(under) - laneX() / sf()) < 1.0);
+            for (int i = 0; i < 20; ++i) scroll(laneX(), laneY(1), -4, command);
+            check("zooming out stops at an eighth", canvas.zoom == 0.125f, std::to_string(canvas.zoom));
+            screenshot("t05b-zoomed-out.ppm");
+            canvas.zoom    = 1;   // the checks after this are at zoom 1
+            canvas.scrollX = 0;
+            canvas.refresh();
         }
 
         // --- the monitor's View toggle, a resize

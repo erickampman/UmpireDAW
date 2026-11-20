@@ -372,6 +372,13 @@ if(UMPIRE_BUILD_PLUGIN)
             COMMAND ${CMAKE_COMMAND} -E rm -rf "${UMPIRE_AUV2_DIR}/Umpire.component"
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                     "$<TARGET_BUNDLE_DIR:umpire-auv2>" "${UMPIRE_AUV2_DIR}/Umpire.component"
+            # The Info.plist with AudioComponents, which macOS needs to see an Audio Unit at
+            # all. clap-wrapper copies it into the bundle only when the binary links; a CMake
+            # re-run afterwards rewrites the bundle's from the plain template (2026-11-20:
+            # Logic then said Umpire wasn't available). The signature doesn't cover it.
+            COMMAND ${CMAKE_COMMAND} -E copy
+                    "${CMAKE_CURRENT_BINARY_DIR}/umpire-auv2-build-helper-output/auv2_Info.plist"
+                    "${UMPIRE_AUV2_DIR}/Umpire.component/Contents/Info.plist"
             DEPENDS umpire-auv2
             VERBATIM
             COMMENT "Copying Umpire.component into ${UMPIRE_AUV2_DIR}")
@@ -394,6 +401,7 @@ umpire_add_test(test-playback         tests/PlaybackTests.cpp)
 umpire_add_test(test-audio-engine     tests/AudioEngineTests.cpp)
 umpire_add_test(test-files           tests/FileTests.cpp)
 umpire_add_test(test-clip-edit       tests/ClipEditTests.cpp)
+umpire_add_test(test-zoom            tests/ZoomTests.cpp)
 
 if(UMPIRE_BUILD_PLUGIN)
     add_executable(test-plugin-engine tests/PluginEngineTests.cpp)

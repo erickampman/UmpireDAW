@@ -649,6 +649,29 @@ what P3 left:
   plugin's view, so Backspace there deleted Umpire itself. A real text
   field gets them.
 
+## Zoom (milestone Z1, decided 2026-11-20)
+
+Agreed with the author on the Mac before it was built
+([plugin-version.md](plugin-version.md), "Z1"); the recommended option each
+time:
+- **Horizontal zoom about the pointer**, Command-wheel on the Mac and
+  Ctrl-wheel on Linux, a notch 1.25x, as StageHand's sequence editor; a
+  two-finger pinch on a Mac trackpad zooms too.
+- **The plugin's lane and grid zoom separately**: each zooms when the
+  pointer is over it, keeping its own scale (the lane for the overview, the
+  grid for editing).
+- **From an eighth to eight times** each view's width at 1.
+- **The plugin's state keeps the zoom** (version 5) **without marking the
+  project changed**: it isn't music. Older states open at 1.
+- **The app's track view zooms too**; its session doesn't keep the zoom.
+- **A zoom counts as scrolling by hand**: paging while the host plays stops
+  until the next play.
+- **The pinch is a flagged Command-scroll** in the pugl fork
+  (`PUGL_IS_MAGNIFY`, DGL's `kFlagMagnify`), its delta in Command-wheel
+  notches, rather than a new event type: pugl's and DGL's APIs stay as
+  they are, and apps that zoom on Command-wheel get the pinch for free
+  (DPF fork's README.fork.md).
+
 ## Deferred
 
 - **Per-note pitch bend and per-note controllers:** consider early how such

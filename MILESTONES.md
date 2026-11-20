@@ -10,6 +10,7 @@
   Its clicks reach the window only while nothing else has the keys: run it
   with the Mac otherwise idle (2026-11-19, P4). With a second screen of
   another scale it also moves its window there and back (2026-11-20).
+  Since Z1 it zooms the grid and the lane with Command-wheel.
 - AUv2 (Mac): cmake --build build --target install-auv2, then
   auval -v aumu Umpr nLKL
 
@@ -209,17 +210,21 @@ S2 and R1 to R6.
   Logic and MainStage on the Mac, for the AUv2); the other open-source
   hosts (Qtractor, Carla, Zrythm)
 
-## Proposed: zoom (not yet scheduled)
+## Zoom
 
-Asked for 2026-11-01: Umpire has no zoom yet; the track view's beat
+Asked for 2026-11-01: Umpire had no zoom; the track view's beat
 (`TrackCanvas::kBeatW`) and the grid's step and row (`GridCanvas::kStepW`,
-`kRowH`) are fixed.
+`kRowH`) were fixed.
 
-- Z1. [ ] Horizontal zoom in the track view and the grid, about the
-  pointer, as StageHand's sequence editor (Cmd-wheel on the Mac, Ctrl-wheel
-  on Linux); a two-finger pinch on a Mac trackpad zooms too, which needs
-  the pugl fork to pass on `magnifyWithEvent:` (today `mac.m` only has
-  `scrollWheel:`), pushed before Umpire's pin moves
+- Z1. [x] Horizontal zoom in the plugin's lane and grid and the app's track
+  view and grid, about the pointer, as StageHand's sequence editor
+  (Cmd-wheel on the Mac, Ctrl-wheel on Linux); a two-finger pinch on a Mac
+  trackpad zooms too, through the pugl fork's `magnifyWithEvent:`. The lane
+  and the grid zoom separately, from 1/8x to 8x; the plugin's state
+  (version 5) keeps both without marking the project changed. *Built
+  2026-11-20 on the Mac* (plugin-version.md, "Z1"; decisions.md, "Zoom").
+  Left: the author's checks in hosts (a pinch in REAPER, Bitwig, Logic),
+  and Linux (Ctrl-wheel)
 - Later: the zoom levels of ui-direction.md ("Zoom replaces opening
   things": Sections, Bars, Notes, Expression), editing notes in the lane
 

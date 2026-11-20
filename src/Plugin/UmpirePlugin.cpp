@@ -251,6 +251,7 @@ public:
     std::uint64_t                          seenChanges = 0;
     bool                                   sourceConnected = false;
     InputChoice                            inputChoice;   // P4: chosen in the window, kept in the state
+    ViewZoom                               zoom;          // Z1: the window's, kept in the state; not dirtying
     bool                                   inputMissing = false;   // the source chosen isn't here
 
     // Main-loop services forwarded for the synth: the host's ids to ours.
@@ -1022,6 +1023,7 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
     saved.synthState   = std::move(synth.state);
     saved.armed        = self->armed.load();
     saved.input        = self->inputChoice;
+    saved.zoom         = self->zoom;
     const std::vector<std::uint8_t> bytes = encodeState(saved);
     std::size_t                     at    = 0;
     while (at < bytes.size()) {
@@ -1029,8 +1031,9 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
         if (n <= 0) return false;
         at += static_cast<std::size_t>(n);
     }
-    self->log("saved: %zu takes, %zu bytes of clips, synth %s, state %zu bytes, record %s", saved.takes.size(), clipBytes,
-              saved.synthId.empty() ? "none" : saved.synthId.c_str(), saved.synthState.size(), saved.armed ? "on" : "off");
+    self->log("saved: %zu takes, %zu bytes of clips, synth %s, state %zu bytes, record %s, zoom %.2f lane, %.2f grid",
+              saved.takes.size(), clipBytes, saved.synthId.empty() ? "none" : saved.synthId.c_str(), saved.synthState.size(),
+              saved.armed ? "on" : "off", static_cast<double>(saved.zoom.lane), static_cast<double>(saved.zoom.grid));
     return true;
 }
 
@@ -1104,6 +1107,7 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
             synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
     }
     if (!(saved.input == self->inputChoice)) self->chooseInput(saved.input);
+    self->zoom = saved.zoom;   // an open window reads it as it draws
     self->log("loaded: %zu takes, %zu events; synth %s, state %s; record %s", takeCount, events,
               self->synth ? self->synth->descriptor().name.c_str()
                           : self->missingSynth.name.empty() ? "none" : (self->missingSynth.name + " (not here)").c_str(),
@@ -1424,6 +1428,7 @@ bool guiSetParent(const clap_plugin_t* p, const clap_window_t* parentWindow) {
         return items;
     };
     links.chooseSynth = [self](const std::string& id) { self->chooseSynth(id); };
+    links.zoom        = &self->zoom;
     unsigned w = 0, h = 0;
     double   scale = 1;
     windowSize(self, w, h, scale);

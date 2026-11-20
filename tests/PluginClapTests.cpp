@@ -2,7 +2,7 @@
 // Umpire.clap, loaded through uw-core's CLAP host as a host would load it.
 // Its descriptor and ports, a few blocks, and its state: a saved clip goes
 // in, comes back out byte for byte, and a state that isn't Umpire's is
-// refused. Its setup file (UMPIRE_PLUGIN_CONF, set by CTest) says no synth
+// refused (since Z1, the window's zoom with it). Its setup file (UMPIRE_PLUGIN_CONF, set by CTest) says no synth
 // and no MIDI input, so it's silent and needs neither.
 
 #include <cstdio>
@@ -132,6 +132,27 @@ int main(int argc, char** argv) {
           state.synthChosen && state.synthId == in.synthId && state.synthPath == in.synthPath &&
               state.synthName == in.synthName && state.synthState == in.synthState);
     check("and so is an input that isn't here", state.input == in.input);
+
+    // Z1: the window's zoom comes back through the plugin's state (version
+    // 5); a version 4 state, with none, opens at 1.
+    in.zoom          = plugin::ViewZoom{2.5f, 0.5f};
+    const auto zoomed = plugin::encodeState(in);
+    check("a version 5 state loads", plugin->loadState(reinterpret_cast<const std::byte*>(zoomed.data()), zoomed.size()));
+    saved.clear();
+    plugin->saveState(saved);
+    check("the zoom comes back",
+          plugin::decodeState(reinterpret_cast<const std::uint8_t*>(saved.data()), saved.size(), state, error) &&
+              state.zoom == in.zoom,
+          error);
+    std::vector<std::uint8_t> v4(zoomed.begin(), zoomed.end() - 8);   // no zoom
+    v4[4] = 4;
+    check("a version 4 state loads too", plugin->loadState(reinterpret_cast<const std::byte*>(v4.data()), v4.size()));
+    saved.clear();
+    plugin->saveState(saved);
+    check("and opens at zoom 1",
+          plugin::decodeState(reinterpret_cast<const std::uint8_t*>(saved.data()), saved.size(), state, error) &&
+              state.zoom == plugin::ViewZoom{} && state.takes.size() == 2 && state.takes[0].name == "Verse",
+          error);
 
     const std::byte junk[] = {std::byte{'R'}, std::byte{'I'}, std::byte{'F'}, std::byte{'F'}, std::byte{0}, std::byte{0},
                               std::byte{0},   std::byte{0}};

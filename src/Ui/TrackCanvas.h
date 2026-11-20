@@ -10,7 +10,10 @@
 // A click on the ruler moves the playhead; a drag along it sets the loop (to
 // the beat) and turns looping on; L turns it on and off. A clip is selected
 // by a click, moved along its lane by a drag (to the beat; Shift: freely),
-// deleted with Delete, and opened in the grid by a double click.
+// deleted with Delete, and opened in the grid by a double click. The wheel
+// scrolls the rows, Shift+wheel or a sideways swipe the time (a two-finger
+// drag keeps to the axis it started on, Ui/ScrollAxis.h), and
+// Command-wheel (Ctrl on Linux) or a pinch zooms the time about the pointer.
 //
 // Rows line up across the two layers: both place row i at rowY(i), from the
 // same scroll position, which the canvas keeps.
@@ -24,6 +27,7 @@
 
 #include "App/TrackController.h"
 #include "Ui/Probe.h"
+#include "Ui/ScrollAxis.h"
 
 namespace umpire::ui {
 
@@ -34,7 +38,7 @@ public:
     static constexpr float kHeaderW = 390;   // the track headers' column
     static constexpr float kRowH    = 58;    // a track's row and lane
     static constexpr float kRulerH  = 24;
-    static constexpr float kBeatW   = 24;    // a quarter note on the timeline
+    static constexpr float kBeatW   = 24;    // a quarter note on the timeline, at zoom 1
 
     TrackCanvas(DGL_NAMESPACE::Window& window, TrackController& controller, Probe& probe);
     ~TrackCanvas() override;
@@ -48,8 +52,9 @@ public:
     float lanesH();    // down to the monitor, or the window's bottom
     float rowY(int index) { return lanesY() + static_cast<float>(index) * kRowH - scrollY; }
     int   rowAt(float y);   // -1 past the last row
-    float tickX(Tick t) const { return kHeaderW + static_cast<float>(t) / kTicksPerQuarter * kBeatW - scrollX; }
-    Tick  xTick(float x) const { return static_cast<Tick>((x - kHeaderW + scrollX) / kBeatW * kTicksPerQuarter); }
+    float beatW() const { return kBeatW * zoom; }   // a quarter note, zoomed
+    float tickX(Tick t) const { return kHeaderW + static_cast<float>(t) / kTicksPerQuarter * beatW() - scrollX; }
+    Tick  xTick(float x) const { return static_cast<Tick>((x - kHeaderW + scrollX) / beatW() * kTicksPerQuarter); }
     // The clip under a point on a lane, or 0.
     ClipRefId clipAt(float x, float y);
     bool      dragging() const noexcept { return dragRef != 0; }
@@ -85,6 +90,10 @@ private:
     std::unique_ptr<TrackPanels> imgui;
     float                        scrollY = 0;   // logical pixels from the first row
     float                        scrollX = 0;   // logical pixels from bar 1
+    // Z1: the timeline's zoom (Ui/Zoom.h), a factor on kBeatW; Command-wheel
+    // (Ctrl on Linux) or a pinch over the lanes. Not saved in the session.
+    float                        zoom    = 1;
+    ScrollAxis                   axes;   // a two-finger drag keeps to one axis
     Tick                         lastPosition = 0;   // the playhead, as refresh() last saw it
     // A clip being dragged: where it was grabbed, and where it would go.
     ClipRefId                    dragRef = 0;

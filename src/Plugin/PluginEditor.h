@@ -55,6 +55,10 @@ struct EditorLinks {
     std::function<std::vector<InputItem>()> inputs;
     std::function<void(const InputChoice&)> chooseInput;
     std::function<bool()>                   inputMissing;   // the source chosen isn't here
+    // Z1: the lane's and the grid's zoom, the plugin's (its state keeps
+    // them, so they outlive the window); the window changes them. Null: the
+    // window keeps its own.
+    ViewZoom*                               zoom = nullptr;
 };
 
 class PluginEditor {

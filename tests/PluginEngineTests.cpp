@@ -17,10 +17,12 @@
 // steps, an imported clip, the state's version 4 and version 3 read, a step
 // outside the lane (the synth changed) undone and redone, and the synth
 // swapped while the engine runs, the old one let go of on the audio thread.
+// Z1 (testStateV5): the window's zoom in the state, version 4 read at 1.
 // Silent: no MIDI hardware, no audio, no window.
 
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <thread>
 #include <cstdio>
 #include <string>
@@ -999,6 +1001,37 @@ void testStateV4() {
           error);
 }
 
+// Z1: the window's zoom, the lane's and the grid's, in version 5.
+void testStateV5() {
+    SavedState s;
+    s.takes = {savedTake(0, {1, 2})};
+    s.input = InputChoice{InputMode::Named, "KeyLab 88", "KeyLab:MIDI"};
+    s.zoom  = ViewZoom{3.0f, 0.25f};
+    const auto  bytes = encodeState(s);
+    SavedState  back;
+    std::string error;
+    check("version 5: the zoom round-trips",
+          decodeState(bytes.data(), bytes.size(), back, error) && back.zoom == s.zoom && back.input == s.input &&
+              back.takes.size() == 1,
+          error);
+    check("version 5 is written", bytes.size() > 8 && bytes[4] == 5 && bytes[5] == 0);
+    check("a state cut inside the zoom is refused", !decodeState(bytes.data(), bytes.size() - 4, back, error), error);
+    // Version 4: everything up to the input, no zoom: read at 1.
+    std::vector<std::uint8_t> v4(bytes.begin(), bytes.end() - 8);
+    v4[4] = 4;
+    check("version 4 reads at zoom 1", decodeState(v4.data(), v4.size(), back, error) && back.zoom == ViewZoom{} &&
+                                           back.input == s.input,
+          error);
+    // Out of the range (a later version's, say) is brought into it; not a number is 1.
+    s.zoom         = ViewZoom{100.0f, 0.001f};
+    const auto far = encodeState(s);
+    check("a zoom out of range is clamped", decodeState(far.data(), far.size(), back, error) && back.zoom.lane == 8.0f &&
+                                                back.zoom.grid == 0.125f);
+    s.zoom         = ViewZoom{std::nanf(""), -std::numeric_limits<float>::infinity()};
+    const auto nan = encodeState(s);
+    check("a zoom that isn't a number is 1", decodeState(nan.data(), nan.size(), back, error) && back.zoom == ViewZoom{});
+}
+
 // A step outside the lane, as the plugin's "Change synth" is: each swap
 // puts back what it holds and returns what it replaced.
 struct Swapped final : LaneKeeper::OtherStep {
@@ -1131,6 +1164,7 @@ int main() {
     testEditor();
     testNamesAndScales();
     testStateV4();
+    testStateV5();
     testOtherSteps();
     testSynthSwap();
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");

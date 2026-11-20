@@ -28,6 +28,7 @@
 #include "Ui/GridPanels.h"
 #include "Ui/Probe.h"
 #include "Ui/Widgets.h"
+#include "Ui/Zoom.h"
 
 namespace umpire::plugin {
 
@@ -100,10 +101,12 @@ std::string fileName(const std::string& name) {
 // --- the lane: the takes in the host's time, above the grid ----------------------------
 
 // Laid out from the band's top: the ruler, the takes heard (newest on top),
-// and a strip for the parts of older takes that newer ones cover.
+// and a strip for the parts of older takes that newer ones cover. Its zoom
+// (Z1) is its own, not the grid's: a factor on kBeatW, the plugin's to keep.
 class LaneBand final : public ui::GridBand {
 public:
-    static constexpr float kRulerH = 16, kTakeH = 40, kStripH = 10, kGap = 3, kBeatW = 16;
+    static constexpr float kRulerH = 16, kTakeH = 40, kStripH = 10, kGap = 3;
+    static constexpr float kBeatW = 16;   // a beat at zoom 1
     static constexpr float kHeight = kRulerH + kGap + kTakeH + kGap + kStripH + 6;
 
     // The editor's state the band reads and changes.
@@ -115,6 +118,7 @@ public:
     std::function<bool()> hostPlaying;
     std::function<RecordMode()> recordMode;     // what starts a take, for the empty lane's hint
     Tick                  gridBar = 0;          // the grid's first tick, in the song
+    float*                zoom    = &ownZoom;   // the plugin's (EditorLinks::zoom), else its own
 
     float height(float) override { return kHeight; }
     bool  gridShown() override { return *selected != 0; }
@@ -127,7 +131,7 @@ public:
         if (rolling && !wasPlaying) handScrolled = false;
         wasPlaying = rolling;
         const float phX = tickX(playheadSong());
-        if (rolling && !handScrolled && (phX < scrollX || phX >= scrollX + width)) scrollX = phX - kBeatW;
+        if (rolling && !handScrolled && (phX < scrollX || phX >= scrollX + width)) scrollX = phX - beatW();
         clampScroll(width);
 
         vg.beginPath();
@@ -135,11 +139,19 @@ public:
         vg.fillColor(rgb(22, 23, 28));
         vg.fill();
 
-        // The ruler: the host's bars.
+        // The ruler: the host's bars. Zoomed out, a number every 2, 4, 8...
+        // bars, so they don't run together, and only those bars' lines once
+        // bars are under 6 px apart.
         vg.fontSize(11);
         vg.textAlign(dgl::NanoVG::ALIGN_LEFT | dgl::NanoVG::ALIGN_MIDDLE);
+        const float barW  = beatW() * 4;
+        Tick        every = 1;
+        while (barW * static_cast<float>(every) < 28) every *= 2;
         const Tick first = barStart(tickAt(0)), last = tickAt(width);
         for (Tick t = first; t <= last; t += kBar) {
+            const Tick bar      = t / kBar;
+            const bool numbered = ((bar % every) + every) % every == 0;
+            if (!numbered && barW < 6) continue;
             const float x = tickX(t) - scrollX;
             vg.beginPath();
             vg.moveTo(x, 0);
@@ -147,8 +159,9 @@ public:
             vg.strokeWidth(1);
             vg.strokeColor(rgb(52, 56, 66));
             vg.stroke();
+            if (!numbered) continue;
             vg.fillColor(rgb(130, 136, 150));
-            vg.text(x + 3, kRulerH / 2, std::to_string(t / kBar + 1).c_str(), nullptr);
+            vg.text(x + 3, kRulerH / 2, std::to_string(bar + 1).c_str(), nullptr);
         }
 
         const std::vector<ClipRef>& takes = view->takes;
@@ -266,11 +279,23 @@ public:
         return true;
     }
 
-    bool scroll(const dgl::Widget::ScrollEvent& ev, float, float) override {
-        // Either way through time, a beat a notch.
-        const double d = ev.delta.getX() != 0 ? ev.delta.getX() : ev.delta.getY();
-        scrollX -= static_cast<float>(d) * kBeatW * 4;
-        handScrolled = true;
+    bool scroll(const dgl::Widget::ScrollEvent& ev, float x, float) override {
+#ifdef __APPLE__
+        const bool command = (ev.mod & dgl::kModifierSuper) != 0;   // Cmd
+#else
+        const bool command = (ev.mod & dgl::kModifierControl) != 0;
+#endif
+        if (ui::Zoom::zooms(command, (ev.flags & dgl::kFlagMagnify) != 0)) {   // about the pointer
+            const float before = beatW();
+            *zoom              = ui::Zoom::by(*zoom, ui::Zoom::notches(ev.delta.getX(), ev.delta.getY()));
+            scrollX            = ui::Zoom::about(scrollX, x, before, beatW());
+        } else {
+            // Either way through time, a bar a notch at zoom 1: the same
+            // distance on screen, zoomed.
+            const double d = ev.delta.getX() != 0 ? ev.delta.getX() : ev.delta.getY();
+            scrollX -= static_cast<float>(d) * kBeatW * 4;
+        }
+        handScrolled = true;   // a zoom too: no paging until the next play
         return true;
     }
 
@@ -284,9 +309,10 @@ private:
         float               low = 60, high = 72;
     };
 
-    float tickX(Tick t) const { return static_cast<float>(static_cast<double>(t) / kTicksPerQuarter) * kBeatW; }
+    float beatW() const { return kBeatW * *zoom; }
+    float tickX(Tick t) const { return static_cast<float>(static_cast<double>(t) / kTicksPerQuarter) * beatW(); }
     Tick  tickAt(float x) const {
-        return static_cast<Tick>(std::floor((x + scrollX) / kBeatW * static_cast<float>(kTicksPerQuarter)));
+        return static_cast<Tick>(std::floor((x + scrollX) / beatW() * static_cast<float>(kTicksPerQuarter)));
     }
     void clampScroll(float width) {
         Tick lo = 0, hi = kBar * 8;
@@ -336,6 +362,7 @@ private:
     std::map<const Clip*, std::shared_ptr<const Clip>> keep;
     float scrollX      = -kBeatW;
     bool  handScrolled = false, wasPlaying = false;
+    float ownZoom      = 1;
 };
 
 // --- the window -------------------------------------------------------------------------
@@ -436,12 +463,14 @@ void PluginEditor::Impl::build() {
     band.playheadSong = [this] { return links.engine->position(); };
     band.hostPlaying  = [this] { return links.engine->hostPlaying(); };
     band.recordMode   = [this] { return links.engine->recordMode(); };
+    if (links.zoom != nullptr) band.zoom = &links.zoom->lane;   // the plugin keeps it: its state saves it
 
     {
         const dgl::Window::ScopedGraphicsContext context(window);
         canvas = std::make_unique<ui::GridCanvas>(window, model, probe);
     }
     canvas->setBand(&band);
+    if (links.zoom != nullptr) canvas->linkZoom(&links.zoom->grid);
     window.scaleChanged = [this] {
         if (!canvas) return;
         canvas->panels().rescale();

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "Ui/TrackPanels.h"
+#include "Ui/Zoom.h"
 
 namespace umpire::ui {
 
@@ -70,10 +71,10 @@ void TrackCanvas::refresh() {
     // in; scrolling ahead of the playhead by hand stays where it's put.
     const TransportModel& tr = controller.view().transport;
     const float laneW = static_cast<float>(getWidth()) / sf() - kHeaderW;
-    if (tr.playing && laneW > kBeatW * 4 && tickX(tr.position) > kHeaderW + laneW - kBeatW)
-        scrollX += laneW - kBeatW * 2;
+    if (tr.playing && laneW > beatW() * 4 && tickX(tr.position) > kHeaderW + laneW - beatW())
+        scrollX += laneW - beatW() * 2;
     if (tr.position < lastPosition && tickX(tr.position) < kHeaderW)
-        scrollX = static_cast<float>(tr.position) / kTicksPerQuarter * kBeatW - kBeatW * 2;
+        scrollX = static_cast<float>(tr.position) / kTicksPerQuarter * beatW() - beatW() * 2;
     lastPosition = tr.position;
     clampScroll();
     // While playing the view changes about 30 times a second (the playhead):
@@ -135,18 +136,25 @@ void TrackCanvas::onNanoDisplay() {
     }
     fontSize(11);
     textAlign(ALIGN_LEFT | ALIGN_MIDDLE);
-    const int firstBeat = static_cast<int>(std::floor(scrollX / kBeatW));
+    // Zoomed out, a beat's tick goes once beats are under 6 px apart, and
+    // the bars are numbered every 2, 4, 8... so the numbers don't run together.
+    const float bw        = beatW();
+    const bool  beatLines = bw >= 6;
+    int         every     = 1;
+    while (bw * static_cast<float>(beatsPerBar * every) < 28) every *= 2;
+    const int firstBeat = static_cast<int>(std::floor(scrollX / bw));
     for (int beat = firstBeat;; ++beat) {
-        const float x = x0 + static_cast<float>(beat) * kBeatW - scrollX;
+        const float x = x0 + static_cast<float>(beat) * bw - scrollX;
         if (x > W) break;
         const bool bar = beat % beatsPerBar == 0;
+        if (!bar && !beatLines) continue;
         beginPath();
         moveTo(x, ry + (bar ? 4.0f : kRulerH - 6.0f));
         lineTo(x, ry + kRulerH);
         strokeWidth(1);
         strokeColor(bar ? rgb(150, 156, 170) : rgb(80, 85, 98));
         stroke();
-        if (bar) {
+        if (bar && (beat / beatsPerBar) % every == 0) {
             fillColor(rgb(170, 176, 190));
             text(x + 4, ry + kRulerH / 2 - 2, std::to_string(beat / beatsPerBar + 1).c_str(), nullptr);
         }
@@ -184,8 +192,9 @@ void TrackCanvas::onNanoDisplay() {
     }
     const float rowsBottom = std::min(ly + lh, rowY(static_cast<int>(view.rows.size())));
     for (int beat = firstBeat; rowsBottom > ly; ++beat) {
-        const float x = x0 + static_cast<float>(beat) * kBeatW - scrollX;
+        const float x = x0 + static_cast<float>(beat) * bw - scrollX;
         if (x > W) break;
+        if (beat % beatsPerBar != 0 && !beatLines) continue;
         beginPath();
         moveTo(x, ly);
         lineTo(x, rowsBottom);
@@ -276,7 +285,7 @@ void TrackCanvas::drawClip(const ClipModel& clip, float y, float laneRight) {
         beginPath();
         for (const NoteSpan& n : *clip.notes) {
             const float nx = tickX(start + n.start);
-            const float nw = std::max(static_cast<float>(n.length) / kTicksPerQuarter * kBeatW, 1.5f);
+            const float nw = std::max(static_cast<float>(n.length) / kTicksPerQuarter * beatW(), 1.5f);
             const float ny = notesTop + (notesH - dash) * (1.0f - (static_cast<float>(n.pitch79) - low) / span);
             rect(nx, ny, nw, dash);
         }
@@ -376,14 +385,33 @@ bool TrackCanvas::onMotion(const MotionEvent& ev) {
 
 bool TrackCanvas::onScroll(const ScrollEvent& ev) {
     if (NanoTopLevelWidget::onScroll(ev)) return true;
-    const bool sideways = (ev.mod & dgl::kModifierShift) != 0 || ev.delta.getX() != 0;
-    if (sideways) {
-        const double d = ev.delta.getX() != 0 ? ev.delta.getX() : ev.delta.getY();
+#ifdef __APPLE__
+    const bool command = (ev.mod & dgl::kModifierSuper) != 0;   // Cmd
+#else
+    const bool command = (ev.mod & dgl::kModifierControl) != 0;
+#endif
+    if (Zoom::zooms(command, (ev.flags & dgl::kFlagMagnify) != 0)) {
+        // About the pointer, over the lanes; over the headers, about bar 1's edge.
+        const float x       = static_cast<float>(ev.pos.getX()) / sf();
+        const float pointer = std::max(0.0f, x - kHeaderW);
+        const float before  = beatW();
+        zoom                = Zoom::by(zoom, Zoom::notches(ev.delta.getX(), ev.delta.getY()));
+        scrollX             = Zoom::about(scrollX, pointer, before, beatW());
+        clampScroll();
+        refresh();
+        return true;
+    }
+    // A two-finger drag keeps to the axis it started on (Ui/ScrollAxis.h).
+    const double dx = ev.delta.getX(), dy = ev.delta.getY();
+    const bool   shift    = (ev.mod & dgl::kModifierShift) != 0;
+    const bool   locked   = axes.axisFor(dx, dy, ev.time) == ScrollAxis::Axis::Horizontal;
+    if (shift || locked) {
+        const double d = shift ? (dx != 0 ? dx : dy) : dx;
         scrollX -= static_cast<float>(d) * kBeatW * 2;
         clampScroll();
         refresh();
     } else {
-        scrollBy(static_cast<float>(ev.delta.getY()));
+        scrollBy(static_cast<float>(dy));
     }
     return true;
 }

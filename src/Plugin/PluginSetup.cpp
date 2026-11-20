@@ -1,9 +1,12 @@
 #include "Plugin/PluginSetup.h"
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <cstring>
 #include <sstream>
+
+#include "Ui/Zoom.h"
 
 namespace umpire::plugin {
 
@@ -25,7 +28,7 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return lower(haystack).find(lower(needle)) != std::string::npos;
 }
 
-constexpr std::uint32_t kVersion = 4;   // 1: the spike's one clip; 2: no flags; 3: no names, scales, choices
+constexpr std::uint32_t kVersion = 5;   // 1: the spike's one clip; 2: no flags; 3: no names, scales, choices; 4: no zoom
 
 void put32(std::vector<std::uint8_t>& out, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
@@ -117,6 +120,8 @@ std::vector<std::uint8_t> encodeState(const SavedState& state) {
     put32(out, static_cast<std::uint32_t>(state.input.mode));
     putString(out, state.input.name);
     putString(out, state.input.id);
+    put32(out, std::bit_cast<std::uint32_t>(state.zoom.lane));
+    put32(out, std::bit_cast<std::uint32_t>(state.zoom.grid));
     return out;
 }
 
@@ -230,6 +235,16 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
         return false;
     }
     state.input.mode = mode <= static_cast<std::uint32_t>(InputMode::None) ? static_cast<InputMode>(mode) : InputMode::Setup;
+    if (version < 5) return true;   // no zoom: at 1
+    std::uint32_t lane = 0, grid = 0;
+    if (!get32(lane) || !get32(grid)) {
+        error = "the state ends inside its zoom";
+        return false;
+    }
+    // Out of the range, a factor saved by a later version that zooms further,
+    // say, is brought into it; not a number, 1.
+    state.zoom.lane = ui::Zoom::clamp(std::bit_cast<float>(lane));
+    state.zoom.grid = ui::Zoom::clamp(std::bit_cast<float>(grid));
     return true;
 }
 

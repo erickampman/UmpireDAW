@@ -95,10 +95,18 @@ struct GridSelfTest {
         canvas.onCharacterInput(ev);
         key(static_cast<std::uint32_t>(c), false);
     }
-    bool scroll(double x, double y, double dy, std::uint32_t mod = 0) {
+    bool scrollXY(double x, double y, double dx, double dy) {
         dgl::Widget::ScrollEvent ev;
-        ev.time = ++time;
-        ev.mod  = mod;
+        ev.time  = ++time;
+        ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
+        ev.delta                = dgl::Point<double>(dx, dy);
+        return canvas.onScroll(ev);
+    }
+    bool scroll(double x, double y, double dy, std::uint32_t mod = 0, std::uint32_t flags = 0) {
+        dgl::Widget::ScrollEvent ev;
+        ev.time  = ++time;
+        ev.mod   = mod;
+        ev.flags = flags;
         ev.pos = ev.absolutePos = dgl::Point<double>(x, y);
         ev.delta                = dgl::Point<double>(0, dy);
         return canvas.onScroll(ev);
@@ -372,6 +380,40 @@ struct GridSelfTest {
             check("and the grid's columns go with it", at == 0, std::to_string(at));
             scroll(cellX(10), cellY(64), 5, dgl::kModifierShift);
             check("not past the start", canvas.scrollX == 0);
+            // A two-finger drag up the grid, a little sideways in each event,
+            // as a trackpad's: only the rows move (Ui/ScrollAxis.h). Then a
+            // sideways drag over the keys: nothing moves sideways.
+            {
+                time += 1000;   // a new gesture
+                const float y0 = canvas.scrollY;
+                scrollXY(cellX(10), cellY(64), 0.3, -0.6);
+                scrollXY(cellX(10), cellY(64), 0.5, -0.4);
+                scrollXY(cellX(10), cellY(64), 0.2, -0.8);
+                check("a two-finger drag up the grid scrolls only the rows",
+                      canvas.scrollY != y0 && canvas.scrollX == 0, std::to_string(canvas.scrollX));
+                time += 1000;   // a new gesture
+                scrollXY(canvas.gridX() / 2 * canvas.sf(), cellY(64), -2, 0);
+                check("over the keys a sideways drag doesn't scroll through time", canvas.scrollX == 0);
+                time += 1000;
+            }
+            // Z1: Command-wheel (Ctrl on Linux) zooms the columns about the
+            // pointer, and a pinch (the pugl fork's flagged scroll) too.
+#ifdef __APPLE__
+            const std::uint32_t command = dgl::kModifierSuper;
+#else
+            const std::uint32_t command = dgl::kModifierControl;
+#endif
+            const float px    = static_cast<float>(cellX(20) / canvas.sf());
+            const Tick  under = canvas.tickAt(px);
+            scroll(cellX(20), cellY(64), 3, command);
+            check("Command-wheel zooms the grid in", std::abs(canvas.zoom() - 1.953125f) < 1e-3f, std::to_string(canvas.zoom()));
+            check("about the pointer", std::abs(canvas.tickAt(px) - under) <= GridModel::kStep / 8,
+                  std::to_string(canvas.tickAt(px) - under));
+            check("and the rows stay", canvas.scrollY == rows);
+            scroll(cellX(20), cellY(64), -3, 0, dgl::kFlagMagnify);
+            check("a pinch zooms back out", std::abs(canvas.zoom() - 1.0f) < 1e-3f, std::to_string(canvas.zoom()));
+            canvas.setZoom(1);
+            canvas.scrollX = 0;
             model.steps = steps;
         }
 
