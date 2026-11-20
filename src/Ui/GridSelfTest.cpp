@@ -405,16 +405,51 @@ struct GridSelfTest {
 #endif
             const float px    = static_cast<float>(cellX(20) / canvas.sf());
             const Tick  under = canvas.tickAt(px);
+            const float rowsNow = canvas.scrollY;
             scroll(cellX(20), cellY(64), 3, command);
             check("Command-wheel zooms the grid in", std::abs(canvas.zoom() - 1.953125f) < 1e-3f, std::to_string(canvas.zoom()));
             check("about the pointer", std::abs(canvas.tickAt(px) - under) <= GridModel::kStep / 8,
                   std::to_string(canvas.tickAt(px) - under));
-            check("and the rows stay", canvas.scrollY == rows);
+            check("and the rows stay", canvas.scrollY == rowsNow);
             scroll(cellX(20), cellY(64), -3, 0, dgl::kFlagMagnify);
             check("a pinch zooms back out", std::abs(canvas.zoom() - 1.0f) < 1e-3f, std::to_string(canvas.zoom()));
             canvas.setZoom(1);
             canvas.scrollX = 0;
             model.steps = steps;
+        }
+
+        // --- a clip shown: its first note in the middle of the rows, a
+        // quarter of the way across (called directly, not through input)
+        {
+            const auto  keep  = model.notes;
+            const int   steps = model.steps;
+            const float sx = canvas.scrollX, sy = canvas.scrollY;
+            model.steps = 256;
+            GridNote first, later, top;
+            first.pitch = 70, first.start = 100 * GridModel::kStep;
+            top.pitch   = 66, top.start = 100 * GridModel::kStep;   // under it, in a chord
+            later.pitch = 110, later.start = 120 * GridModel::kStep;
+            model.notes = {later, top, first};
+            canvas.showFirstNote();
+            canvas.repaint();
+            pump(150);
+            const float rowMid = canvas.rowY(70) + GridCanvas::kRowH / 2 - canvas.scrollY;
+            check("a clip's first note opens in the middle of the rows",
+                  std::abs(rowMid - canvas.gridH() / 2) < GridCanvas::kRowH, std::to_string(rowMid - canvas.gridH() / 2));
+            const float across = canvas.tickX(first.start) - canvas.scrollX;
+            check("and a quarter of the way across", std::abs(across - canvas.gridW() / 4) < 1.0f,
+                  std::to_string(across - canvas.gridW() / 4));
+            later.start = 0;
+            model.notes = {later};
+            canvas.showFirstNote();
+            canvas.repaint();
+            pump(150);
+            check("one near the start leaves the grid at its start", canvas.scrollX == 0);
+            model.notes   = keep;
+            model.steps   = steps;
+            canvas.scrollX = sx, canvas.scrollY = sy;
+            canvas.repaint();
+            pump(80);
         }
 
         // --- resizing

@@ -1329,11 +1329,32 @@ two-finger drag up the grid (only the rows move) and a sideways one over
 the keys (nothing moves sideways), passing in the runs where the wheel
 reaches the grid. **The author's check**: in Logic, drag up and down in the
 grid, and over its keys; then sideways; a diagonal drag goes the way it
-starts. *Passed in Logic and REAPER (the author, 2026-11-20).*
+starts. *Passed in Logic, REAPER and Bitwig (the author, 2026-11-20).*
 
 **In hosts (the author, 2026-11-20):** zoom works, and so does scrolling
-after the axis fix, in Logic (the AUv2) and REAPER. Bitwig is still to
-check.
+after the axis fix, in Logic (the AUv2), REAPER and Bitwig.
+
+**The grid opens at the take's first note** (2026-11-20, asked by the
+author after the host checks; "more the vertical placement than the
+horizontal"). Before, the plugin's grid kept the rows where the last take
+left them (the canvas is made once, before any take is chosen, and was
+centred then on an empty grid near C5), so a take in another register
+opened on empty rows; the app's grid window centred on the clip's average
+pitch. Now, when a take is chosen (or the app's window opens), at the next
+draw, once the grid has its size, the first note (of a chord, its top) goes
+in the middle of the rows and a quarter of the way across, or at the
+grid's start if that's nearer (most takes: the grid starts at the bar the
+take starts in). Within the rows' range: a note near the bottom or top
+row stays as near the middle as the grid goes. An undo or edit of the same
+take doesn't move the view; while the host plays, paging still follows the
+playhead. `GridCanvas::showFirstNote()`, in place of `scrollHome()`. The
+grid's self-test checks it (called directly, not by input): a chord's top
+note in the middle and a quarter across; a first note near the start
+leaves the grid at its start. In this run (the Mac idle), the grid window's
+whole self-test passed, 0 failures, twice: its Mac-only input failures
+since P3 look like the Mac being in use, not the code. **The author's
+check**: choose takes in different registers, and open clips in the app.
+*Passed in Logic, REAPER and Bitwig (the author, 2026-11-20).*
 
 **Not in Z1:**
 - **Vertical zoom** (the grid's row height, `kRowH`), and keys for zooming

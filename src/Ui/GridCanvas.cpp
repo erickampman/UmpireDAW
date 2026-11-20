@@ -112,6 +112,19 @@ void GridCanvas::centreOn(int row) {
     scrollY = rowY(row) + kRowH / 2 - gridH() / 2;
 }
 
+void GridCanvas::placeFirstNote(float gw) {
+    if (model.notes.empty()) {
+        scrollX = 0;
+        return;
+    }
+    // The first note; of a chord, its top.
+    const GridNote* first = &model.notes.front();
+    for (const GridNote& n : model.notes)
+        if (n.start < first->start || (n.start == first->start && n.pitch > first->pitch)) first = &n;
+    centreOn(first->pitch);
+    scrollX = tickX(first->start) - gw / 4;
+}
+
 void GridCanvas::changed() {
     imgui->wake();   // the inspector shows the selection
     repaint();
@@ -129,6 +142,10 @@ void GridCanvas::onNanoDisplay() {
     if (model.edo != tunedEdo || model.referenceNote != tunedReference) {
         centreOn(model.rowFor(static_cast<std::uint16_t>(std::lround(std::clamp(centrePitch, 0.0, 127.99) * 512))));
         tunedEdo = model.edo, tunedReference = model.referenceNote;
+    }
+    if (firstNotePending && gw > 0 && gh > 0) {
+        firstNotePending = false;
+        placeFirstNote(gw);
     }
     scrollY     = std::clamp(scrollY, 0.0f, std::max(0.0f, static_cast<float>(model.rows()) * kRowH - gh));
     clampScrollX();

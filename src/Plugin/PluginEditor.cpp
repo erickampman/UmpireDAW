@@ -508,7 +508,7 @@ void PluginEditor::Impl::choose(ClipRefId ref) {
     shownClip.reset();
     if (const ClipRef* t = selectedTake()) {
         showTake(*t);
-        canvas->scrollHome();
+        canvas->showFirstNote();
     }
     canvas->panels().wake();
     canvas->repaint();

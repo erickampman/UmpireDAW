@@ -55,8 +55,11 @@ public:
     GridPanels& panels() noexcept { return *imgui; }
     // The band above the grid (not owned; null: none, as in the app).
     void        setBand(GridBand* b) noexcept { band = b; }
-    // Scroll to the grid's start (another clip shown).
-    void        scrollHome() noexcept { scrollX = 0; }
+    // Another clip shown: at the next draw, once the grid has its size, the
+    // clip's first note (of a chord, its top) goes in the middle of the rows
+    // and a quarter of the way across (or the grid's start, if that's
+    // nearer). No notes: the start, the rows as they were.
+    void        showFirstNote() noexcept { firstNotePending = true; }
     // The horizontal zoom (Ui/Zoom.h): a factor on kStepW. Command-wheel or
     // a pinch over the grid changes it, about the pointer. The canvas keeps
     // its own unless linked to one that outlives it (the plugin's, which its
@@ -97,6 +100,7 @@ private:
     void  setPointer(DGL_NAMESPACE::MouseCursor cursor);
     float rowY(int pitch);
     void  centreOn(int row);   // scrolls so `row` is in the middle
+    void  placeFirstNote(float gw);   // what showFirstNote() asked for, `gw` the grid's width
     void  clampScrollX();
     void  changed();   // the model changed here: redraw, and the panels too
 
@@ -131,6 +135,7 @@ private:
     bool                    handScrolled = false;   // scrolled while playing: no paging until the next play
     bool                    wasPlaying   = false;
     ScrollAxis              axes;   // a two-finger drag keeps to one axis
+    bool                    firstNotePending = true;   // a clip shown: place its first note at the next draw
     float                   ownZoom      = 1;
     float*                  zoomFactor   = &ownZoom;
 };
