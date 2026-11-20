@@ -10,6 +10,10 @@
 //   synth = PlainOldSynth    the synth to host: a .clap's name in CLAP's
 //                            folders; "none" for none
 //   synth-id = ...           which plugin in that .clap (left out: its first)
+//   record = play            what starts a take: "host", the host's record
+//                            button; "play", the host playing (with the
+//                            arm); "off", nothing (a player, for live hosts);
+//                            left out, by the host (recordMode)
 // Since P4 the window chooses both for an instance, and its state keeps that.
 
 #include <cstddef>
@@ -27,7 +31,19 @@ struct Config {
     std::string input;                     // empty: choose
     std::string synth = "PlainOldSynth";   // "none": no synth
     std::string synthId;                   // empty: the .clap's first plugin
+    std::string record;                    // "host", "play", "off"; empty: by the host
 };
+
+// What starts a take. No host API says whether a host records at all, so
+// it's by the host's name, unless the setup file's `record` says:
+// - Off in live hosts (MainStage, StageHand), which don't record: Umpire is a
+//   MIDI 2.0 player there, its Record button disabled.
+// - Play in hosts that record but never say so (Logic Pro, GarageBand: Logic
+//   Pro 13 gives an Audio Unit playing, beats and tempo, never recording).
+// - Host elsewhere: the host's record button, with the arm.
+enum class RecordMode : std::uint8_t { Host, Play, Off };
+RecordMode recordMode(const std::string& record, const std::string& hostName);
+const char* recordModeName(RecordMode mode);
 
 Config parseConfig(const std::string& text);
 

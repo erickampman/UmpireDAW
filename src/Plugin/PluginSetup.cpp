@@ -53,8 +53,30 @@ Config parseConfig(const std::string& text) {
         if (key == "input") config.input = value;
         else if (key == "synth") config.synth = value;
         else if (key == "synth-id") config.synthId = value;
+        else if (key == "record") config.record = lower(value);
     }
     return config;
+}
+
+RecordMode recordMode(const std::string& record, const std::string& hostName) {
+    if (record == "host") return RecordMode::Host;
+    if (record == "play") return RecordMode::Play;
+    if (record == "off") return RecordMode::Off;
+    const auto startsWith = [&hostName](const char* name) { return hostName.rfind(name, 0) == 0; };
+    for (const char* name : {"MainStage", "StageHand"})
+        if (startsWith(name)) return RecordMode::Off;
+    for (const char* name : {"Logic Pro", "GarageBand"})
+        if (startsWith(name)) return RecordMode::Play;
+    return RecordMode::Host;
+}
+
+const char* recordModeName(RecordMode mode) {
+    switch (mode) {
+    case RecordMode::Host: return "host";
+    case RecordMode::Play: return "play";
+    case RecordMode::Off: return "off";
+    }
+    return "host";
 }
 
 int chooseSource(const std::vector<uw::MidiSourceInfo>& sources, const std::string& wanted) {

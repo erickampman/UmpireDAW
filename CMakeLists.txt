@@ -236,9 +236,13 @@ endif()
 # it opens its own MIDI input and hosts a CLAP synth through uw-core, so the
 # notes never pass through the host. DGL and ImGui only for its window (P3),
 # as the app's grid uses them; no DPF plugin wrapper. clap-wrapper (Unlikelyware's fork, `unlikelyware`, as
-# Retune pins it) makes the VST3, for Ardour.
+# Retune pins it) makes the VST3, for Ardour, and the AUv2 on the Mac, for Logic.
 option(UMPIRE_BUILD_PLUGIN "Build Umpire.clap" ON)
 option(UMPIRE_BUILD_VST3 "Build Umpire.vst3 via clap-wrapper" ON)
+option(UMPIRE_BUILD_AUV2 "Build Umpire.component (AUv2 instrument) via clap-wrapper (macOS)" ${APPLE})
+if(UMPIRE_BUILD_AUV2 AND NOT APPLE)
+    message(FATAL_ERROR "UMPIRE_BUILD_AUV2 is macOS-only. Reconfigure with -DUMPIRE_BUILD_AUV2=OFF.")
+endif()
 
 if(UMPIRE_BUILD_PLUGIN)
     # The engine, the lane and its thread, and the setup, without CLAP: the
@@ -301,16 +305,24 @@ if(UMPIRE_BUILD_PLUGIN)
         VERBATIM
         COMMENT "Symlinking Umpire.clap into ${UMPIRE_CLAP_DIR}")
 
-    if(UMPIRE_BUILD_VST3)
+    if(UMPIRE_BUILD_VST3 OR UMPIRE_BUILD_AUV2)
         if(APPLE)
-            enable_language(OBJC)   # the wrapper's Objective-C sources
+            enable_language(OBJC)   # the wrappers' Objective-C sources
         endif()
         set(CLAP_SDK_ROOT "${CMAKE_SOURCE_DIR}/external/uw-core/external/clap" CACHE PATH "" FORCE)
         set(VST3_SDK_ROOT "${CMAKE_SOURCE_DIR}/external/vst3sdk" CACHE PATH "" FORCE)
         if(UNIX AND NOT APPLE)
             set(TCLP_RESOURCE_DIRECTORY "")   # clap-wrapper's Linux branch tests a misspelled name (as Retune)
         endif()
+        if(UMPIRE_BUILD_AUV2 AND NOT AUDIOUNIT_SDK_ROOT)
+            # clap-wrapper fetches Apple's AudioUnitSDK itself unless AUDIOUNIT_SDK_ROOT names a copy
+            # (Retune's build/cpm/AudioUnitSDK will do).
+            set(CLAP_WRAPPER_DOWNLOAD_DEPENDENCIES ON)
+        endif()
         add_subdirectory(external/clap-wrapper EXCLUDE_FROM_ALL)
+    endif()
+
+    if(UMPIRE_BUILD_VST3)
         add_library(umpire-vst3 MODULE)
         umpire_add_plugin_sources(umpire-vst3)
         target_add_vst3_wrapper(
@@ -336,6 +348,33 @@ if(UMPIRE_BUILD_PLUGIN)
             DEPENDS umpire-vst3
             VERBATIM
             COMMENT "Symlinking Umpire.vst3 into ${UMPIRE_VST3_DIR}")
+    endif()
+
+    if(UMPIRE_BUILD_AUV2)
+        # For Logic, which loads only Audio Units. "aumu", an instrument (from the CLAP
+        # features); "Umpr" under Unlikelyware's "nLKL", as Retune's "Rtun".
+        add_library(umpire-auv2 MODULE)
+        umpire_add_plugin_sources(umpire-auv2)
+        target_add_auv2_wrapper(
+            TARGET            umpire-auv2
+            OUTPUT_NAME       "Umpire"
+            BUNDLE_IDENTIFIER "com.unlikelyware.umpire.auv2"
+            BUNDLE_VERSION    "${PROJECT_VERSION}"
+            MANUFACTURER_NAME "Unlikelyware"
+            MANUFACTURER_CODE "nLKL"
+            SUBTYPE_CODE      "Umpr"
+            INSTRUMENT_TYPE   "aumu")
+        # Copied, not symlinked, as Retune's and PlainOldSynth's: Logic's AU scan wants the bundle
+        # itself. Then `auval -v aumu Umpr nLKL` (BUILDING.md).
+        set(UMPIRE_AUV2_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/Components")
+        add_custom_target(install-auv2
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${UMPIRE_AUV2_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "${UMPIRE_AUV2_DIR}/Umpire.component"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "$<TARGET_BUNDLE_DIR:umpire-auv2>" "${UMPIRE_AUV2_DIR}/Umpire.component"
+            DEPENDS umpire-auv2
+            VERBATIM
+            COMMENT "Copying Umpire.component into ${UMPIRE_AUV2_DIR}")
     endif()
 endif()
 

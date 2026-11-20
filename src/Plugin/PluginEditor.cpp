@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <utility>
@@ -54,6 +55,21 @@ std::string position(Tick t) {
 
 namespace fs = std::filesystem;
 
+// DGL's window, telling us when its scale changes (DGL re-reads it on each
+// configure: a screen of another scale, or the right screen at last when it
+// opened with the wrong one), so ImGui's style and font follow, as the app's
+// windows do (Ui/MainWindow.cpp). NanoVG reads the scale as it draws.
+class ScaledWindow final : public dgl::Window {
+public:
+    using dgl::Window::Window;
+    std::function<void()> scaleChanged;
+
+protected:
+    void onScaleFactorChanged(double) override {
+        if (scaleChanged) scaleChanged();
+    }
+};
+
 // Where Export and Import start: the last folder used in this process, else
 // ~/Music, else home.
 std::string& lastFolder() {
@@ -97,6 +113,7 @@ public:
     std::function<void(ClipRefId)> contextMenu; // a take right-clicked
     std::function<Tick()> playheadSong;         // the host's position, song ticks
     std::function<bool()> hostPlaying;
+    std::function<RecordMode()> recordMode;     // what starts a take, for the empty lane's hint
     Tick                  gridBar = 0;          // the grid's first tick, in the song
 
     float height(float) override { return kHeight; }
@@ -138,7 +155,12 @@ public:
         if (takes.empty()) {
             vg.fontSize(13);
             vg.fillColor(rgb(150, 156, 170));
-            vg.text(12, kRulerH + kGap + kTakeH / 2, "Turn on Record and record in the host to make a take.", nullptr);
+            const RecordMode mode = recordMode ? recordMode() : RecordMode::Host;
+            vg.text(12, kRulerH + kGap + kTakeH / 2,
+                    mode == RecordMode::Play  ? "Turn on Record and play in the host to make a take."
+                    : mode == RecordMode::Off ? "No takes. Recording is off in this host: Umpire plays what you play."
+                                              : "Turn on Record and record in the host to make a take.",
+                    nullptr);
         }
         const float takeY = kRulerH + kGap, stripY = takeY + kTakeH + kGap;
         // The covered parts first, oldest first, as a strip under the takes.
@@ -356,7 +378,7 @@ struct PluginEditor::Impl {
     double           scale;
     std::uintptr_t   parentView;   // the host's view we're embedded in
     dgl::Application app;
-    dgl::Window      window;
+    ScaledWindow     window;
     GridModel        model;
     ui::Probe        probe;
     LaneBand         band;
@@ -413,12 +435,19 @@ void PluginEditor::Impl::build() {
     band.contextMenu  = [this](ClipRefId ref) { menuFor = ref, openMenu = true; };
     band.playheadSong = [this] { return links.engine->position(); };
     band.hostPlaying  = [this] { return links.engine->hostPlaying(); };
+    band.recordMode   = [this] { return links.engine->recordMode(); };
 
     {
         const dgl::Window::ScopedGraphicsContext context(window);
         canvas = std::make_unique<ui::GridCanvas>(window, model, probe);
     }
     canvas->setBand(&band);
+    window.scaleChanged = [this] {
+        if (!canvas) return;
+        canvas->panels().rescale();
+        canvas->panels().wake(2);
+        canvas->repaint();
+    };
     ui::GridPanels& panels      = canvas->panels();
     panels.hooks.fileMenu       = false;
     // P4: the take's name and scale are the take's, each an undo step; the
@@ -485,14 +514,31 @@ void PluginEditor::Impl::follow(bool force) {
 }
 
 void PluginEditor::Impl::record() {
-    const bool  armed = links.armed && links.armed();
-    const float h     = ImGui::GetFrameHeight() * 0.86f;
+    const RecordMode mode = links.engine->recordMode();
+    const float      h    = ImGui::GetFrameHeight() * 0.86f;
     ImGui::SetCursorPosY((ImGui::GetFrameHeight() - h) / 2 + 1);
+    // A live host never records: the button stays, shown off and disabled
+    // (the author's choice), so the header looks the same in every host.
+    if (mode == RecordMode::Off) {
+        ImGui::BeginDisabled();
+        ui::toggle("##record", "Record", false, col::kRecord, ImVec2(5.0f * ImGui::GetFontSize(), h));
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Recording is off in this host: Umpire plays what you play.\n"
+                              "\"record =\" in Umpire's setup file turns it on.");
+        ImGui::SameLine();
+        return;
+    }
+    const bool armed = links.armed && links.armed();
     if (ui::toggle("##record", "Record", armed, col::kRecord, ImVec2(5.0f * ImGui::GetFontSize(), h)) && links.setArmed)
         links.setArmed(!armed);
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip(armed ? "Records while the host records. Click to stop recording here."
-                                : "Off: the host's recording makes no take here. Click to record with the host.");
+        ImGui::SetTooltip(mode == RecordMode::Play
+                              ? (armed ? "Records whenever the host plays (this host doesn't say when it records).\n"
+                                         "A pass where you play nothing leaves no take. Click to stop recording here."
+                                       : "Off: playing in the host makes no take here. Click to record when the host plays.")
+                              : (armed ? "Records while the host records. Click to stop recording here."
+                                       : "Off: the host's recording makes no take here. Click to record with the host."));
     ImGui::SameLine();
 }
 
@@ -794,8 +840,13 @@ void PluginEditor::setSize(unsigned width, unsigned height, double scale) {
     impl->window.setSize(static_cast<uint>(std::lround(width * scale)), static_cast<uint>(std::lround(height * scale)));
 }
 
+bool PluginEditor::fits(unsigned width, unsigned height) const {
+    return viewHasSize(impl->window.getNativeWindowHandle(), width, height);
+}
+
 #ifndef __APPLE__
 double parentScale(std::uintptr_t) { return 1.0; }
+bool   viewHasSize(std::uintptr_t, unsigned, unsigned) { return true; }
 #endif
 
 } // namespace umpire::plugin

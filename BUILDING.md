@@ -14,7 +14,7 @@ StageHand and KeyboardEDO where noted:
 | `external/uw-core` | the code shared with StageHand: UMP, the clock and queues, the plugin seam and CLAP host, the MIDI and audio backends (namespace `uw`); brings the CLAP SDK as its own submodule | private (`erickampman/uw-core`) |
 | `external/dpf` | the DPF fork, for DGL (windows, NanoVG); pins the pugl fork as its own submodule | private (`erickampman/DPF`, `erickampman/pugl`) |
 | `external/DPF-Widgets` | only for Dear ImGui's sources (1.91.9b) and DPF's patch to them | public (DISTRHO) |
-| `external/clap-wrapper` | the plugin's VST3 build: Unlikelyware's fork, branch `unlikelyware` (v0.16.0 and its AUv2 changes), pinned at `a436757` as in Retune | public (`erickampman/clap-wrapper`) |
+| `external/clap-wrapper` | the plugin's VST3 and AUv2 builds: Unlikelyware's fork, branch `unlikelyware` (v0.16.0 and its AUv2 changes), pinned at `01f838b` (Retune's `a436757` plus the AUv2 transport and offline-render fixes) | public (`erickampman/clap-wrapper`) |
 | `external/vst3sdk` | Steinberg's VST3 SDK for clap-wrapper, pinned as in Retune; only its `base`, `cmake`, `pluginterfaces` and `public.sdk` are fetched | public (Steinberg) |
 
 Everything else is a system library. While uw-core, DPF and pugl are
@@ -96,6 +96,23 @@ and `VST3` on the Mac, `~/.clap` and `~/.vst3` on Linux):
 
 ```bash
 cmake --build build --target install-clap install-vst3
+```
+
+On the Mac the build also makes `build/Umpire.component`, an AUv2
+instrument for Logic (`-DUMPIRE_BUILD_AUV2=OFF` leaves it out; on trial
+since 2026-11-20, docs/plugin-version.md, "AUv2 for Logic"). clap-wrapper
+fetches Apple's AudioUnitSDK at configure time unless `AUDIOUNIT_SDK_ROOT`
+names a copy, such as Retune's:
+`-DAUDIOUNIT_SDK_ROOT=$HOME/Dev-MIDI/Retune/build/cpm/AudioUnitSDK`.
+`install-auv2` copies it into `~/Library/Audio/Plug-Ins/Components`; then
+validate it as Logic will:
+
+```bash
+cmake --build build --target install-auv2
+```
+
+```bash
+auval -v aumu Umpr nLKL
 ```
 
 docs/plugin-version.md ("The spike, built") says how it's set up and where

@@ -242,7 +242,9 @@ int main(int argc, char** argv) {
     };
 
     // The steps, a second apart: lane alone; Take 1 selected; Record on; a
-    // note added in the grid; undone.
+    // note added in the grid; undone; on a screen of another scale; back.
+    bool    moved      = false;
+    NSPoint homeOrigin = NSZeroPoint;
     std::vector<std::function<void()>> steps = {
         [&] { shot("1-lane"); },
         [&] { click(30, 62); },   // Take 1, at beat 1 in the lane (the ruler 16, a gap, the takes 40)
@@ -266,6 +268,29 @@ int main(int argc, char** argv) {
         [&] {
             shot("5-undone");
             check("Cmd+Z undoes it, through the lane", notesOfTake(0) == 16, std::to_string(notesOfTake(0)));
+            // Then to a screen of another backing scale, if there is one (a
+            // Retina laptop and a 1x monitor), and back: the window should
+            // draw there as here.
+            const double here = [window backingScaleFactor];
+            for (NSScreen* s in [NSScreen screens]) {
+                if ([s backingScaleFactor] == here) continue;
+                homeOrigin = [window frame].origin;
+                const NSRect v = [s visibleFrame];
+                [window setFrameOrigin:NSMakePoint(v.origin.x + 80, v.origin.y + 80)];
+                std::printf("moved to a screen at %.1f (from %.1f)\n", [s backingScaleFactor], here);
+                moved = true;
+                break;
+            }
+            if (!moved) std::printf("no screen of another scale: the move isn't checked\n");
+        },
+        [&] {
+            if (moved) shot("6-other-screen");
+        },
+        [&] {
+            if (moved) [window setFrameOrigin:homeOrigin];
+        },
+        [&] {
+            if (moved) shot("7-back");
         },
         [&] {
             gui->destroy(p);

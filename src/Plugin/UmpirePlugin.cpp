@@ -282,6 +282,10 @@ public:
     // the state and the log.
     std::atomic<bool> armed{true};          // on in a new instance (plugin-version.md, "The arm")
     bool              loggedArmed = true;    // main thread
+    // The host's transport flags at the last block's start, as the host gave them
+    // (CLAP_TRANSPORT_*; ~0u for no transport), and the last logged.
+    std::atomic<std::uint32_t> transportFlags{~0u};
+    std::uint32_t              loggedTransportFlags = ~0u - 1;   // main thread
 
     // The Record button pressed in the window: 0 or 1 for the audio thread
     // (or params flush) to apply and tell the host, as a gesture; -1 none.
@@ -449,6 +453,14 @@ bool Plugin::init() {
         ensureMidi();
         if (midi) openInput();
     }
+
+    const RecordMode mode = recordMode(config.record, host->name ? host->name : "");
+    engine.setRecordMode(mode);
+    const char* why = !config.record.empty() ? "the setup file" : "by the host";
+    if (mode == RecordMode::Play)
+        log("record on play (%s): a take starts when the host plays with Record on", why);
+    else if (mode == RecordMode::Off)
+        log("record off (%s): a player, nothing is recorded", why);
 
     if (hostTimer != nullptr && !hostTimer->register_timer(host, 50, &ownTimer)) ownTimer = CLAP_INVALID_ID;
     keeper.start();   // takes reach the lane with or without the host's main thread
@@ -739,6 +751,25 @@ void Plugin::housekeeping() {
         loggedArmed = armed.load();
         log(loggedArmed ? "record: armed" : "record: off");
     }
+    // Which of the host's transport flags it gives, when they change: recording
+    // needs playing, beats and recording (with the arm), so a host that leaves
+    // one out shows here.
+    if (const std::uint32_t f = transportFlags.load(std::memory_order_relaxed); f != loggedTransportFlags) {
+        loggedTransportFlags = f;
+        if (f == ~0u) {
+            log("transport: none from the host");
+        } else {
+            log("transport: %s%s%s%s%s%s%s%s",
+                (f & CLAP_TRANSPORT_IS_PLAYING) ? "playing" : "stopped",
+                (f & CLAP_TRANSPORT_IS_RECORDING) ? ", recording" : "",
+                (f & CLAP_TRANSPORT_IS_WITHIN_PRE_ROLL) ? ", pre-roll" : "",
+                (f & CLAP_TRANSPORT_IS_LOOP_ACTIVE) ? ", loop" : "",
+                (f & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) ? ", beats" : ", no beats",
+                (f & CLAP_TRANSPORT_HAS_SECONDS_TIMELINE) ? ", seconds" : "",
+                (f & CLAP_TRANSPORT_HAS_TEMPO) ? ", tempo" : "",
+                (f & CLAP_TRANSPORT_HAS_TIME_SIGNATURE) ? ", meter" : "");
+        }
+    }
     if (engine.recording() != wasRecording) {
         wasRecording = engine.recording();
         log(wasRecording ? "recording" : "recording stopped");
@@ -889,6 +920,8 @@ clap_process_status pluginProcess(const clap_plugin_t* p, const clap_process_t* 
     b.frames = process->frames_count;
     b.now    = uw::nowNanoseconds();
     if (process->transport != nullptr) b.transport = fromClap(*process->transport);
+    self->transportFlags.store(process->transport != nullptr ? process->transport->flags : ~0u,
+                               std::memory_order_relaxed);
     bool armed = self->armed.load(std::memory_order_relaxed);
     if (const int pressed = self->guiArm.exchange(-1); pressed >= 0) {   // the window's Record button
         armed = pressed == 1;
@@ -1241,8 +1274,10 @@ void Plugin::stopGuiTimer() {
 void Plugin::guiTick() {
     if (!window) return;
 #ifdef __APPLE__
-    // Moved to a screen of another scale: sized again, in its pixels.
-    if (const double now = parentScale(guiParent); now != guiScale) {
+    // Moved to a screen of another scale, or sized with the wrong screen's
+    // (opened before the view was in the host's window, when the main screen
+    // was another scale, or mid-drag): sized again, in this screen's pixels.
+    if (const double now = parentScale(guiParent); now != guiScale || !window->fits(guiWidth, guiHeight)) {
         guiScale = now;
         window->setSize(guiWidth, guiHeight, guiScale);
     }

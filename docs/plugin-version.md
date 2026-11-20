@@ -238,7 +238,8 @@ yet.
   `build/Umpire.vst3` through clap-wrapper. Both are built as Retune builds
   them: the CLAP entry point is ours, `clap_entry` is the only export, and
   uw-core is linked in with hidden symbols. New submodules
-  `external/clap-wrapper` (the fork, `unlikelyware`, at `a436757`) and
+  `external/clap-wrapper` (the fork, `unlikelyware`, at `a436757`; at
+  `01f838b` since the AUv2, below) and
   `external/vst3sdk` are pinned as in Retune. The CLAP SDK is uw-core's. No
   AUv2 yet. `install-clap` and `install-vst3` link the bundles into the
   user's plugin folders (BUILDING.md).
@@ -254,6 +255,10 @@ yet.
   ```
   input = KeyboardEDO      # part of a source's name or id; "none"; left out, it chooses
   synth = PlainOldSynth    # a .clap's name in CLAP's folders, or a path; "none"
+  record = play            # "host": its record button starts a take; "play": its playing
+                           # does, with Record on; "off": nothing records (a player);
+                           # left out, "off" in MainStage and StageHand, "play" in Logic
+                           # and GarageBand, else "host"
   ```
   Left out, the input is KeyboardEDO's if there is one, else the first MIDI
   2.0 source, else the first hardware one. With nothing found it tries again
@@ -1098,6 +1103,93 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
 **What it replaces:** milestones 13 to 18, T1, S1, S2 and the plugin-routing
 proposal (R1 to R6). Milestone 12 becomes a question for P2. Zoom (Z1)
 carries over to the plugin's lane and grid.
+
+### AUv2 for Logic (2026-11-20, on the Mac)
+
+Logic loads only Audio Units, so the CLAP and VST3 can't go there. Logic's
+own MIDI 2.0 (it doesn't pass Pitch 7.25 on) doesn't matter, for the reason
+above: the notes never pass through the host. Built to try in Logic, then
+kept: it records (on play) and plays Pitch 7.25 there, and in MainStage.
+
+- **Target**: `umpire-auv2` makes `build/Umpire.component` through
+  clap-wrapper, type `aumu`, subtype `Umpr`, manufacturer `nLKL` (as
+  Retune's `Rtun`); `install-auv2` copies it into
+  `~/Library/Audio/Plug-Ins/Components` (BUILDING.md).
+- **Fixes in the clap-wrapper fork** (`01f838b` on `unlikelyware`):
+  `kAudioUnitProperty_OfflineRender` now reaches the CLAP render extension,
+  as the VST3 wrapper's process mode does, so a Logic bounce ignores live
+  input (AudioUnitSDK leaves the property to the unit, and the wrapper had
+  dropped it); the cycle's start is set (it was written to the loop's end)
+  and both are converted to CLAP's fixed-point beats; and beat 0 is passed
+  as a position, not taken as "no beats", so a take starting at the song's
+  start has its beats.
+- **Checked here**: no warnings; the tests pass; `auval -v aumu Umpr nLKL`
+  passes (one warning: the preset name isn't kept in the class data); the
+  log shows it hosting PlainOldSynth in MIDI 2.0 and opening KeyboardEDO
+  under auval; a scratch host setting `OfflineRender` on and off logs
+  "render: offline" and "render: real time".
+- **Logic's live mode, to watch**: Logic renders tracks that aren't live
+  ahead of time, in large blocks; only the selected or record-armed
+  instrument track renders as it plays. Live input is placed by its capture
+  time against `process()` being called just before the block plays, so it
+  should be steady only on the selected or armed track. Clips play back
+  anywhere. Two instances played live at once (check 6) would be late on
+  the one not selected.
+- **First try in Logic Pro 13.0 (2026-11-20)**: it plays KeyboardEDO with
+  Pitch 7.25, but recording records nothing. The log has "record: armed"
+  and no "recording", so the engine never saw playing, beats and the host's
+  recording flag together. The log now says which transport flags the host
+  gives whenever they change ("transport: playing, recording, beats, ..."),
+  to see which one Logic leaves out. Also: 0 host timer ticks in Logic (the
+  main-thread callbacks keep the housekeeping going).
+- **Logic never says it records** (the second try, the same day): the log
+  had "transport: playing, beats, seconds, tempo, meter" through a record
+  pass, never "recording". Nothing else in the Audio Unit API says so.
+  **Decided with the author: record on play.** In Logic (and GarageBand and
+  MainStage, by the host's name), a take starts when Logic plays with
+  Umpire's Record on; Logic's record button doesn't matter. A pass with no
+  notes leaves no take, as before. The lane plays on while it records, an
+  overdub, since otherwise it would never sound with Record on. `record =`
+  in the setup file overrides the choice either way; the log says "record
+  on play" when it's on. Other hosts are unchanged.
+- **Record on play works in Logic** (the third try): a take landed. But
+  Umpire's window went blank when dragged from the Retina screen to a 1x
+  monitor. Reproduced outside Logic (the window check, and a scratch AU host
+  opening the AUv2's Cocoa view as Logic does), with the window's own frames:
+  ImGui (the header) kept the scale the window opened with, half size on
+  Retina or double on 1x, since the plugin's DGL window, unlike the app's,
+  never rescaled it; and the window could open twice its size, since pugl
+  turns pixels into points with the main screen's scale before the view is
+  in the host's window (the main screen is wherever the keyboard focus is,
+  here a 1x monitor). **Fixed**: the editor's window rescales ImGui when DGL
+  sees the scale change (`ScaledWindow`, as `Ui/MainWindow.cpp`), and each
+  window tick checks the view's size in points, not only the scale, and sizes
+  it again if it's wrong. The window check now moves its window to a screen
+  of another scale and back (all its steps pass; its clicks had missed in the
+  doubled window). The blank window itself wasn't seen outside Logic: to
+  check there.
+- **Record off in live hosts** (decided with the author, 2026-11-20): it
+  works in MainStage too, for Pitch 7.25, where recording makes no sense, nor
+  in StageHand. No host API says whether a host records (CLAP and AU only
+  say "recording now", which Logic never sets, and MainStage gives a full
+  transport like a DAW's), so it's by the host's name: MainStage and
+  StageHand get `record = off`, a player: live input plays the synth, any
+  takes play with the host's transport, nothing is recorded, the Record
+  button is shown off and disabled (the author's choice, over hiding it; its
+  tooltip says why) and the empty lane says so. `ui::toggle` now draws
+  through the style's alpha, so ImGui's disabled dimming reaches it. MainStage had been given
+  record on play with Logic, which would have recorded whenever its
+  transport played. The setup file's `record =` overrides it (another live
+  host, say). StageHand could tell Umpire itself, through a CLAP extension of
+  its own, rather than by its name: later, if wanted.
+- **The author's checks in Logic**: it appears in Logic's instrument list
+  under Unlikelyware; KeyboardEDO plays through it with Pitch 7.25 heard;
+  the delay and jitter in the heartbeat on a selected track, and on one
+  that isn't; Logic's record button starts a take (the wrapper takes the
+  flag from `HostCallback_GetTransportState2`, which Logic should fill);
+  playback from the host's position, a locate and a cycle wrap; the window
+  and the synth's window; save and reopen a project; a bounce (the log says
+  "render: offline").
 
 ## Open questions
 

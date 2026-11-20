@@ -461,7 +461,9 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     p.tick = rolling && !p.continues ? std::llround(t.songBeats * static_cast<double>(kTicksPerQuarter)) : expectedTick;
     const Tick ticks           = std::llround(static_cast<double>(p.frames) * p.ticksPerFrame);
     const Tick end             = p.tick + ticks;
-    const bool rec             = rolling && t.recording && p.armed && !offline();
+    const RecordMode mode      = recordMode();
+    const bool onPlay          = mode == RecordMode::Play;
+    const bool rec = rolling && mode != RecordMode::Off && (t.recording || onPlay) && p.armed && !offline();
 
     // A jump: a locate, a loop wrap. Tempo changes move the position a
     // little against the last piece's guess, so only more than half a piece
@@ -481,8 +483,9 @@ void PluginEngine::processPiece(Piece& p) noexcept {
     p.recording = recordingSlot >= 0;
 
     // Playback from the host's position; while recording, the lane is silent
-    // (only while armed: an instance that isn't plays on).
-    const bool play = rolling && !p.recording && playing != nullptr;
+    // (only while armed: an instance that isn't plays on), except on play,
+    // where every pass with the arm on records and the lane would never sound.
+    const bool play = rolling && (!p.recording || onPlay) && playing != nullptr;
     if (wasPlaying && !play) endPlayNotes(p.first);
     if (play) {
         const bool fresh = !wasPlaying || dataChanged || jumped;

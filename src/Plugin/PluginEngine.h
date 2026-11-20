@@ -38,6 +38,7 @@
 #include <vector>
 
 #include "App/Clip.h"
+#include "Plugin/PluginSetup.h"
 #include "uw/base/SpscQueue.h"
 #include "uw/midi/MidiInput.h"
 #include "uw/plugin/HostedPlugin.h"
@@ -147,6 +148,15 @@ public:
     void setOffline(bool offline) { offlineMode.store(offline, std::memory_order_relaxed); }
     bool offline() const { return offlineMode.load(std::memory_order_relaxed); }
 
+    // What starts a take (PluginSetup.h, RecordMode). Host: the host's record
+    // button, with the arm; the lane is silent while recording. Play, for
+    // hosts that never say they record (Logic): the host playing with the arm
+    // on, and the lane plays on meanwhile (an overdub); a pass with no notes
+    // leaves no take (Lane::addTake). Off, for live hosts: nothing records,
+    // and the lane plays with the host.
+    void       setRecordMode(RecordMode mode) { recordModeNow.store(mode, std::memory_order_relaxed); }
+    RecordMode recordMode() const { return recordModeNow.load(std::memory_order_relaxed); }
+
     // --- the lane side ---
 
     // What the audio thread plays from now on: events in song ticks (a copy
@@ -254,6 +264,7 @@ private:
     std::vector<uw::HostedPlugin*>          retired;              // main thread: deactivated, for the caller
 
     std::atomic<bool> offlineMode{false};
+    std::atomic<RecordMode> recordModeNow{RecordMode::Host};
 
     // Live input: MIDI thread -> audio thread, gathered each block into
     // liveBlock (offset and message, MIDI 2.0) before the pieces are played.

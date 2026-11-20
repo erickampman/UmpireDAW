@@ -326,6 +326,100 @@ void testPlayback() {
     engine.collectGarbage();
 }
 
+// Record on play (Logic, which never says it records): the host playing with
+// the arm on records, and the lane plays on meanwhile.
+void testRecordOnPlay() {
+    FakeSynth   synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    engine.setRecordMode(RecordMode::Play);
+    Host host(engine);
+
+    Clip clip;
+    clip.length = 2 * kTicksPerQuarter;
+    clip.events.push_back({std::llround(1.01 * kTicksPerQuarter), ump::midi2NoteOn(0, 0, 62, 0x8000)});
+    clip.events.push_back({std::llround(1.50 * kTicksPerQuarter), ump::midi2NoteOff(0, 0, 62)});
+    engine.setEvents(clip.events);
+
+    host.play(1.0);   // playing, not recording
+    host.block();     // 1.00 to 1.02
+    check("playing with the arm on records", engine.recording());
+    auto got = synth.last();
+    check("and the lane plays on", got.size() == 1 && ump::isNoteOn(got[0].message));
+    engine.onMidi(1, at(host.now - 5'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    engine.onMidi(1, at(host.now - 5'000'000, ump::midi2NoteOff(0, 0, 60)));
+    host.block();
+    host.transport.playing = false;
+    host.block();
+    check("stopping ends the take", !engine.recording());
+    FinishedTake take;
+    check("a pass with notes leaves a take", engine.collectTake(take) && take.start == kTicksPerQuarter &&
+                                                 take.clip.events.size() == 2);
+
+    host.armed = false;
+    host.play(1.0);
+    host.block();
+    check("disarmed, playing doesn't record", !engine.recording());
+    host.transport.playing = false;
+    host.block();
+
+    engine.setOffline(true);
+    host.armed = true;
+    host.play(1.0);
+    host.block();
+    check("a bounce doesn't record", !engine.recording());
+    engine.collectGarbage();
+
+    check("on play in Logic and GarageBand", recordMode("", "Logic Pro 13.0") == RecordMode::Play &&
+                                                recordMode("", "GarageBand") == RecordMode::Play);
+    check("off in MainStage and StageHand", recordMode("", "MainStage 5.0") == RecordMode::Off &&
+                                               recordMode("", "StageHand") == RecordMode::Off);
+    check("by the host elsewhere", recordMode("", "REAPER 7.79") == RecordMode::Host &&
+                                       recordMode("", "Bitwig Studio") == RecordMode::Host &&
+                                       recordMode("", "") == RecordMode::Host);
+    check("the setup file decides", recordMode("play", "REAPER") == RecordMode::Play &&
+                                        recordMode("host", "Logic Pro 13.0") == RecordMode::Host &&
+                                        recordMode("off", "Bitwig Studio") == RecordMode::Off &&
+                                        recordMode("host", "MainStage") == RecordMode::Host);
+    check("record = in the setup file", parseConfig("record = Play\n").record == "play");
+}
+
+// Record off (live hosts): nothing records, whatever the host says, and the
+// lane plays with the host.
+void testRecordOff() {
+    FakeSynth   synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    engine.setRecordMode(RecordMode::Off);
+    Host host(engine);
+
+    Clip clip;
+    clip.length = 2 * kTicksPerQuarter;
+    clip.events.push_back({std::llround(1.01 * kTicksPerQuarter), ump::midi2NoteOn(0, 0, 62, 0x8000)});
+    clip.events.push_back({std::llround(1.50 * kTicksPerQuarter), ump::midi2NoteOff(0, 0, 62)});
+    engine.setEvents(clip.events);
+
+    host.play(1.0, true);   // even a host that says it records
+    engine.onMidi(1, at(host.now - 5'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    check("off: the host recording doesn't record", !engine.recording());
+    auto got = synth.last();
+    bool lane = false, live = false;
+    for (const auto& e : got) {
+        if (ump::isNoteOn(e.message) && ump::noteNumber(e.message) == 62) lane = true;
+        if (ump::isNoteOn(e.message) && ump::noteNumber(e.message) == 60) live = true;
+    }
+    check("off: the lane plays, and the live note", lane && live, std::to_string(got.size()) + " events");
+    host.transport.playing = false;
+    host.block();
+    FinishedTake take;
+    check("off: no take", !engine.collectTake(take));
+    engine.collectGarbage();
+}
+
 void testSetup() {
     const Config c = parseConfig("# a comment\ninput = KeyboardEDO  \n  synth=Other # its own\nsynth-id = x.y\n");
     check("the setup file", c.input == "KeyboardEDO" && c.synth == "Other" && c.synthId == "x.y");
@@ -1025,6 +1119,8 @@ int main() {
     testMidi1Synth();
     testRecording();
     testPlayback();
+    testRecordOnPlay();
+    testRecordOff();
     testSetup();
     testState();
     testJumpWhileRecording();

@@ -290,19 +290,21 @@ bool toggle(const char* id, const char* text, bool on, const ImVec4& colour, ImV
     const float rounding = std::min(size.x, size.y) * 0.25f;
     ImDrawList* d = ImGui::GetWindowDrawList();
     const float lit = litFor();
+    // Through the style's alpha, so a toggle inside ImGui::BeginDisabled() is dimmed.
+    const auto ink = [](const ImVec4& c) { return ImGui::GetColorU32(c); };
     if (on) {
         const float glow = std::max(2.0f, size.y * 0.18f);
-        d->AddRectFilled({min.x - glow, min.y - glow}, {max.x + glow, max.y + glow}, u32(alpha(colour, 0.16f * lit)),
+        d->AddRectFilled({min.x - glow, min.y - glow}, {max.x + glow, max.y + glow}, ink(alpha(colour, 0.16f * lit)),
                          rounding + glow);
-        d->AddRectFilled(min, max, u32(alpha(colour, std::min(1.0f, 0.78f * lit))), rounding);
+        d->AddRectFilled(min, max, ink(alpha(colour, std::min(1.0f, 0.78f * lit))), rounding);
     } else {
-        d->AddRectFilled(min, max, u32(colour::kWell), rounding);
+        d->AddRectFilled(min, max, ink(colour::kWell), rounding);
     }
-    d->AddRect(min, max, u32(alpha(on ? lighten(colour, 0.3f) : colour::kSlate, ImGui::IsItemHovered() ? 0.8f : 0.45f)),
+    d->AddRect(min, max, ink(alpha(on ? lighten(colour, 0.3f) : colour::kSlate, ImGui::IsItemHovered() ? 0.8f : 0.45f)),
                rounding);
     const ImVec2 extent = ImGui::CalcTextSize(text);
     d->AddText({(min.x + max.x - extent.x) / 2, (min.y + max.y - extent.y) / 2},
-               on ? IM_COL32(20, 20, 24, 255) : u32(lighten(colour, 0.35f)), text);
+               on ? ink(ImVec4(20 / 255.0f, 20 / 255.0f, 24 / 255.0f, 1.0f)) : ink(lighten(colour, 0.35f)), text);
     return clicked;
 }
 

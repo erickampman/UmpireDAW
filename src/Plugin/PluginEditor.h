@@ -77,6 +77,11 @@ public:
     // the host's position, then DGL's events and drawing.
     void idle();
     void setSize(unsigned width, unsigned height, double scale);
+    // Whether DGL's view is `width` by `height` logical pixels now. On the Mac
+    // pugl turns setSize's pixels into points with the scale of the screen it
+    // thinks the view is on, which before the view is in the host's window
+    // (and maybe mid-drag) is the main screen, not the view's.
+    bool fits(unsigned width, unsigned height) const;
 
 private:
     struct Impl;
@@ -88,5 +93,9 @@ private:
 // elsewhere 1). DGL reads it once, maybe from the wrong screen, so the plugin
 // sizes from this (as Retune's editor does).
 double parentScale(std::uintptr_t parent);
+
+// Whether `view` (an NSView on the Mac) is `width` by `height` points; true
+// elsewhere.
+bool viewHasSize(std::uintptr_t view, unsigned width, unsigned height);
 
 } // namespace umpire::plugin
