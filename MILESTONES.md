@@ -8,7 +8,10 @@
   UMPIRE_PLUGIN_CONF=build/test-plugin.conf UMPIRE_PLUGIN_LOG=none UMPIRE_PLUGIN_CAPTURE=DIR
   build/umpire-plugin-window-check build/Umpire.clap DIR (opens a window; silent).
   Its clicks reach the window only while nothing else has the keys: run it
-  with the Mac otherwise idle (2026-11-19, P4)
+  with the Mac otherwise idle (2026-11-19, P4). With a second screen of
+  another scale it also moves its window there and back (2026-11-20).
+- AUv2 (Mac): cmake --build build --target install-auv2, then
+  auval -v aumu Umpr nLKL
 
 ## Toward a first useful version
 
@@ -185,8 +188,26 @@ S2 and R1 to R6.
   here (P3's build failed the same way the same day: the Mac was in use,
   so the check's window couldn't take the keys); to run again on an idle
   Mac. Left: the checks in hosts (the author's), and Linux's build.*
-- P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms; the
-  other open-source hosts (Qtractor, Carla, Zrythm)
+- AU. [ ] The AUv2, for Logic and MainStage (not a milestone of the
+  proposal; asked for 2026-11-20, plugin-version.md, "AUv2 for Logic").
+  *Built 2026-11-20 on the Mac: `Umpire.component` (aumu, "Umpr" under
+  "nLKL") through clap-wrapper, whose fork (01f838b) now passes offline
+  render, the cycle's start and beat 0; auval passes. Record modes by the
+  host's name, since no host API says whether a host records: "host" (its
+  record button, as before), "play" in Logic and GarageBand (they never say
+  they record, so a take starts when the host plays with Record on, and the
+  lane plays on meanwhile), "off" in MainStage and StageHand (a player;
+  Record shown disabled); `record =` in plugin.conf overrides. The window on
+  screens of another scale: ImGui rescales with the window, and the view's
+  size is checked each tick (it had gone blank in Logic when dragged from
+  the Retina screen to a 1x monitor). Checked by the author in Logic Pro 13
+  (Pitch 7.25, recording on play, the window between screens) and MainStage
+  5 (Pitch 7.25). Left: in Logic, the count-in (Take 1 began at beat -4),
+  cycle recording, live input on a track that isn't selected, a bounce; in
+  MainStage, record off.*
+- P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms (and
+  Logic and MainStage on the Mac, for the AUv2); the other open-source
+  hosts (Qtractor, Carla, Zrythm)
 
 ## Proposed: zoom (not yet scheduled)
 
