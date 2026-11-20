@@ -156,8 +156,9 @@ S2 and R1 to R6.
   2026-11-19: the arm, a Record parameter (off by default), so a take
   records only while the host records and Record is on; state version 3;
   VST3 validator 47 of 47. PlainOldSynth now keeps Pitch 7.25 per key, so
-  the chase works with it. Left: the checks in hosts (the author's, now 8),
-  and Linux's build.*
+  the chase works with it. The checks in hosts (the author's, 8) pass on
+  Linux in REAPER and Ardour 9 (2026-11-20; plugin-version.md, "P2", "On
+  Linux"). Left: Bitwig, and the Mac (REAPER passed check 7 there).*
 - P3. [ ] The editor: a lane in time with the host, and the grid. *Built
   2026-11-19 on the Mac (plugin-version.md, "P3"; decisions.md, "The
   plugin's window"; the design agreed with the author first): the host's

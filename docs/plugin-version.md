@@ -756,6 +756,47 @@ hosts are the author's (below).
    glides from the start and from the middle, and loop it. With that option
    off, a key keeps its last glide for its next note, as MIDI 2.0 says.
 
+**On Linux (the author, 2026-11-20; Ubuntu 26.04, built there):** all eight
+pass in REAPER (CLAP) and in Ardour 9.0 (Ubuntu's package, VST3), check 4
+being Ardour's alone. Check 6 had nothing to show: no synth tried
+(PlainOldSynth, IFSynth, ModicumFM) reports latency, so the log has no
+latency line. Notes from the checks:
+- **Playing from the middle of a held note is silent**, by design: the
+  chase restarts no note begun before where play starts, only each key's
+  last Pitch 7.25, so notes struck after it sound tuned. Check 8 plays
+  "from the middle" between notes. Its two parts: with Per-Note Management
+  on (17-EDO), separate glides on one key each start at the struck pitch,
+  from the start, from between them and looped; with it off, in 12-EDO
+  (in other EDOs KeyboardEDO's note-ons carry a Pitch 7.9 attribute, which
+  PlainOldSynth lets override the key's tuning, so nothing carries over),
+  a key struck again after a slide sounds at the slid-to pitch, live, from
+  the start, and from between the two notes (the chase).
+- **A buzz, once, in Ardour** with PlainOldSynth: partway through a glide
+  (Take 14, KeyboardEDO in 17-EDO), and again on every playback of that
+  take, stopping with the transport; ModicumFM played the take fine;
+  swapping back to PlainOldSynth buzzed again; after saving, quitting and
+  reopening Ardour it played correctly. Not Umpire's data or
+  PlainOldSynth's handling of it: the take (one note-on with a Pitch 7.9
+  attribute at 40.06 semitones, 17 Pitch 7.25 steps up to 50.65 and back,
+  all in range) was rendered from the saved session through
+  PlainOldSynth's `.clap` with its saved patch, offline and silent, and
+  every step was at its pitch, with no NaN or runaway level; the log said
+  the synth took MIDI 2.0, so nothing was down-converted. So the running
+  session had got into a state a new PlainOldSynth instance didn't clear
+  (in Umpire's engine, or shared in Ardour's process). Not seen again. If
+  it is: note what came just before (Per-Note Management, a synth swap,
+  an undo), and keep the host and the log as they are.
+- **Export take..., Rename take... and Import clip... greyed out** in
+  Ardour, while Delete take worked: they're disabled while one of Umpire's
+  dialogs (zenity) is running, so one was likely open behind Ardour's
+  window; gone after the restart. P4's check 8 (the panels open in front)
+  is about this, on Linux.
+- **Ardour after a rebuild**: Ardour 9 keeps its scan of each VST3 and
+  treats one newer than its scan as missing ("Umpire is missing") until
+  it's scanned again: Window → Plugin Manager, rescan, then reopen the
+  session.
+- **REAPER's pre-roll** is recorded into the take: MILESTONES.md, PR.
+
 ### P3: the editor (built 2026-11-19, on the Mac)
 
 The plugin's own window, in place of the synth's editor, which until now
