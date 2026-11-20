@@ -211,6 +211,21 @@ S2 and R1 to R6.
 - P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms (and
   Logic and MainStage on the Mac, for the AUv2); the other open-source
   hosts (Qtractor, Carla, Zrythm)
+- PR. [ ] REAPER's pre-roll: nothing recorded before REAPER itself records.
+  Found by the author, 2026-11-20: with pre-roll on, Take 2 began at bar -1
+  (the log: "from beat -8.02 to beat 23.34, first note-on at beat -1.00"),
+  since REAPER says it records through the pre-roll and never sets
+  `CLAP_TRANSPORT_IS_WITHIN_PRE_ROLL` (the log's transport line: "playing,
+  recording", no "pre-roll"), and Umpire honours only that flag. Proposed:
+  Logic's count-in rule (`recordStartOnPlay`) for hosts that say they record
+  too, when recording starts with playback: from earlier than where the host
+  stood, by at most six bars, record from where it stood; punching in while
+  playing is unchanged. The whole-beat test would go for these hosts:
+  REAPER's -8.02 is 0.02 beats off (about 10 ms at 120 bpm, likely its
+  output latency), outside the 1/64-beat tolerance. To check: whether REAPER
+  runs the plugin while stopped (otherwise only "never before bar 1"
+  applies), and Bitwig's pre-roll. The other way, REAPER's own CLAP
+  extension reading its pre-roll setting, works only in REAPER.
 
 ## Zoom
 
