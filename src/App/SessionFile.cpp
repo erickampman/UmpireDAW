@@ -96,6 +96,14 @@ T number(const Json& j, const char* field, T low, T high) {
     return value;
 }
 
+// A view's zoom: a factor that isn't a positive number (a file edited by
+// hand) is 1. The views keep it in their range (Ui/Zoom.h).
+float zoomFactor(const Json& view, const char* field) {
+    if (!view.contains(field) || !view.at(field).is_number()) return 1;
+    const float factor = view.at(field).get<float>();
+    return std::isfinite(factor) && factor > 0 ? factor : 1;
+}
+
 } // namespace
 
 // --- saving ---------------------------------------------------------------------------
@@ -162,6 +170,7 @@ SessionFileResult saveSession(const std::string& bundlePath, const SavedSession&
         doc["clips"]   = std::move(clips);
         doc["next"]    = {{"track", saved.counters.nextTrack}, {"trackNumber", saved.counters.nextNumber},
                           {"clipRef", saved.counters.nextRef}, {"clip", saved.counters.nextClip}};
+        doc["view"]    = {{"trackZoom", saved.view.trackZoom}, {"gridZoom", saved.view.gridZoom}};
         {
             std::ofstream out(temp / kSessionJson, std::ios::trunc);
             out << doc.dump(2) << '\n';
@@ -286,6 +295,13 @@ SessionFileResult loadSession(const std::string& bundlePath, SavedSession& saved
         n.nextNumber = std::max(next.value("trackNumber", 1), static_cast<int>(trackIds.size()) + 1);
         n.nextRef    = std::max<ClipRefId>(next.value("clipRef", ClipRefId{1}), refIds.empty() ? 1 : *refIds.rbegin() + 1);
         n.nextClip   = std::max<ClipId>(next.value("clip", ClipId{1}), highestClip + 1);
+
+        // How it was being looked at: a session without it (saved before Z1)
+        // opens at 1.
+        if (doc.contains("view") && doc.at("view").is_object()) {
+            loaded.view.trackZoom = zoomFactor(doc.at("view"), "trackZoom");
+            loaded.view.gridZoom  = zoomFactor(doc.at("view"), "gridZoom");
+        }
     } catch (const std::exception& e) {
         result.error = jsonPath.string() + ": " + e.what();
         return result;

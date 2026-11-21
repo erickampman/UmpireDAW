@@ -524,6 +524,7 @@ SessionFileResult TrackController::save(const std::string& bundlePath) {
     SavedSession saved;
     saved.session  = doc;
     saved.counters = SessionCounters{nextId, nextNumber, nextRef, nextClip};
+    saved.view     = sessionView;
     for (const Output& o : doc.outputs) {
         if (!Instruments::isPluginOutput(o.device)) continue;
         PluginState state;
@@ -569,6 +570,8 @@ void TrackController::replace(SavedSession saved) {
     nextNumber = saved.counters.nextNumber;
     nextRef    = saved.counters.nextRef;
     nextClip   = saved.counters.nextClip;
+    sessionView = saved.view;
+    ++openCount;
     history    = History{};
     savedState = history.state();
     selectedId  = doc.tracks.empty() ? 0 : doc.tracks.front().id;

@@ -255,6 +255,7 @@ int main() {
         s.session.tracks  = {a, b};
         s.session.outputs = {Output{2, "plugin:fake"}, Output{5, "Synth2:in"}};
         s.counters        = SessionCounters{9, 4, 10, 12};
+        s.view            = SessionView{1.5625f, 0.25f};
         s.pluginStates[2] = PluginState{"plugin:fake", {std::byte{1}, std::byte{0}, std::byte{255}}};
         s.pluginStates[5] = PluginState{"plugin:gone", {std::byte{9}}};   // not its output any more: not saved
 
@@ -278,6 +279,7 @@ int main() {
                   back.session.loopStart == kTicksPerQuarter && back.session.loopEnd == 5 * kTicksPerQuarter &&
                   back.counters == s.counters,
               opened.error);
+        check("and the zoom: the track view's and the grid's", back.view == s.view);
         check("its clip comes back shared by both references, with its notes, name and scale",
               keys != nullptr && keys->clips.size() == 2 && keys->clips[0].clip == keys->clips[1].clip &&
                   keys->clips[1].start == 8 * kTicksPerQuarter && keys->clips[1].id == 4 && keys->clips[0].clip->id == 7 &&
@@ -305,6 +307,23 @@ int main() {
               saveAsPath((dir / "Other").string()) == (dir / "Other.umpire").string() &&
                   saveAsPath(bundle) == bundle && sessionBundleOf(bundle + "/session.json") == bundle &&
                   sessionBundleOf((dir / "Folder").string()).empty() && sessionNameOf(bundle) == "Song");
+
+        // Z1's zoom: a session saved before it opens at 1; a factor that
+        // isn't a positive number is 1, and the rest of the view still reads.
+        const auto viewOf = [&dir](const char* name, const char* view) {
+            fs::create_directories(dir / name);
+            std::ofstream(dir / name / "session.json")
+                << R"({"format": "umpire-session", "version": 1, "tempoMap": {"tempos": [], "meters": []},)"
+                << R"( "tracks": [], "outputs": [], "clips": [])" << view << "}";
+            SavedSession read;
+            read.view = SessionView{3, 3};
+            const SessionFileResult opened = loadSession((dir / name).string(), read);
+            return opened.ok ? read.view : SessionView{-1, -1};
+        };
+        check("a session without a view opens at zoom 1", viewOf("Old.umpire", "") == SessionView{});
+        check("a zoom that isn't a positive number is 1, the other kept",
+              viewOf("Odd.umpire", R"(, "view": {"trackZoom": "wide", "gridZoom": 2})") == SessionView{1, 2} &&
+                  viewOf("Neg.umpire", R"(, "view": {"trackZoom": 0.5, "gridZoom": -3})") == SessionView{0.5f, 1});
 
         SavedSession untouched;
         untouched.session.tempoBpm = 77;
@@ -351,10 +370,13 @@ int main() {
         check("changes make it modified", c.view().modified);
         factory.created.at(0)->state = "warm pad";   // turned in its editor, say
 
+        c.keepView(SessionView{2, 0.5f});   // the windows' zoom, as MainWindow keeps it before saving
         const std::string bundle = (dir / "Take.umpire").string();
         const SessionFileResult saved = c.save(bundle);
         check("saving names it after the bundle and clears modified",
               saved.ok && c.path() == bundle && c.view().sessionName == "Take" && !c.view().modified, saved.error);
+        c.keepView(SessionView{4, 4});
+        check("zooming alone leaves nothing unsaved", !c.view().modified);
         c.setMuted(t, true);
         check("a change after saving is unsaved", c.view().modified);
         c.undo();
@@ -362,6 +384,7 @@ int main() {
         c.setMuted(t, true);
 
         TrackController d(inputs, noOutputs, engine, [&clock] { return clock; });
+        const std::uint64_t     before = d.opened();
         const SessionFileResult opened = d.open(bundle);
         d.tick();   // the outputs open
         const Track& back = d.tracks().at(0);
@@ -370,6 +393,8 @@ int main() {
                   same(back.clips[0].clip->events, c.tracks()[0].clips[0].clip->events) && d.session().tempoBpm == 100 &&
                   d.view().undoLabel.empty() && !d.view().modified && d.view().sessionName == "Take",
               opened.error);
+        check("and as it was being looked at, which the windows are told of",
+              d.keptView() == SessionView{2, 0.5f} && d.opened() == before + 1);
         check("its plugin opens with the saved state, given before it's activated",
               factory.created.size() == 2 && factory.created[1]->loadedBeforeActivate == "warm pad");
         const TrackId next = d.addTrack();
@@ -383,6 +408,7 @@ int main() {
         check("New: empty, untitled, nothing to undo, its plugin closed",
               d.tracks().empty() && d.path().empty() && d.view().sessionName == "Untitled" && !d.view().modified &&
                   d.view().undoLabel.empty() && factory.alive == 1);
+        check("New: at zoom 1", d.keptView() == SessionView{} && d.opened() == before + 2);
     }
 
     fs::remove_all(dir);

@@ -12,7 +12,8 @@ windows included, edits clips in a grid, and saves and opens sessions; see
 Since 2026-11-18 the product is the plugin (`src/Plugin`, `Umpire.clap` and
 `Umpire.vst3`): Umpire as an instrument inside REAPER, Bitwig or Ardour,
 milestones P2 to P5 ([docs/plugin-version.md](docs/plugin-version.md)).
-`umpire-daw` stays as the test bed for the clip model and the grid.
+Since 2026-11-20 the app goes ahead as a product too (docs/decisions.md,
+"The app goes on"); which standalone milestones come back is still open.
 
 ## Read first
 

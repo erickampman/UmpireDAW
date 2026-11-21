@@ -23,6 +23,7 @@
 #ifndef __APPLE__
 #include "Ui/WindowIcon.h"
 #endif
+#include "Ui/Zoom.h"
 
 namespace umpire::ui {
 
@@ -93,7 +94,9 @@ void place(dgl::Window& window, const char* title, double w, double h) {
 // and every reference to the clip sees them. It follows the clip through
 // edits, which make new clips, and undo.
 struct GridWindow {
-    GridWindow(dgl::Application& app, TrackController& controller, ClipRefId r, const std::shared_ptr<const Clip>& clip)
+    // `zoom`: the session's grid zoom, which a new window opens at.
+    GridWindow(dgl::Application& app, TrackController& controller, ClipRefId r, const std::shared_ptr<const Clip>& clip,
+               float zoom)
         : ref(r), seen(clip), window(app) {
         model.showClip(clip);
         model.chooseScale = [&controller, r](int edo, int reference) { controller.setClipScale(r, Scale{edo, reference}); };
@@ -110,6 +113,8 @@ struct GridWindow {
             const dgl::Window::ScopedGraphicsContext context(window);
             canvas = std::make_unique<GridCanvas>(window, model, probe);
         }
+        canvas->setZoom(zoom);
+        zoomSeen      = canvas->zoom();
         window.panels = &canvas->panels();
         place(window, ("Umpire - " + clip->name).c_str(), 1000, 640);
         window.show();
@@ -144,6 +149,7 @@ struct GridWindow {
 
     ClipRefId                   ref;
     std::shared_ptr<const Clip> seen;
+    float                       zoomSeen = 1;   // the canvas's zoom, as idle() last saw it
     GridModel                   model;
     Probe                       probe;
     Window                      window;
@@ -193,6 +199,12 @@ struct MainWindow::Impl {
             if (g->seen == clip) return g.get();
         return nullptr;
     }
+    // How the session is being looked at (SessionFile.h): the track view's
+    // zoom is its canvas's; the grids' is the last zoom any grid window was
+    // left at, which the next one opens at. Each grid window zooms on its own.
+    float                        gridZoom   = 1;
+    std::uint64_t                viewOpened = ~std::uint64_t{0};   // controller.opened() when last taken
+    void                         keepView() { controller.keepView({canvas->timeZoom(), gridZoom}); }
     std::uint64_t                drawnVersion   = ~std::uint64_t{0};
     double                       secondStart    = 0;
     std::uint64_t                framesAtSecond = 0;
@@ -236,6 +248,14 @@ void MainWindow::idle() {
         m.drawnVersion = m.controller.version();
         m.canvas->refresh();
     }
+    // Another session opened or made (here, or at launch): as it was left.
+    if (m.controller.opened() != m.viewOpened) {
+        m.viewOpened = m.controller.opened();
+        // Only if it's another zoom: setting it draws again.
+        if (const float zoom = Zoom::clamp(m.controller.keptView().trackZoom); zoom != m.canvas->timeZoom())
+            m.canvas->setZoom(zoom);
+        m.gridZoom = Zoom::clamp(m.controller.keptView().gridZoom);
+    }
     m.app.idle();
 
     // A clip double-clicked opens its grid, or brings it forward. Grid windows
@@ -245,10 +265,13 @@ void MainWindow::idle() {
     if (const ClipRefId ref = std::exchange(m.canvas->openRequested, 0); ref != 0) {
         if (const auto clip = m.controller.clip(ref)) {
             if (GridWindow* grid = m.gridFor(clip)) grid->window.focus();
-            else m.grids.push_back(std::make_unique<GridWindow>(m.app, m.controller, ref, clip));
+            else m.grids.push_back(std::make_unique<GridWindow>(m.app, m.controller, ref, clip, m.gridZoom));
         }
     }
-    for (auto& grid : m.grids) grid->follow(m.controller.clip(grid->ref), m.controller.view());
+    for (auto& grid : m.grids) {
+        grid->follow(m.controller.clip(grid->ref), m.controller.view());
+        if (grid->canvas->zoom() != grid->zoomSeen) m.gridZoom = grid->zoomSeen = grid->canvas->zoom();
+    }
     for (auto it = m.grids.begin(); it != m.grids.end();) {
         if (std::exchange((*it)->canvas->panels().quitRequested, false)) m.fileAction(Impl::FileAction::Quit);
         if ((*it)->closing()) it = m.grids.erase(it);
@@ -327,6 +350,7 @@ void MainWindow::Impl::saveAs(FileAction then) {
 }
 
 void MainWindow::Impl::saveTo(const std::string& bundle, FileAction then) {
+    keepView();
     const SessionFileResult result = controller.save(bundle);
     if (!result.ok) {
         afterSave = FileAction::None;
@@ -471,7 +495,37 @@ int MainWindow::selfTest(const std::string& dir) {
     pump();
     const bool gone = m.grids.empty();
     std::printf("%s  File > Close window closes it\n", gone ? "PASS" : "FAIL");
-    return gone ? status : 1;
+    if (!gone) return 1;
+
+    // The zoom a session keeps (docs/files.md): saved, then opened again,
+    // the track view and the next grid window are as they were left.
+    std::puts("--- the zoom a session keeps");
+    m.canvas->openRequested = ref;
+    for (int i = 0; i < 5; ++i) pump();
+    if (!m.grids.empty()) m.grids.front()->canvas->setZoom(0.5f);
+    m.canvas->setZoom(2);
+    for (int i = 0; i < 5; ++i) pump();
+    check("the grid window's zoom is the one the next opens at", m.gridZoom == 0.5f);
+    const std::string bundle = dir + "/Zoom.umpire";
+    m.saveTo(bundle, Impl::FileAction::None);
+    check("zooming then saving leaves nothing unsaved", !m.controller.modified());
+    m.grids.clear();
+    m.canvas->setZoom(1);
+    m.gridZoom = 1;
+    const SessionFileResult opened = m.controller.open(bundle);
+    for (int i = 0; i < 5; ++i) pump();
+    check("opened again, the track view is at its zoom", opened.ok && m.canvas->timeZoom() == 2);
+    m.canvas->openRequested = m.controller.tracks().empty() || m.controller.tracks()[0].clips.empty()
+                                  ? 0
+                                  : m.controller.tracks()[0].clips[0].id;
+    for (int i = 0; i < 5; ++i) pump();
+    check("and a grid window opens at the grid's", !m.grids.empty() && m.grids.front()->canvas->zoom() == 0.5f);
+    m.grids.clear();
+    m.controller.newSession();
+    for (int i = 0; i < 5; ++i) pump();
+    check("New: zoom 1", m.canvas->timeZoom() == 1 && m.gridZoom == 1);
+    std::filesystem::remove_all(bundle);
+    return status;
 }
 
 } // namespace umpire::ui

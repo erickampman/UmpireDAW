@@ -44,7 +44,8 @@ Song.umpire/
   "outputs": [{"track": 2, "device": "<an Instruments::outputId>", "state": "plugins/track-2.state"}],
   "clips": [{"id": 7, "file": "clips/clip-7.midi2", "name": "Keys 1",
              "scale": {"edo": 12, "reference": 60}, "scaleFit": "workedOut", "scaleCandidates": [12]}],
-  "next": {"track": 3, "trackNumber": 2, "clipRef": 4, "clip": 8}
+  "next": {"track": 3, "trackNumber": 2, "clipRef": 4, "clip": 8},
+  "view": {"trackZoom": 1.5625, "gridZoom": 2.0}
 }
 ```
 
@@ -64,6 +65,17 @@ Song.umpire/
   pitch"). On reading, each is at least one past the highest in the file.
 - **Outputs are kept as named**, a device or plugin that isn't there
   included, as the session keeps them (Session.h, `Output`).
+- **`view` is how the session was being looked at** (since 2026-11-20):
+  the track view's zoom and the zoom a grid window opens at, factors on
+  each view's width at 1 (Ui/Zoom.h, milestone Z1). A grid window zooms on
+  its own; the grid's is the last zoom any grid window was left at.
+  **Zooming doesn't make the session unsaved**, as the plugin's zoom
+  doesn't mark the host's project changed: it isn't music, and undo doesn't
+  cover it. It's saved with the next save. A session without `view` (saved
+  before) opens at 1, and a factor that isn't a positive number is 1; the
+  views keep it within an eighth to eight times. No version change: a
+  reader ignores fields it doesn't know, so an older Umpire opens it too.
+  The scroll positions aren't kept.
 - **Audio files** (prints, mixes: milestones 15 and 17) will be an `audio`
   list beside `clips`. A reader ignores fields it doesn't know.
 
@@ -132,9 +144,11 @@ any take in progress, closes every output and reopens them from the new
 session, and clears undo. Each plugin output opens with its saved state,
 given to the plugin before it's activated, as HostedPlugin asks
 (`AudioEngine::open`'s `state`). Grid windows close, since their clips went
-with the old session.
+with the old session. The track view takes the session's zoom, and the next
+grid window opens at its grid zoom (`TrackController::opened()` tells
+`MainWindow` another session is in; `keptView()` is its `view`).
 
-New is the same, with an empty session, as at launch.
+New is the same, with an empty session, as at launch: zoom 1.
 
 ## The UI
 
@@ -175,7 +189,9 @@ Agreed with the author before it was built, 2026-11-01.
 | File menu, keys, the prompt | `src/Ui/TrackPanels.*`, `src/Ui/TrackCanvas.cpp` | ImGui, DGL |
 | The actions, the dialogs, the title, the close button as Quit | `src/Ui/MainWindow.cpp` | DGL |
 | `umpire-daw SESSION` | `src/App/main.cpp` | no |
-| Tests: clip files byte for byte, round trips, long gaps, another DCTPQ, broken files; bundles; save, open and new through the controller with a fake plugin's state | `tests/FileTests.cpp` (`test-files`) | no |
+| Tests: clip files byte for byte, round trips, long gaps, another DCTPQ, broken files; bundles; the view's zoom, missing or odd; save, open and new through the controller with a fake plugin's state | `tests/FileTests.cpp` (`test-files`) | no |
+| `SessionView` (the zoom), `TrackController::keepView`/`keptView`/`opened` | `src/App/SessionFile.h`, `src/App/TrackController.*` | no |
+| The windows' zoom kept before saving, taken after opening; its self-test (save, reopen, New) | `src/Ui/MainWindow.cpp` | DGL |
 
 ## Not in it (later)
 

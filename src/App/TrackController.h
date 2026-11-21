@@ -107,6 +107,13 @@ public:
     // An empty, untitled session, as at launch.
     void newSession();
     const std::string& path() const noexcept { return sessionPath; }   // "" until saved or opened
+    // How the session is being looked at (SessionFile.h): the windows keep
+    // it here for the next save, and take it from here once another session
+    // is opened or made, which opened() counts. Not a change to the session:
+    // zooming alone leaves nothing unsaved.
+    void               keepView(const SessionView& v) noexcept { sessionView = v; }
+    const SessionView& keptView() const noexcept { return sessionView; }
+    std::uint64_t      opened() const noexcept { return openCount; }
     bool               modified() const noexcept { return history.state() != savedState; }
 
     const Session&              session() const noexcept { return doc; }
@@ -171,6 +178,8 @@ private:
     ClipId                               nextClip   = 1;
     std::string                          sessionPath;
     std::uint64_t                        savedState = 0;   // history.state() when last saved or opened
+    SessionView                          sessionView;
+    std::uint64_t                        openCount = 0;   // sessions opened or made since launch
     TrackId                              selectedId  = 0;
     ClipRefId                            selectedRef = 0;
     uw::Nanoseconds                      shownAt      = 0;   // when the view's position was last updated

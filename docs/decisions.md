@@ -663,7 +663,10 @@ time:
 - **From an eighth to eight times** each view's width at 1.
 - **The plugin's state keeps the zoom** (version 5) **without marking the
   project changed**: it isn't music. Older states open at 1.
-- **The app's track view zooms too**; its session doesn't keep the zoom.
+- **The app's track view zooms too**. Its session keeps the zoom since
+  2026-11-20 (files.md, "`view`"), as the plugin's state does: the track
+  view's, and one grid zoom that the next grid window opens at, without
+  making the session unsaved.
 - **A zoom counts as scrolling by hand**: paging while the host plays stops
   until the next play.
 - **The pinch is a flagged Command-scroll** in the pugl fork
@@ -671,6 +674,22 @@ time:
   notches, rather than a new event type: pugl's and DGL's APIs stay as
   they are, and apps that zoom on Command-wheel get the pinch for free
   (DPF fork's README.fork.md).
+
+## The app goes on (decided 2026-11-20)
+
+The author, after P2 to P4 and Z1 in hosts: the plugin is a good idea, but
+it can be awkward inside a DAW, so **the standalone app (`umpire-daw`) goes
+ahead as a product**, not only as the test bed "Umpire as a plugin" (above)
+left it as. It still shares `src/App` and `src/Ui` with the plugin, so
+work on either reaches both where it can (Z1's zoom, the grid opening at
+the first note, Select all notes).
+
+Not settled yet, to agree with the author before the app's next milestone:
+- **Which of the replaced standalone milestones come back** (12 to 18, the
+  tempo map and stem export T1, S1, S2, plugin routing R1 to R6), and in
+  what order.
+- **What happens to the plugin's milestones** left (P5, PR, HE): go on
+  beside the app, or pause.
 
 ## Deferred
 

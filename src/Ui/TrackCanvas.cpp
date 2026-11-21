@@ -65,6 +65,12 @@ void TrackCanvas::scrollBy(float rows) {
     if (scrollY != before) refresh();
 }
 
+void TrackCanvas::setZoom(float factor) {
+    zoom = Zoom::clamp(factor);
+    clampScroll();
+    refresh();
+}
+
 void TrackCanvas::refresh() {
     // Playing past the right edge turns the page. A jump back past the left
     // edge (a locate, the loop wrapping) scrolls back to show it, two beats

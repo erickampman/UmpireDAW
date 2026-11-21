@@ -28,10 +28,22 @@ struct SessionCounters {
     bool operator==(const SessionCounters&) const = default;
 };
 
+// How the session was being looked at: the track view's zoom and the one a
+// grid window opens at (Ui/Zoom.h's factors on each view's width at 1;
+// docs/files.md). Not the music, so not in Session and not undone; kept so a
+// reopened session looks as it was left.
+struct SessionView {
+    float trackZoom = 1;
+    float gridZoom  = 1;
+
+    bool operator==(const SessionView&) const = default;
+};
+
 // Everything a session file holds.
 struct SavedSession {
     Session                        session;
     SessionCounters                counters;
+    SessionView                    view;
     std::map<TrackId, PluginState> pluginStates;   // by track
 };
 

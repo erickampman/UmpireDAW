@@ -262,6 +262,8 @@ Asked for 2026-11-01: Umpire had no zoom; the track view's beat
   2026-11-20 on the Mac* (plugin-version.md, "Z1"; decisions.md, "Zoom").
   Zoom and scrolling work in Logic, REAPER and Bitwig (the author,
   2026-11-20). The grid now opens with the take's first note mid-height.
+  The app's session keeps the track view's and the grid's zoom since
+  2026-11-20 (files.md, "`view`"), checked on Linux.
   Left: Linux (Ctrl-wheel)
 - Later: the zoom levels of ui-direction.md ("Zoom replaces opening
   things": Sections, Bars, Notes, Expression), editing notes in the lane

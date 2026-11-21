@@ -63,6 +63,9 @@ public:
     // A clip double-clicked: MainWindow opens its grid, then sets this back to 0.
     ClipRefId openRequested = 0;
     float scroll() const noexcept { return scrollY; }
+    // Z1's zoom of the time (Ui/Zoom.h), which the session keeps (MainWindow).
+    float timeZoom() const noexcept { return zoom; }
+    void  setZoom(float factor);
     void  scrollBy(float rows);   // the wheel over the headers, too
 
     // The view model changed: draw again.
@@ -91,7 +94,7 @@ private:
     float                        scrollY = 0;   // logical pixels from the first row
     float                        scrollX = 0;   // logical pixels from bar 1
     // Z1: the timeline's zoom (Ui/Zoom.h), a factor on kBeatW; Command-wheel
-    // (Ctrl on Linux) or a pinch over the lanes. Not saved in the session.
+    // (Ctrl on Linux) or a pinch over the lanes. Saved in the session.
     float                        zoom    = 1;
     ScrollAxis                   axes;   // a two-finger drag keeps to one axis
     Tick                         lastPosition = 0;   // the playhead, as refresh() last saw it

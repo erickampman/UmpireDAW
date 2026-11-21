@@ -1329,7 +1329,7 @@ since the grid is shared and the track view cost little.
   zoom it was saved with, but **a zoom doesn't mark the project changed**:
   it changes no music. Versions 1 to 4 open at 1.
 - **The app's track view zooms too**, the same way; the `.umpire` session
-  doesn't keep it.
+  keeps it since 2026-11-20 (files.md).
 
 **How it behaves:**
 - A wheel notch zooms 1.25x; a trackpad's Command-swipe zooms by its smooth
@@ -1468,14 +1468,14 @@ check**: choose takes in different registers, and open clips in the app.
 - **The zoom levels** of ui-direction.md ("Zoom replaces opening things":
   Sections, Bars, Notes, Expression), and editing notes in the lane:
   later, as MILESTONES.md says.
-- **The app's session** (`.umpire`) doesn't keep the track view's zoom, nor
-  a grid window's.
+- ~~**The app's session** (`.umpire`) doesn't keep the track view's zoom, nor
+  a grid window's~~: it does since 2026-11-20 (files.md, "`view`").
 
 ## Open questions
 
 - **The name.** naming.md's rules (no "MIDI"; Umpire) suggest "Umpire" for
-  the plugin as well; the standalone app might then become a test bed, not
-  a product.
+  the plugin as well. The standalone app stays a product, not only a test
+  bed (decided 2026-11-20; decisions.md, "The app goes on").
 - ~~**The recording UI**: whether the host's record button is enough, or the
   plugin needs an arm of its own~~: it needs one (decided 2026-11-19, P2,
   "The arm").
