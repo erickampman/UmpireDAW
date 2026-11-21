@@ -950,6 +950,20 @@ take plays when the host plays):**
    The Edit menu and right-click do everything without keys.
 8. **Two instances**, each with its window open: each shows its own lane.
 
+**In REAPER on Linux (the author, 2026-11-20; REAPER 7.86, CLAP):** all
+eight pass, so the X11 side (below, "Linux") works there. Notes:
+- **Check 3**: Umpire's Record button and its Record parameter are a pair;
+  REAPER's own record button is separate (a take needs both). The
+  parameter was shown in the track controls (Param → Show in track
+  controls) and automated with a square envelope (Param → Show track
+  envelope); button, FX window and slider followed it, and the log's
+  "record: off / armed" lines matched the envelope's points.
+- **Check 4**: the edits are heard on playback. The grid makes no sound
+  while a note is clicked, dragged or added: not built, and asked for as
+  required (MILESTONES.md, HE). Before that was clear, the edits seemed
+  lost; the take, its saved copy and a render through PlainOldSynth all
+  had them.
+
 **Not in P3:**
 - **Names and scales of takes** aren't saved (P4: state and files), so the
   grid's name field is read only and its tuning is the window's, worked out

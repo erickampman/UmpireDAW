@@ -171,8 +171,9 @@ S2 and R1 to R6.
   takes recorded included; the synth's editor in a window of its own.
   Checked headless (10 of 10, testEditor), with tools/PluginWindowCheck.mm
   (the window opened and clicked in a bare Cocoa host), clap-validator (30,
-  the 2 expected failures) and the VST3 validator (47 of 47). Left: the
-  checks in hosts (the author's, 8), and Linux's build.*
+  the 2 expected failures) and the VST3 validator (47 of 47). The checks
+  in hosts (the author's, 8) pass in REAPER on Linux (2026-11-20;
+  plugin-version.md, "P3"). Left: Ardour on Linux, and the Mac.*
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
   synth's state, clip export. *Built 2026-11-19 on the Mac
   (plugin-version.md, "P4"; decisions.md, "State and files"; the scope
