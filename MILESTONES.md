@@ -236,6 +236,15 @@ S2 and R1 to R6.
   runs the plugin while stopped (otherwise only "never before bar 1"
   applies), and Bitwig's pre-roll. The other way, REAPER's own CLAP
   extension reading its pre-roll setting, works only in REAPER.
+- HE. [ ] Hearing notes while editing: a note sounds through the take's
+  synth when it's clicked, as it's dragged (at each new pitch), and when
+  it's added, in the plugin's grid and the app's. Asked for by the author,
+  2026-11-20, during P3's checks in REAPER, as **required** (the grid made
+  no sound while editing; edits were heard only on playback). To decide
+  with the author before it's built: how long a note sounds (while the
+  mouse is held, or a short fixed length), its velocity (the note's own),
+  whether it sounds while the host plays, a way to turn it off, and
+  whether Pitch 7.25 within the note is heard.
 
 ## Zoom
 
