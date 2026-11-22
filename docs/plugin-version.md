@@ -1546,6 +1546,7 @@ showing MIDI FX.
 from MIDI FX; play and hear it retuned; record a take, then bypass Retune
 and hear the take as played; move, remove and undo; open an effect's
 editor from E and from the menu; save, close and reopen the project.
+*Passed for adding, removing and bypassing (the author, 2026-11-22).*
 
 ## Open questions
 

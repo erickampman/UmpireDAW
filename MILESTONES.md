@@ -289,7 +289,8 @@ S2 and R1 to R6.
   11 of 11 (testEffects, testStateV6; with the real Retune in front of
   PlainOldSynth in test-plugin-render), uw-core's test-note-effect-chain;
   clap-validator 32 passed, 0 failed, 12 skipped; auval passes; the window
-  check passes. Left: the author's check in hosts, and Linux.*
+  check passes. Adding, removing and bypassing effects work in a host (the
+  author, 2026-11-22). Left: Linux.*
 
 ## Zoom
 
