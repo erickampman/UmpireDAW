@@ -98,6 +98,45 @@ private:
     uw::PluginDescriptor desc;
 };
 
+// NE: a note effect that moves notes by `shift` semitones (keeping their
+// Pitch 7.9 in step), as Retune would with a whole-step tuning.
+class FakeEffect final : public uw::HostedPlugin {
+public:
+    explicit FakeEffect(int semitones) : shift(semitones) { desc.id = "test.fake-effect"; }
+    int                                         shift;
+    bool                                        active = false, refuses = false;
+    int                                         stops = 0, blocks = 0;
+    std::vector<uw::MidiMessage>                got;   // everything it's been given
+    const uw::PluginDescriptor& descriptor() const override { return desc; }
+    uw::PortLayout              portLayout() const override {
+        uw::PortLayout l;
+        l.noteInputs.push_back({"In", uw::NoteDialect::Midi2, uw::NoteDialect::Midi2});
+        l.noteOutputs.push_back({"Out", uw::NoteDialect::Midi2, uw::NoteDialect::Midi2});
+        return l;
+    }
+    std::vector<uw::ParameterInfo> parameters() const override { return {}; }
+    bool activate(double, std::uint32_t) override { return active = !refuses; }
+    void deactivate() override { active = false; }
+    void process(const uw::ProcessContext& ctx) noexcept override {
+        ++blocks;
+        for (std::uint32_t i = 0; i < ctx.eventsIn.count; ++i) {
+            uw::Event e = ctx.eventsIn.events[i];
+            got.push_back(e.midi);
+            if (ump::isNoteOn(e.midi) || ump::isNoteOff(e.midi)) ump::transposeNote(e.midi, shift);
+            if (ctx.eventsOut != nullptr) ctx.eventsOut->push(e);
+        }
+    }
+    void   stopProcessing() noexcept override { ++stops; }
+    double paramValue(std::uint32_t) const override { return 0; }
+    void   flushParams(const uw::EventBlock&, uw::EventSink*) override {}
+    bool   saveState(std::vector<std::byte>&) const override { return true; }
+    bool   loadState(const std::byte*, std::size_t) override { return true; }
+    void   idle() override {}
+
+private:
+    uw::PluginDescriptor desc;
+};
+
 constexpr double          kRate   = 48000;
 constexpr std::uint32_t   kFrames = 480;   // 10 ms; at 120 bpm, 0.02 beats
 constexpr uw::Nanoseconds kNow    = 1'000'000'000'000;
@@ -1151,8 +1190,9 @@ void testStateV5() {
           decodeState(bytes.data(), bytes.size(), back, error) && back.zoom == s.zoom && back.input == s.input &&
               back.takes.size() == 1,
           error);
-    check("version 5 is written", bytes.size() > 8 && bytes[4] == 5 && bytes[5] == 0);
-    check("a state cut inside the zoom is refused", !decodeState(bytes.data(), bytes.size() - 4, back, error), error);
+    check("version 6 is written", bytes.size() > 8 && bytes[4] == 6 && bytes[5] == 0);
+    check("a state cut inside the zoom is refused", !decodeState(bytes.data(), bytes.size() - 8, back, error) &&
+                                                     error.find("zoom") != std::string::npos, error);   // past the effects' count
     // Version 4: everything up to the input, no zoom: read at 1.
     std::vector<std::uint8_t> v4(bytes.begin(), bytes.end() - 8);
     v4[4] = 4;
@@ -1349,14 +1389,14 @@ void testSynthSwap() {
     check("b plays", b.active && !b.blocks.empty());
 
     check("active: pending", engine.swapSynth(&c) == PluginEngine::Swap::Pending && engine.currentSynth() == &c && c.active);
-    check("nothing back before the audio thread takes it", engine.retiredSynth() == nullptr && b.active);
+    check("nothing back before the audio thread takes it", engine.retiredPlugin() == nullptr && b.active);
     const std::size_t bBlocks = b.blocks.size();
     host.block();
     check("the audio thread stops the old one and plays the new", b.stops == 1 && b.blocks.size() == bBlocks &&
                                                                        c.blocks.size() == 1);
     // The lane carries on in the new synth: its sounding note isn't
     // restarted (it began before), but nothing is left hanging either.
-    check("the old one comes back deactivated", engine.retiredSynth() == &b && !b.active && engine.retiredSynth() == nullptr);
+    check("the old one comes back deactivated", engine.retiredPlugin() == &b && !b.active && engine.retiredPlugin() == nullptr);
 
     // Swaps the host never processes: four wait, the fifth is refused.
     FakeSynth more[4];
@@ -1369,14 +1409,150 @@ void testSynthSwap() {
     engine.stopProcessing();
     engine.deactivate();
     int back = 0;
-    while (uw::HostedPlugin* p = engine.retiredSynth()) back += p != &more[3];
+    while (uw::HostedPlugin* p = engine.retiredPlugin()) back += p != &more[3];
     check("deactivated: the newest stays, the others come back", back == 4 && !c.active && !more[0].active &&
                                                                      !more[3].active && engine.currentSynth() == &more[3]);
     check("and it's the synth when activated again", engine.activate(kRate, 4096) && more[3].active);
     check("none: silence, and the old one comes back", engine.swapSynth(nullptr) == PluginEngine::Swap::Pending);
     host.block();
-    check("none: nothing reaches a synth", engine.retiredSynth() == &more[3] && !engine.synthHasNotes());
+    check("none: nothing reaches a synth", engine.retiredPlugin() == &more[3] && !engine.synthHasNotes());
     engine.deactivate();
+}
+
+// NE: the MIDI effects in the state, version 6; version 5 reads with none.
+void testStateV6() {
+    SavedState s;
+    s.synthId = "test.synth";
+    SavedEffect a{"com.unlikelyware.retune", "/x/Retune.clap", "Retune", false, {std::byte{1}, std::byte{2}}};
+    SavedEffect b{"missing.effect", "", "Gone", true, {std::byte{9}}};
+    s.effects = {a, b};
+    const auto  bytes = encodeState(s);
+    SavedState  back;
+    std::string error;
+    check("version 6: the effects round-trip, in order, bypass and state kept",
+          decodeState(bytes.data(), bytes.size(), back, error) && back.effects.size() == 2 && back.effects[0] == a &&
+              back.effects[1] == b, error);
+    // Version 5: the same without the effects' count and after.
+    std::vector<std::uint8_t> v5 = encodeState(SavedState{});
+    v5.resize(v5.size() - 4);
+    v5[4] = 5;
+    SavedState old;
+    check("version 5 reads with no effects", decodeState(v5.data(), v5.size(), old, error) && old.effects.empty(), error);
+    std::vector<std::uint8_t> cut(bytes.begin(), bytes.end() - 3);
+    check("a state cut inside an effect is refused", !decodeState(cut.data(), cut.size(), old, error) &&
+                                                         error.find("MIDI effect 2") != std::string::npos, error);
+}
+
+// NE: note effects in front of the synth. What's played goes through them;
+// a take records it as played; the grid's notes go through them too; a MIDI
+// 1.0 synth gets their output downconverted; and they're swapped while the
+// engine runs, the synth staying on (with All Notes Off) and a removed effect
+// let go of on the audio thread.
+void testEffects() {
+    FakeSynth    synth;
+    FakeEffect   up(2), fifth(7);
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.setEffects({{&up, false}});
+    check("an effect activates with the synth", engine.activate(kRate, 4096) && synth.active && up.active);
+    Host host(engine);
+
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    auto got = synth.last();
+    check("live input goes through the effect", up.got.size() == 1 && ump::noteNumber(up.got[0]) == 60 &&
+                                                    got.size() == 1 && ump::noteNumber(got[0].message) == 62);
+
+    // Recorded as played, before the effect.
+    host.play(0.0, true);
+    host.block();
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOn(0, 0, 64, 0x8000)));
+    host.block();
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOff(0, 0, 64)));
+    host.block();
+    host.transport.recording = false;
+    host.block();
+    FinishedTake take;
+    bool         played = false;
+    if (engine.collectTake(take))
+        for (const ClipEvent& e : take.clip.events) played = played || (ump::isNoteOn(e.message) && ump::noteNumber(e.message) == 64);
+    check("a take records what's played, not what the effect made of it", played);
+    host.transport.playing = false;
+    host.block();
+
+    // The grid's notes go through it.
+    engine.hear(ump::midi2NoteOn(0, 15, 50, 0x8000));
+    host.block();
+    got = synth.last();
+    check("the grid's notes go through the effects", !got.empty() && ump::noteNumber(got.back().message) == 52);
+    engine.hear(ump::midi2NoteOff(0, 15, 50));
+    host.block();
+
+    // Another chain while running: the synth stays, the old effect goes.
+    const int synthStops = synth.stops;
+    check("a new chain waits for the audio thread",
+          engine.swapEffects({{&fifth, false}}) == PluginEngine::Swap::Pending && fifth.active && up.active);
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    got = synth.last();
+    int offs = 0;
+    for (const auto& g : got)
+        offs += ump::status(g.message) == ump::Status::ControlChange && ((g.message.words[0] >> 8) & 0x7F) == 123;
+    check("the synth gets All Notes Off on every channel, and the new chain's notes",
+          offs == 16 && !got.empty() && ump::noteNumber(got.back().message) == 67);
+    check("the synth goes on; the old effect stops", synth.stops == synthStops && up.stops == 1);
+    check("the old effect comes back deactivated, the synth doesn't",
+          engine.retiredPlugin() == &up && !up.active && synth.active && engine.retiredPlugin() == nullptr);
+
+    // Bypassed: it runs, without MIDI, and the notes go around it.
+    const std::size_t fifthGot = fifth.got.size();
+    engine.swapEffects({{&fifth, true}});
+    host.block();
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOn(0, 0, 61, 0x8000)));
+    host.block();
+    got = synth.last();
+    check("a bypassed effect is passed by", fifth.got.size() == fifthGot && fifth.active && !got.empty() &&
+                                                 ump::noteNumber(got.back().message) == 61);
+    check("a bypass isn't a swap of the effect", engine.retiredPlugin() == nullptr && fifth.stops == 0);
+
+    // One that won't activate is left out, and given back when it's removed.
+    FakeEffect broken(5);
+    broken.refuses = true;
+    engine.swapEffects({{&broken, false}, {&fifth, false}});
+    host.block();
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    got = synth.last();
+    check("an effect that won't activate is passed by", broken.blocks == 0 && !got.empty() &&
+                                                             ump::noteNumber(got.back().message) == 67);
+    engine.swapEffects({});
+    host.block();
+    host.block();
+    std::vector<uw::HostedPlugin*> back;
+    while (uw::HostedPlugin* p = engine.retiredPlugin()) back.push_back(p);
+    check("removed, both come back", back.size() == 2 && !fifth.active);
+    engine.onMidi(1, at(host.now - 1'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000)));
+    host.block();
+    got = synth.last();
+    check("no effects: straight to the synth", !got.empty() && ump::noteNumber(got.back().message) == 60);
+    engine.deactivate();
+    check("deactivated with the synth", !synth.active);
+
+    // A MIDI 1.0 synth gets the effect's MIDI 2.0 output downconverted.
+    FakeSynth    old(uw::NoteDialect::Midi);
+    FakeEffect   same(0);
+    PluginEngine e2;
+    e2.setSynth(&old);
+    e2.setEffects({{&same, false}});
+    e2.activate(kRate, 4096);
+    Host h2(e2);
+    e2.onMidi(1, at(h2.now - 1'000'000, ump::midi2NoteOn(0, 0, 60, 0x8000, (60u << 9) + 100)));
+    h2.block();
+    got = old.last();
+    check("an effect's MIDI 2.0 reaches a MIDI 1.0 synth downconverted",
+          same.got.size() == 1 && ump::notePitch79(same.got[0]) == (60u << 9) + 100 && got.size() == 1 &&
+              ump::messageType(got[0].message) == ump::MessageType::Midi1ChannelVoice);
+    e2.deactivate();
 }
 
 int main() {
@@ -1401,6 +1577,8 @@ int main() {
     testOtherSteps();
     testSynthSwap();
     testHearing();
+    testEffects();
+    testStateV6();
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

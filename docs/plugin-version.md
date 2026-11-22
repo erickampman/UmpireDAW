@@ -176,8 +176,8 @@ the easiest place to test the clip model and the grid. Its roadmap stops
   This is the biggest cost.
 - **Notes can't go on to the host's note effects or instruments**: the host
   would round them. Audio effects after the plugin are fine. Note effects
-  (Retune, NoteGran, EDOSpread12) would be hosted inside the plugin, before
-  the synth: later, a small stack.
+  (Retune, NoteGran, EDOSpread12) are hosted inside the plugin, before
+  the synth (NE, below).
 - **Two undos.** The host's undo doesn't see edits made in the plugin; the
   plugin keeps its own (`History`).
 - **One synth per instance**, so one per host track. Milestone 12's tracks
@@ -1470,6 +1470,82 @@ check**: choose takes in different registers, and open clips in the app.
   later, as MILESTONES.md says.
 - ~~**The app's session** (`.umpire`) doesn't keep the track view's zoom, nor
   a grid window's~~: it does since 2026-11-20 (files.md, "`view`").
+
+### NE: MIDI effects in front of the synth (built 2026-11-22, on the Mac)
+
+The host's note effects never reach Umpire ("What's given up"), so CLAP
+note effects (Retune, NoteGran, EDOSpread12, others') run inside the
+plugin, in order, between what's played and the synth. Asked for by the
+author on 2026-11-22, with StageHand's MIDI FX menu as the model.
+
+**Decided with the author (2026-11-22; the recommended option each time):**
+- **A take records what's played**, before the effects, so they act on it
+  again at playback, as StageHand's rows and a DAW's MIDI FX do. Changing
+  or bypassing an effect changes what a take sounds like; the grid shows
+  what was played.
+- **The grid's notes (HE) go through the effects**, so a note sounds while
+  editing as it will on playback (retuned by Retune, say).
+- **The chain is uw-core's** (`uw::NoteEffectChain`, uw::note-effects,
+  built from StageHand's row chain); Umpire is its first user. StageHand
+  moves onto it later, as a task of its own.
+
+**The window.** A **MIDI FX** menu in the header, before the synth (the
+order the notes take): the first effect's name, "+1" for each more, or
+"MIDI FX" dimmed with none; accent-coloured if one isn't installed here,
+dimmed if all are bypassed. Its menu lists each effect, numbered, with
+**Editor**, **Bypass**, **Move up**, **Move down** and **Remove**, then
+**Add a MIDI effect...**, CLAP's note effects found in its folders (the
+synth menu's scan, which now keeps both), a new one going after the others.
+With one effect that has an editor, **E** beside the menu opens it. An
+effect's editor is a window of its own, "Umpire - Retune", with
+"(bypassed)" while it's bypassed (`uw::EditorWindow::setTitle`, new in
+uw-core): the plugin can't tell, so its own editor looks the same.
+Adding, removing, moving and bypassing are steps in the plugin's undo,
+as "Change synth" is: an undo keeps the effects it doesn't add (their
+instances and editors) and loads one it puts back from its saved state.
+
+**The engine.** `PluginEngine::swapEffects()`, as `swapSynth()`: the
+synth and its effects are one slot, handed to the audio thread whole. A
+plugin in both the old slot and the new (the synth, a kept effect) stays
+active and goes on processing: each is activated by the first slot that
+holds it and deactivated when the last lets go. One that leaves is stopped
+on the audio thread and comes back through `retiredPlugin()` (was
+`retiredSynth()`) to be destroyed. When the synth stays and the effects
+change, the synth gets All Notes Off (CC 123) on every channel of group 1
+as the audio thread takes the new chain, since a note's off may now come
+out of the effects at another key; the lane's notes end and are chased,
+as after a synth swap. Each block, the block's MIDI (live input, the lane,
+the grid's notes) goes through the chain: each effect gets it in the
+protocol its note port takes (down to MIDI 1.0, or up to MIDI 2.0), its
+output sorted into time order and clamped into the block, and the last
+one's output reaches the synth in the synth's protocol. A bypassed effect
+still runs, with no MIDI; one that won't activate is left out and passed
+by. With no effect running, nothing changes from before NE. An effect's
+latency isn't added to the synth's (note effects have none so far).
+
+**The state**, version 6: after the zoom, the effects in order, each with
+its id, .clap path, name, bypass and its own state. One that isn't
+installed is kept as it was, saved back unchanged, and passed by. Version
+5 and before read with none.
+
+**Checked here** (the Mac, 2026-11-22): uw-core's `test-note-effect-chain`
+(series, bypass, translation both ways, Pitch 7.9 kept, sorting and
+clamping, parameter changes, the buffer full); `test-plugin-engine`'s
+testEffects (live input through an effect; a take records what's played;
+the grid's notes go through; a chain swapped while running, the synth
+staying with All Notes Off and the old effect stopped and given back;
+bypass; an effect that won't activate passed by; a MIDI 1.0 synth getting
+an effect's MIDI 2.0 downconverted) and testStateV6; `test-plugin-render`
+with the real Retune in front of PlainOldSynth (a missing effect and
+Retune bypassed give the same samples as none; through Retune the synth
+plays; the state keeps Retune's own); 11 of 11; clap-validator 32 passed,
+0 failed, 12 skipped; `auval` passes; the window check passes, its header
+showing MIDI FX.
+
+**The author's check:** in a host, add Retune (and NoteGran, EDOSpread12)
+from MIDI FX; play and hear it retuned; record a take, then bypass Retune
+and hear the take as played; move, remove and undo; open an effect's
+editor from E and from the menu; save, close and reopen the project.
 
 ## Open questions
 

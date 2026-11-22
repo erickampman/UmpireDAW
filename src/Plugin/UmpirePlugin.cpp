@@ -192,6 +192,14 @@ std::shared_ptr<uw::ClapPluginFactory> sharedFactory() {
     return factory;
 }
 
+// NE: one of the MIDI effects in front of the synth as a choice: `key` says
+// which instance it is (0: a new one), so an edit or an undo keeps the ones
+// it doesn't add, and `saved` loads one that isn't here yet.
+struct EffectChoice {
+    std::uint64_t key = 0;
+    SavedEffect   saved;
+};
+
 class Plugin;
 
 // What the hosted synth sees as its host (uw::HostServices): the main-loop
@@ -244,6 +252,16 @@ public:
     bool                                   synthChosen = false;
     SynthChoice                            missingSynth;  // id set: the chosen synth isn't here, kept as it was
     std::vector<std::unique_ptr<uw::HostedPlugin>> retiring;   // swapped out; the audio thread lets go of them
+    // NE: the MIDI effects in front of the synth, in order. One that isn't
+    // here has no plugin, and is kept as it was saved.
+    struct HostedEffect {
+        std::uint64_t                     key = 0;
+        SavedEffect                       saved;    // its id, path, name and bypass; its state if it isn't here
+        std::unique_ptr<uw::HostedPlugin> plugin;
+        std::unique_ptr<uw::EditorWindow> window;
+    };
+    std::vector<HostedEffect>              effects;
+    std::uint64_t                          nextEffectKey = 1;
 
     std::unique_ptr<uw::PlatformMidiInput> midi;
     uw::MidiSourceHandle                   source = uw::kInvalidMidiSource;
@@ -334,6 +352,19 @@ public:
     void chooseSynth(const std::string& id);    // from the window: an undo step
     void collectRetired();
     const std::vector<uw::PluginDescriptor>& installedSynths();
+    // NE: the MIDI effects.
+    const std::vector<uw::PluginDescriptor>& installedNoteEffects();
+    std::unique_ptr<uw::HostedPlugin> loadPlugin(const std::string& id, const std::string& path, const std::string& name,
+                                                 const std::string& alsoNamed, std::string& from);
+    std::vector<EffectChoice> currentEffects() const;   // with their states as they are now
+    bool useEffects(std::vector<EffectChoice> next);    // false if they can't change now
+    void editEffects(const char* label, std::vector<EffectChoice> next);   // from the window: an undo step
+    void addEffect(const std::string& id);
+    void removeEffect(std::size_t i);
+    void moveEffect(std::size_t i, int by);
+    void bypassEffect(std::size_t i, bool on);
+    void toggleEffectWindow(std::size_t i);
+    std::string effectTitle(const HostedEffect& e) const;
     void housekeeping();
     void report();
     void logTake(const ClipRef& take);
@@ -355,6 +386,23 @@ public:
 private:
     Plugin&     plugin;
     SynthChoice held;
+};
+
+// "Add MIDI effect" and the rest in the plugin's undo: the chain it holds is
+// put back, effects it still has kept as they are, others loaded from their
+// saved states.
+class EffectsStep final : public LaneKeeper::OtherStep {
+public:
+    EffectsStep(Plugin& p, std::vector<EffectChoice> c) : plugin(p), held(std::move(c)) {}
+    std::shared_ptr<LaneKeeper::OtherStep> swap() override {
+        std::vector<EffectChoice> now = plugin.currentEffects();
+        if (!plugin.useEffects(held)) return nullptr;
+        return std::make_shared<EffectsStep>(plugin, std::move(now));
+    }
+
+private:
+    Plugin&                   plugin;
+    std::vector<EffectChoice> held;
 };
 
 void Plugin::log(const char* format, ...) {
@@ -479,9 +527,11 @@ void Plugin::destroy() {
     stopGuiTimer();
     window.reset();
     synthWindow.reset();   // closes the synth's editor
+    for (HostedEffect& e : effects) e.window.reset();
     engine.deactivate();   // the host should have already; harmless if so
     collectRetired();
     retiring.clear();
+    effects.clear();
     synth.reset();         // unregisters the synth's timers and fds, through ForwardingHost
     factory.reset();       // after the synth, which holds its module
     if (hostTimer != nullptr) {
@@ -611,6 +661,7 @@ SynthChoice Plugin::currentSynth() const {
 // state never does.
 struct SynthScan {
     std::vector<uw::PluginDescriptor> found;
+    std::vector<uw::PluginDescriptor> noteEffects;   // NE: CLAP's "note-effect" (uw::PluginKind::Other)
     bool                              done = false;
 };
 SynthScan& synthScan() {
@@ -622,12 +673,22 @@ const std::vector<uw::PluginDescriptor>& Plugin::installedSynths() {
     SynthScan& scan = synthScan();
     if (scan.done) return scan.found;
     if (!factory) factory = sharedFactory();
-    for (uw::PluginDescriptor& d : factory->scan())
-        if (d.kind == uw::PluginKind::Instrument && d.id != kOwnId) scan.found.push_back(std::move(d));
-    std::sort(scan.found.begin(), scan.found.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+    for (uw::PluginDescriptor& d : factory->scan()) {
+        if (d.id == kOwnId) continue;
+        if (d.kind == uw::PluginKind::Instrument) scan.found.push_back(std::move(d));
+        else if (d.kind == uw::PluginKind::Other) scan.noteEffects.push_back(std::move(d));
+    }
+    const auto byName = [](const auto& a, const auto& b) { return a.name < b.name; };
+    std::sort(scan.found.begin(), scan.found.end(), byName);
+    std::sort(scan.noteEffects.begin(), scan.noteEffects.end(), byName);
     scan.done = true;
-    log("found %zu instruments in CLAP's folders", scan.found.size());
+    log("found %zu instruments and %zu note effects in CLAP's folders", scan.found.size(), scan.noteEffects.size());
     return scan.found;
+}
+
+const std::vector<uw::PluginDescriptor>& Plugin::installedNoteEffects() {
+    installedSynths();
+    return synthScan().noteEffects;
 }
 
 // The synth a choice names: its .clap where it was, else a .clap of that
@@ -636,40 +697,51 @@ const std::vector<uw::PluginDescriptor>& Plugin::installedSynths() {
 // its id (or its first). Failing that, an instrument with its id among those
 // the synth menu found, if it's been opened. Null: none named, or not here.
 std::unique_ptr<uw::HostedPlugin> Plugin::loadSynth(const SynthChoice& c, std::string& path) {
-    path.clear();
-    if (c.id.empty() && c.path.empty() && c.name.empty()) return nullptr;
+    return loadPlugin(c.id, c.path, c.name, !c.id.empty() && config.synth != "none" ? config.synth : std::string(), path);
+}
+
+// A plugin by its id, from its .clap where it was, else a .clap of that
+// file's name, or of `name` or `alsoNamed`, in CLAP's folders; else one with
+// its id the scan found. `from` gets its .clap. Null: none named, or not here.
+std::unique_ptr<uw::HostedPlugin> Plugin::loadPlugin(const std::string& id, const std::string& path,
+                                                     const std::string& name, const std::string& alsoNamed,
+                                                     std::string& from) {
+    from.clear();
+    if (id.empty() && path.empty() && name.empty()) return nullptr;
     if (!factory) factory = sharedFactory();
     std::error_code          ec;
     std::vector<std::string> files;
-    const auto               add = [&](const std::string& name) {
-        if (name.empty()) return;
-        if (std::string f = findClap(factory->searchPaths(), name); !f.empty() &&
-                                                                    std::find(files.begin(), files.end(), f) == files.end())
+    const auto               add = [&](const std::string& n) {
+        if (n.empty()) return;
+        if (std::string f = findClap(factory->searchPaths(), n); !f.empty() &&
+                                                                 std::find(files.begin(), files.end(), f) == files.end())
             files.push_back(f);
     };
-    if (!c.path.empty() && fs::exists(c.path, ec)) files.push_back(c.path);
-    if (!c.path.empty()) add(fs::path(c.path).stem().string());
-    add(c.name);
-    if (!c.id.empty() && config.synth != "none") add(config.synth);
+    if (!path.empty() && fs::exists(path, ec)) files.push_back(path);
+    if (!path.empty()) add(fs::path(path).stem().string());
+    add(name);
+    add(alsoNamed);
     std::optional<uw::PluginDescriptor> desc;
     for (const std::string& file : files) {
         for (const uw::PluginDescriptor& d : factory->scanFile(file))
-            if ((c.id.empty() || d.id == c.id) && d.id != kOwnId) {
+            if ((id.empty() || d.id == id) && d.id != kOwnId) {
                 desc = d;
                 break;
             }
         if (desc) break;
     }
-    if (!desc && !c.id.empty())
-        for (const uw::PluginDescriptor& d : synthScan().found)
-            if (d.id == c.id) {
-                desc = d;
-                break;
-            }
+    const auto scanned = [&](const std::vector<uw::PluginDescriptor>& list) {
+        for (const uw::PluginDescriptor& d : list)
+            if (!desc && d.id == id) desc = d;
+    };
+    if (!desc && !id.empty()) {
+        scanned(synthScan().found);
+        scanned(synthScan().noteEffects);
+    }
     if (!desc) return nullptr;
     std::unique_ptr<uw::HostedPlugin> made = factory->create(*desc, services);
-    if (!made) log("synth %s (%s) wouldn't load, from %s", desc->name.c_str(), desc->id.c_str(), desc->path.c_str());
-    else path = desc->path;
+    if (!made) log("%s (%s) wouldn't load, from %s", desc->name.c_str(), desc->id.c_str(), desc->path.c_str());
+    else from = desc->path;
     return made;
 }
 
@@ -729,9 +801,140 @@ void Plugin::chooseSynth(const std::string& id) {
     keeper.recordOther("Change synth", std::make_shared<SynthStep>(*this, std::move(was)));
 }
 
+// --- the MIDI effects (NE) ------------------------------------------------------------
+
+std::vector<EffectChoice> Plugin::currentEffects() const {
+    std::vector<EffectChoice> out;
+    for (const HostedEffect& e : effects) {
+        EffectChoice c{e.key, e.saved};
+        if (e.plugin) {
+            c.saved.state.clear();
+            if (!e.plugin->saveState(c.saved.state)) c.saved.state.clear();
+        }
+        out.push_back(std::move(c));
+    }
+    return out;
+}
+
+std::string Plugin::effectTitle(const HostedEffect& e) const {
+    return "Umpire - " + e.saved.name + (e.saved.bypassed ? " (bypassed)" : "");
+}
+
+// The chain `next` names, in place of the one now, as useSynth(): effects
+// it keeps (by key) stay as they are, with its bypass; the others are
+// loaded with their saved states. One that isn't here is kept as it was,
+// and passed by.
+bool Plugin::useEffects(std::vector<EffectChoice> next) {
+    std::vector<HostedEffect> made(next.size());
+    std::vector<PluginEngine::Effect> chain;
+    for (std::size_t i = 0; i < next.size(); ++i) {
+        EffectChoice&  c = next[i];
+        HostedEffect&  m = made[i];
+        const auto     kept = std::find_if(effects.begin(), effects.end(),
+                                           [&c](const HostedEffect& e) { return c.key != 0 && e.key == c.key; });
+        m.key   = kept != effects.end() ? c.key : nextEffectKey++;
+        m.saved = std::move(c.saved);
+        if (kept != effects.end() && kept->plugin) {
+            chain.push_back({kept->plugin.get(), m.saved.bypassed});
+            continue;
+        }
+        std::string from;
+        m.plugin = loadPlugin(m.saved.id, m.saved.path, m.saved.name, {}, from);
+        if (!m.plugin) {
+            log("MIDI effect %s (%s) isn't here: passed by, and its state is kept", m.saved.name.c_str(), m.saved.id.c_str());
+            continue;
+        }
+        if (!m.saved.state.empty() && !m.plugin->loadState(m.saved.state.data(), m.saved.state.size()))
+            log("%s didn't take its saved state", m.plugin->descriptor().name.c_str());
+        m.saved.path = from;
+        m.saved.name = m.plugin->descriptor().name;
+        m.saved.state.clear();   // its own from now on
+        chain.push_back({m.plugin.get(), m.saved.bypassed});
+    }
+    const PluginEngine::Swap swap = engine.swapEffects(chain);
+    if (swap == PluginEngine::Swap::Busy) {   // nothing changed: what was loaded for it goes
+        log("the MIDI effects can't change now: the host hasn't processed the last change yet");
+        return false;
+    }
+    for (std::size_t i = 0; i < made.size(); ++i) {
+        if (made[i].plugin) continue;
+        const auto kept = std::find_if(effects.begin(), effects.end(),
+                                       [&](const HostedEffect& e) { return e.key == made[i].key; });
+        if (kept == effects.end()) continue;
+        made[i].plugin = std::move(kept->plugin);
+        made[i].window = std::move(kept->window);
+        if (made[i].window && kept->saved.bypassed != made[i].saved.bypassed)
+            made[i].window->setTitle(effectTitle(made[i]));
+    }
+    for (HostedEffect& gone : effects) {   // not kept: its editor closes, and it goes with the audio thread's next block
+        gone.window.reset();
+        if (gone.plugin) {
+            if (swap == PluginEngine::Swap::Pending) retiring.push_back(std::move(gone.plugin));
+            else gone.plugin.reset();
+        }
+    }
+    effects = std::move(made);
+    if (engine.active()) host->request_process(host);
+    return true;
+}
+
+void Plugin::editEffects(const char* label, std::vector<EffectChoice> next) {
+    std::vector<EffectChoice> was = currentEffects();
+    if (!useEffects(std::move(next))) return;
+    keeper.recordOther(label, std::make_shared<EffectsStep>(*this, std::move(was)));
+}
+
+void Plugin::addEffect(const std::string& id) {
+    std::vector<EffectChoice> next = currentEffects();
+    EffectChoice              added;
+    added.saved.id = id;
+    for (const uw::PluginDescriptor& d : installedNoteEffects())
+        if (d.id == id) {
+            added.saved.path = d.path;
+            added.saved.name = d.name;
+        }
+    next.push_back(std::move(added));
+    editEffects("Add MIDI effect", std::move(next));
+}
+
+void Plugin::removeEffect(std::size_t i) {
+    if (i >= effects.size()) return;
+    std::vector<EffectChoice> next = currentEffects();
+    next.erase(next.begin() + static_cast<std::ptrdiff_t>(i));
+    editEffects("Remove MIDI effect", std::move(next));
+}
+
+void Plugin::moveEffect(std::size_t i, int by) {
+    const std::ptrdiff_t to = static_cast<std::ptrdiff_t>(i) + by;
+    if (i >= effects.size() || to < 0 || to >= static_cast<std::ptrdiff_t>(effects.size())) return;
+    std::vector<EffectChoice> next = currentEffects();
+    std::swap(next[i], next[static_cast<std::size_t>(to)]);
+    editEffects("Move MIDI effect", std::move(next));
+}
+
+void Plugin::bypassEffect(std::size_t i, bool on) {
+    if (i >= effects.size() || effects[i].saved.bypassed == on) return;
+    std::vector<EffectChoice> next = currentEffects();
+    next[i].saved.bypassed = on;
+    editEffects(on ? "Bypass MIDI effect" : "Turn on MIDI effect", std::move(next));
+}
+
+void Plugin::toggleEffectWindow(std::size_t i) {
+    if (i >= effects.size()) return;
+    HostedEffect& e = effects[i];
+    if (e.window) {
+        e.window.reset();
+        log("%s's window closed", e.saved.name.c_str());
+        return;
+    }
+    if (!e.plugin || !e.plugin->hasEditor()) return;
+    e.window = uw::EditorWindow::open(*e.plugin, services, effectTitle(e));
+    log(e.window ? "%s's window opened" : "%s's editor wouldn't open", e.saved.name.c_str());
+}
+
 // Synths the audio thread has let go of: destroyed here, on the main thread.
 void Plugin::collectRetired() {
-    while (uw::HostedPlugin* done = engine.retiredSynth())
+    while (uw::HostedPlugin* done = engine.retiredPlugin())
         std::erase_if(retiring, [done](const auto& p) { return p.get() == done; });
 }
 
@@ -742,6 +945,13 @@ void Plugin::housekeeping() {
     if (synthWindow && !synthWindow->isOpen()) {   // closed by its close button
         synthWindow.reset();
         log("synth's window closed");
+    }
+    for (HostedEffect& e : effects) {
+        if (e.plugin) e.plugin->idle();
+        if (e.window && !e.window->isOpen()) {
+            e.window.reset();
+            log("%s's window closed", e.saved.name.c_str());
+        }
     }
 
     // Takes reach the lane on the lane thread; the host is told here, since
@@ -1042,6 +1252,7 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
     saved.input        = self->inputChoice;
     saved.zoom         = self->zoom;
     saved.hearNotes    = self->hearNotes;
+    for (EffectChoice& e : self->currentEffects()) saved.effects.push_back(std::move(e.saved));
     const std::vector<std::uint8_t> bytes = encodeState(saved);
     std::size_t                     at    = 0;
     while (at < bytes.size()) {
@@ -1049,9 +1260,10 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
         if (n <= 0) return false;
         at += static_cast<std::size_t>(n);
     }
-    self->log("saved: %zu takes, %zu bytes of clips, synth %s, state %zu bytes, record %s, zoom %.2f lane, %.2f grid",
+    self->log("saved: %zu takes, %zu bytes of clips, synth %s, state %zu bytes, %zu MIDI effects, record %s, zoom %.2f lane, %.2f grid",
               saved.takes.size(), clipBytes, saved.synthId.empty() ? "none" : saved.synthId.c_str(), saved.synthState.size(),
-              saved.armed ? "on" : "off", static_cast<double>(saved.zoom.lane), static_cast<double>(saved.zoom.grid));
+              saved.effects.size(), saved.armed ? "on" : "off", static_cast<double>(saved.zoom.lane),
+              static_cast<double>(saved.zoom.grid));
     return true;
 }
 
@@ -1124,6 +1336,10 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
         if (self->synth && !saved.synthState.empty() && saved.synthId == self->synth->descriptor().id)
             synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
     }
+    // The MIDI effects: the state's, each loaded anew with its own state.
+    std::vector<EffectChoice> chain;
+    for (SavedEffect& e : saved.effects) chain.push_back({0, std::move(e)});
+    if (!self->useEffects(std::move(chain))) self->log("the state's MIDI effects couldn't be put in now");
     if (!(saved.input == self->inputChoice)) self->chooseInput(saved.input);
     self->hearNotes = saved.hearNotes;
     self->zoom = saved.zoom;   // an open window reads it as it draws
@@ -1447,6 +1663,23 @@ bool guiSetParent(const clap_plugin_t* p, const clap_window_t* parentWindow) {
         return items;
     };
     links.chooseSynth = [self](const std::string& id) { self->chooseSynth(id); };
+    links.effects     = [self] {
+        std::vector<EffectItem> items;
+        for (const Plugin::HostedEffect& e : self->effects)
+            items.push_back({e.saved.name.empty() ? e.saved.id : e.saved.name, !e.plugin, e.saved.bypassed,
+                             e.plugin && e.plugin->hasEditor(), e.window != nullptr});
+        return items;
+    };
+    links.noteEffects = [self] {
+        std::vector<SynthItem> items;
+        for (const uw::PluginDescriptor& d : self->installedNoteEffects()) items.push_back({d.id, d.name, d.vendor});
+        return items;
+    };
+    links.addEffect          = [self](const std::string& id) { self->addEffect(id); };
+    links.removeEffect       = [self](std::size_t i) { self->removeEffect(i); };
+    links.moveEffect         = [self](std::size_t i, int by) { self->moveEffect(i, by); };
+    links.bypassEffect       = [self](std::size_t i, bool on) { self->bypassEffect(i, on); };
+    links.toggleEffectEditor = [self](std::size_t i) { self->toggleEffectWindow(i); };
     links.zoom        = &self->zoom;
     links.hearNotes   = &self->hearNotes;
     unsigned w = 0, h = 0;

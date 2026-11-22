@@ -12,6 +12,7 @@
 // undo) and reads the host's position from the engine's atomics; the audio
 // thread never waits for it.
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -29,6 +30,14 @@ class PluginEngine;
 // menu's (the default, the sources, none).
 struct SynthItem {
     std::string id, name, vendor;
+};
+// NE: one of the MIDI effects in front of the synth, for the MIDI FX menu.
+struct EffectItem {
+    std::string name;
+    bool        missing   = false;   // not installed here: kept, passed by
+    bool        bypassed  = false;
+    bool        hasEditor = false;
+    bool        editorOpen = false;
 };
 struct InputItem {
     std::string label;
@@ -59,6 +68,15 @@ struct EditorLinks {
     // them, so they outlive the window); the window changes them. Null: the
     // window keeps its own.
     ViewZoom*                               zoom = nullptr;
+    // NE: the MIDI effects in front of the synth (the MIDI FX menu). Each
+    // edit is an undo step; an editor opens in a window of its own.
+    std::function<std::vector<EffectItem>()>  effects;
+    std::function<std::vector<SynthItem>()>   noteEffects;    // installed: CLAP's note effects
+    std::function<void(const std::string&)>   addEffect;      // after the others
+    std::function<void(std::size_t)>          removeEffect;
+    std::function<void(std::size_t, int)>     moveEffect;     // by -1 or +1
+    std::function<void(std::size_t, bool)>    bypassEffect;
+    std::function<void(std::size_t)>          toggleEffectEditor;
     // HE: Edit > Hear notes while editing, the plugin's (its state keeps it).
     // Null: the window keeps its own, on.
     bool*                                   hearNotes = nullptr;

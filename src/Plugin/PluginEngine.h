@@ -21,7 +21,11 @@
 //     its own position;
 //   - runs the hosted synth (a uw::HostedPlugin, uw-core's CLAP host) once
 //     for the block, its events at their sample offsets, in MIDI 2.0 where
-//     its note port takes it, MIDI 1.0 otherwise (as App/AudioEngine).
+//     its note port takes it, MIDI 1.0 otherwise (as App/AudioEngine);
+//   - NE: first through the note effects in front of it, in order
+//     (uw::NoteEffectChain), each in the protocol its note port takes. What's
+//     recorded is what's played, before them; the grid's notes (HE) go
+//     through them.
 //
 // Threads: "the lane side" below is any one non-audio thread at a time (the
 // lane thread, or the main thread holding the lane's lock); the audio thread
@@ -30,10 +34,12 @@
 // what to play crosses to the audio thread, and back to be freed, through
 // SpscQueues.
 
+#include <algorithm>
 #include <atomic>
 #include <bitset>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -42,6 +48,7 @@
 #include "uw/base/SpscQueue.h"
 #include "uw/midi/MidiInput.h"
 #include "uw/plugin/HostedPlugin.h"
+#include "uw/plugin/NoteEffectChain.h"
 #include "uw/ump/Ump.h"
 
 namespace umpire::plugin {
@@ -136,21 +143,37 @@ public:
     // The synth the engine plays (null: none, silence). Not owned. Set while
     // inactive.
     void setSynth(uw::HostedPlugin* plugin) { synth = plugin; }
+    // NE: the note effects in front of the synth, in order. Not owned; none
+    // null. Set while inactive (or swapped in with swapEffects()).
+    struct Effect {
+        uw::HostedPlugin* plugin   = nullptr;
+        bool              bypassed = false;   // runs without MIDI; its MIDI goes around it
+        bool operator==(const Effect&) const = default;
+    };
+    void setEffects(std::vector<Effect> list) { effects = std::move(list); }
+    const std::vector<Effect>& currentEffects() const noexcept { return effects; }
     // Another synth, while the engine may be running (P4: the synth chosen in
     // the window). Inactive, it's setSynth() and Done: the old one may go at
     // once. Active, `next` is activated here (its state already loaded) and
     // handed to the audio thread, which takes it at its next block, stops
     // the old one there and hands it back: Pending, and the old one must live
-    // until retiredSynth() returns it. The audio thread never waits for it.
+    // until retiredPlugin() returns it. The audio thread never waits for it.
     enum class Swap {
         Done,      // inactive: the old synth may go now
         Pending,   // the audio thread takes it at its next block
         Busy,      // too many swaps not yet taken (the host isn't processing): nothing changed
     };
     Swap swapSynth(uw::HostedPlugin* next);
-    // A synth the audio thread has let go of since swapSynth(), deactivated
-    // now and the caller's to destroy; null when there's none.
-    uw::HostedPlugin* retiredSynth();
+    // NE: other effects in front of the synth, as swapSynth(): a plugin in
+    // both the old and the new chain (the synth, a kept effect) stays active
+    // and goes on processing. When the synth stays, the audio thread sends it
+    // All Notes Off on every channel as it takes the new chain, since a note's
+    // off may now come out of the effects at another key.
+    Swap swapEffects(std::vector<Effect> next);
+    // A synth or effect the audio thread has let go of since a swap,
+    // deactivated now, in neither the synth nor the effects given since, and
+    // the caller's to destroy; null when there's none.
+    uw::HostedPlugin* retiredPlugin();
     uw::HostedPlugin* currentSynth() const noexcept { return synth; }
     // Allocates for blocks of up to `maxFrames` and activates the synth.
     // False only if the synth wouldn't activate (the engine still runs, silent).
@@ -227,8 +250,8 @@ private:
         std::uint32_t   offset = 0;
         uw::MidiMessage message;
     };
-    // A synth as the audio thread runs it: made and freed on the main thread,
-    // with what it needs to run a block.
+    // A synth and its effects as the audio thread runs them: made and freed
+    // on the main thread, with what they need to run a block.
     struct SynthSlot {
         uw::HostedPlugin*               plugin   = nullptr;
         bool                            active   = false;
@@ -237,11 +260,25 @@ private:
         std::uint32_t                   channels = 0;
         std::vector<std::vector<float>> scratch;
         std::vector<float*>             pointers;
+        // NE: the effects that activated, in order; and every plugin this
+        // slot holds active (each released when it's retired).
+        uw::NoteEffectChain             chain;
+        std::vector<uw::HostedPlugin*>  held;
+        std::vector<uw::HostedPlugin*>  unheld;   // given, but it wouldn't activate
+        bool holds(const uw::HostedPlugin* p) const noexcept {
+            return std::find(held.begin(), held.end(), p) != held.end();
+        }
     };
-    // Activates `plugin` (if any) and lays out its slot: main thread.
-    std::unique_ptr<SynthSlot> makeSlot(uw::HostedPlugin* plugin);
+    // Activates the synth and the effects (those not active already) and lays
+    // out their slot: main thread.
+    std::unique_ptr<SynthSlot> makeSlot(uw::HostedPlugin* plugin, const std::vector<Effect>& chain);
+    bool acquire(uw::HostedPlugin* plugin);   // activates it the first time: false if it wouldn't
+    void release(uw::HostedPlugin* plugin, bool retire = true);   // deactivates it the last time
+    bool given(const uw::HostedPlugin* plugin) const noexcept;    // the synth or an effect now
+    Swap swapIn(uw::HostedPlugin* nextSynth, std::vector<Effect> nextEffects);
+    void collectSlots();                      // frees the slots the audio thread let go of
     void                       adoptSynth() noexcept;
-    void                       retireSlot(SynthSlot* slot);
+    void                       retireSlot(SynthSlot* slot, bool retire = true);
     enum : int { kTakeIdle = 0, kTakeRecording = 1, kTakeReady = 2 };
     struct TakeBuffer {
         std::atomic<int>       state{kTakeIdle};
@@ -277,6 +314,8 @@ private:
     void   adoptPlayData() noexcept;
 
     uw::HostedPlugin* synth      = nullptr;   // main thread: the latest given
+    std::vector<Effect> effects;               // main thread: the latest given (NE)
+    std::map<uw::HostedPlugin*, int> activeCount;   // main thread: slots holding each active plugin
     bool              isActive   = false;
     double            sampleRate = 48000.0;
     std::uint32_t     maxFrames  = 0;
@@ -337,6 +376,8 @@ private:
     std::vector<Out>                outEvents;
     std::size_t                     outCount = 0;
     std::vector<uw::Event>          synthEvents;
+    std::vector<uw::Event>          chainEvents;   // NE: the effects' input
+    bool                            notesOffDue = false;   // audio thread: allNotesOff() at the next block
 
     // Stats (audio thread writes, main thread reads and clears).
     std::atomic<std::uint64_t> statCount{0}, statClamped{0}, statDropped{0};

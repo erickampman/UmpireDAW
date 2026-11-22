@@ -28,7 +28,7 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return lower(haystack).find(lower(needle)) != std::string::npos;
 }
 
-constexpr std::uint32_t kVersion = 5;   // 1: the spike's one clip; 2: no flags; 3: no names, scales, choices; 4: no zoom
+constexpr std::uint32_t kVersion = 6;   // 1: the spike's one clip; 2: no flags; 3: no names, scales, choices; 4: no zoom; 5: no effects
 
 void put32(std::vector<std::uint8_t>& out, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) out.push_back(static_cast<std::uint8_t>(v >> (8 * i)));
@@ -42,6 +42,7 @@ void putString(std::vector<std::uint8_t>& out, const std::string& s) {
 // kHearOff (HE): Edit > Hear notes while editing turned off. Unset in every
 // older state, so hearing is on there; an older build ignores it.
 constexpr std::uint32_t kArmed = 1u, kSynthChosen = 2u, kHearOff = 4u;
+constexpr std::uint32_t kBypassed = 1u;   // a MIDI effect's flags (NE)
 
 } // namespace
 
@@ -124,6 +125,15 @@ std::vector<std::uint8_t> encodeState(const SavedState& state) {
     putString(out, state.input.id);
     put32(out, std::bit_cast<std::uint32_t>(state.zoom.lane));
     put32(out, std::bit_cast<std::uint32_t>(state.zoom.grid));
+    put32(out, static_cast<std::uint32_t>(state.effects.size()));
+    for (const SavedEffect& e : state.effects) {
+        putString(out, e.id);
+        putString(out, e.path);
+        putString(out, e.name);
+        put32(out, e.bypassed ? kBypassed : 0u);
+        put32(out, static_cast<std::uint32_t>(e.state.size()));
+        for (const std::byte b : e.state) out.push_back(static_cast<std::uint8_t>(b));
+    }
     return out;
 }
 
@@ -248,6 +258,24 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
     // say, is brought into it; not a number, 1.
     state.zoom.lane = ui::Zoom::clamp(std::bit_cast<float>(lane));
     state.zoom.grid = ui::Zoom::clamp(std::bit_cast<float>(grid));
+    if (version < 6) return true;   // no effects
+    std::uint32_t effects = 0;
+    if (!get32(effects)) {
+        error = "the state ends before its MIDI effects";
+        return false;
+    }
+    for (std::uint32_t i = 0; i < effects; ++i) {
+        SavedEffect   e;
+        std::uint32_t flags = 0;
+        if (!str(e.id) || !str(e.path) || !str(e.name) || !get32(flags) || !get32(n) || !bytes(n, p)) {
+            error = "the state ends inside MIDI effect " + std::to_string(i + 1);
+            return false;
+        }
+        e.bypassed = (flags & kBypassed) != 0;
+        e.state.resize(n);
+        if (n > 0) std::memcpy(e.state.data(), p, n);
+        state.effects.push_back(std::move(e));
+    }
     return true;
 }
 

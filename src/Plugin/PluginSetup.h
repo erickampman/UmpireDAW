@@ -57,7 +57,7 @@ int chooseSource(const std::vector<uw::MidiSourceInfo>& sources, const std::stri
 // which and its own state; the arm (the Record parameter); and the input
 // chosen in the window; and since Z1 the window's zoom. Little-endian,
 // strings as a size (u32) and bytes, floats as their IEEE-754 bits (u32):
-//   "UMPP", version (u32, 5),
+//   "UMPP", version (u32, 6),
 //   take count (u32), then for each, oldest first: its start (i64 ticks on
 //   the host's timeline), clip file size (u32) and bytes, name, its scale's
 //   EDO (u32) and reference note (u32) and how it was arrived at (u32,
@@ -69,8 +69,11 @@ int chooseSource(const std::vector<uw::MidiSourceInfo>& sources, const std::stri
 //   the synth's .clap path, the synth's name,
 //   the input: how it's chosen (u32, InputMode), its name, its id,
 //   the zoom: the lane's, then the grid's (f32 each, a factor on their widths
-//   at 1; out of range or not a number reads as 1, Ui/Zoom.h's range).
-// Version 4 (P4) had no zoom: read at 1. Version 3 (P2, the arm) had no names, scales, next number, chosen bit,
+//   at 1; out of range or not a number reads as 1, Ui/Zoom.h's range),
+//   the MIDI effects in front of the synth (NE), in order: their count
+//   (u32), then each one's id, .clap path, name, flags (u32; bit 0:
+//   bypassed) and state size (u32) and bytes.
+// Version 5 (Z1) had no effects: read with none. Version 4 (P4) had no zoom: read at 1. Version 3 (P2, the arm) had no names, scales, next number, chosen bit,
 // synth path or name, or input. Version 2 (P2) had no flags either: read
 // unarmed. Version 1 (the spike, P1) had one clip file in place of the takes,
 // from the song's start: it's read as one take at 0. Versions 1 to 3 name the
@@ -112,6 +115,15 @@ struct ViewZoom {
     bool  operator==(const ViewZoom&) const = default;
 };
 
+// One of the MIDI effects in front of the synth (NE), as saved: one that
+// isn't installed is kept as it was, state and all.
+struct SavedEffect {
+    std::string            id, path, name;
+    bool                   bypassed = false;
+    std::vector<std::byte> state;
+    bool operator==(const SavedEffect&) const = default;
+};
+
 struct SavedState {
     std::vector<SavedTake>    takes;
     std::uint32_t             nextTakeNumber = 0;   // 0: one past the takes' own
@@ -126,6 +138,7 @@ struct SavedState {
     InputChoice               input;
     ViewZoom                  zoom;   // Z1, version 5
     bool                      hearNotes = true;   // HE: flags bit 2 set when off (any version)
+    std::vector<SavedEffect>  effects;            // NE, version 6
 };
 
 std::vector<std::uint8_t> encodeState(const SavedState& state);

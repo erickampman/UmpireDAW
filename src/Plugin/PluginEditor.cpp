@@ -389,6 +389,7 @@ struct PluginEditor::Impl {
     }
     // ImGui: the header's controls and the take's menus.
     void record();
+    void midiFx();
     void synthButton();
     void status();
     void takeItems();
@@ -428,6 +429,8 @@ struct PluginEditor::Impl {
     std::string                 problem;       // shown once, with OK
     bool                        openProblem = false, openReplace = false;
     std::vector<SynthItem>      synthList;
+    std::vector<SynthItem>      noteEffectList;   // NE: the MIDI FX menu's "Add a MIDI effect..."
+    std::size_t                 lastEffectsSeen = 0;   // the header's MIDI FX, as last drawn (a hash)
     std::vector<InputItem>      inputList;
     // UMPIRE_PLUGIN_CAPTURE=DIR: a frame a second written there (frame-N.ppm),
     // for tools/PluginWindowCheck.mm, which can't screenshot without the
@@ -493,6 +496,7 @@ void PluginEditor::Impl::build() {
     panels.hooks.menuBarStart   = [this] { record(); };
     panels.hooks.editMenuEnd    = [this] { takeItems(); };
     panels.hooks.menuBarEnd     = [this] {
+        midiFx();
         synthButton();
         status();
     };
@@ -575,6 +579,77 @@ void PluginEditor::Impl::record() {
                                        : "Off: playing in the host makes no take here. Click to record when the host plays.")
                               : (armed ? "Records while the host records. Click to stop recording here."
                                        : "Off: the host's recording makes no take here. Click to record with the host."));
+    ImGui::SameLine();
+}
+
+// NE: the MIDI effects in front of the synth, StageHand's MIDI FX menu: the
+// first one's name ("+1" for each more), or "MIDI FX" dimmed when there are
+// none; accent-coloured if one isn't installed, dimmed if all are bypassed.
+// With one effect that has an editor, E beside it opens it.
+void PluginEditor::Impl::midiFx() {
+    if (!links.effects || !links.addEffect) return;
+    const std::vector<EffectItem> fx = links.effects();
+    const float h = ImGui::GetFrameHeight() * 0.86f;
+    const float y = (ImGui::GetFrameHeight() - h) / 2 + 1;
+    bool        anyMissing = false, allBypassed = !fx.empty();
+    for (const EffectItem& e : fx) {
+        anyMissing  = anyMissing || e.missing;
+        allBypassed = allBypassed && e.bypassed;
+    }
+    const std::string label =
+        fx.empty() ? "MIDI FX" : fx[0].name + (fx.size() > 1 ? " +" + std::to_string(fx.size() - 1) : std::string());
+    ImGui::SetCursorPosY(y);
+    const ImVec4 text = anyMissing ? col::kAccent
+                        : (fx.empty() || allBypassed) ? ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)
+                                                      : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    ImGui::PushStyleColor(ImGuiCol_Text, text);
+    const float w       = ImGui::CalcTextSize(label.c_str()).x + 1.5f * ImGui::GetFontSize();
+    const bool  pressed = ImGui::Button((label + "##midifx").c_str(), ImVec2(w, h));
+    ImGui::PopStyleColor();
+    if (pressed) {
+        noteEffectList = links.noteEffects ? links.noteEffects() : std::vector<SynthItem>{};
+        ImGui::OpenPopup("##midifxmenu");
+    }
+    if (ImGui::IsItemHovered())
+        ImGui::SetTooltip(fx.empty()     ? "MIDI effects: note effects in front of the synth.\nClick to add one."
+                          : anyMissing   ? "A MIDI effect isn't installed here: it's passed by.\nIts settings are kept "
+                                           "and saved with the project."
+                          : allBypassed  ? "The MIDI effects are bypassed: what you play goes straight to the synth."
+                                         : "What you play goes through these MIDI effects, in order, to the synth.\n"
+                                           "Takes record what you play, before them.");
+    if (fx.size() == 1 && fx[0].hasEditor && links.toggleEffectEditor) {
+        ImGui::SameLine(0, 2);
+        ImGui::SetCursorPosY(y);
+        if (ui::toggle("##fxeditor", "E", fx[0].editorOpen, col::kNote, ImVec2(h * 1.2f, h))) links.toggleEffectEditor(0);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(fx[0].editorOpen ? "Close the MIDI effect's window" : "Open the MIDI effect's window");
+    }
+    if (ImGui::BeginPopup("##midifxmenu")) {
+        for (std::size_t i = 0; i < fx.size(); ++i) {
+            const EffectItem& e    = fx[i];
+            const std::string name = std::to_string(i + 1) + ". " + e.name + (e.missing ? " (not installed)" : "") +
+                                     (e.bypassed ? " (bypassed)" : "") + "##fx" + std::to_string(i);
+            if (ImGui::BeginMenu(name.c_str())) {
+                if (ImGui::MenuItem("Editor", nullptr, e.editorOpen, e.hasEditor) && links.toggleEffectEditor)
+                    links.toggleEffectEditor(i);
+                if (ImGui::MenuItem("Bypass", nullptr, e.bypassed) && links.bypassEffect) links.bypassEffect(i, !e.bypassed);
+                if (ImGui::MenuItem("Move up", nullptr, false, i > 0) && links.moveEffect) links.moveEffect(i, -1);
+                if (ImGui::MenuItem("Move down", nullptr, false, i + 1 < fx.size()) && links.moveEffect)
+                    links.moveEffect(i, 1);
+                ImGui::Separator();
+                if (ImGui::MenuItem("Remove") && links.removeEffect) links.removeEffect(i);
+                ImGui::EndMenu();
+            }
+        }
+        if (!fx.empty()) ImGui::Separator();
+        if (ImGui::BeginMenu("Add a MIDI effect...")) {
+            if (noteEffectList.empty()) ImGui::TextDisabled("No CLAP note effects found");
+            for (const SynthItem& item : noteEffectList)
+                if (ImGui::MenuItem(item.name.c_str(), item.vendor.c_str())) links.addEffect(item.id);
+            ImGui::EndMenu();
+        }
+        ImGui::EndPopup();
+    }
     ImGui::SameLine();
 }
 
@@ -856,9 +931,17 @@ void PluginEditor::idle() {
     const bool armed   = m.links.armed && m.links.armed();
     const bool rec     = m.links.engine->recording();
     const bool synth   = m.links.synthEditorOpen && m.links.synthEditorOpen();
+    // The MIDI FX menu's label and E follow the effects (an editor closed by
+    // its own close button, an undo).
+    std::size_t effects = 0;
+    if (m.links.effects)
+        for (const EffectItem& e : m.links.effects())
+            effects = effects * 31 + std::hash<std::string>{}(e.name) + (e.missing ? 2 : 0) + (e.bypassed ? 4 : 0) +
+                      (e.editorOpen ? 8 : 0) + 1;
     if (at != m.lastPosition || playing != m.lastPlaying || armed != m.lastArmed || rec != m.lastRecording ||
-        synth != m.lastSynthOpen) {
+        synth != m.lastSynthOpen || effects != m.lastEffectsSeen) {
         m.lastPosition = at, m.lastPlaying = playing, m.lastArmed = armed, m.lastRecording = rec, m.lastSynthOpen = synth;
+        m.lastEffectsSeen = effects;
         m.canvas->panels().wake(2);
         m.canvas->repaint();
     }

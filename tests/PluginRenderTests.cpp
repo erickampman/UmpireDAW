@@ -326,6 +326,44 @@ int main(int argc, char** argv) {
               back.takes[0].clipFile == saved.takes[0].clipFile &&
               back.synthId == "com.unlikelyware.plainoldsynth" && !back.synthState.empty(),
           error);
+    // NE: MIDI effects in front of the synth, through the state. Retune
+    // (if it's installed) bypassed, and an effect that isn't installed, are
+    // passed by: the same samples as none. Retune on, the synth still sounds,
+    // and the state brings Retune's own back.
+    {
+        const std::string retune = "com.unlikelyware.retune";
+        const auto        withEffects = [&](std::vector<plugin::SavedEffect> fx, std::vector<std::uint8_t>* again) {
+            plugin::SavedState s = saved;
+            s.effects            = std::move(fx);
+            Instance i(module->factory());
+            i.load(plugin::encodeState(s));
+            i.start();
+            std::vector<float> out = i.play(120, 3.0);
+            if (again != nullptr) *again = i.save();
+            return out;
+        };
+        const std::vector<float> missing = withEffects({{"test.not-installed", "", "Gone", false, {std::byte{7}}}}, nullptr);
+        check("a MIDI effect that isn't installed is passed by", missing == realtime);
+        std::vector<std::uint8_t> again;
+        const std::vector<float>  bypassed = withEffects({{retune, "", "Retune", true, {}}}, &again);
+        plugin::SavedState        kept;
+        const bool                haveRetune = plugin::decodeState(again.data(), again.size(), kept, error) &&
+                                kept.effects.size() == 1 && !kept.effects[0].state.empty();
+        if (!haveRetune) {
+            std::printf("SKIP  Retune isn't installed: MIDI effects not checked with a real one\n");
+        } else {
+            check("Retune bypassed: the synth hears the clip as it is", bypassed == realtime);
+            check("and its bypass and its own state are saved", kept.effects[0].bypassed && kept.effects[0].id == retune);
+            std::vector<std::uint8_t> on;
+            const std::vector<float>  through = withEffects({{retune, "", "Retune", false, {}}}, &on);
+            plugin::SavedState        back2;
+            check("through Retune, the synth plays the clip", firstSound(through) >= 24000,
+                  std::to_string(firstSound(through)));
+            check("the state keeps it on", plugin::decodeState(on.data(), on.size(), back2, error) &&
+                                               back2.effects.size() == 1 && !back2.effects[0].bypassed);
+        }
+    }
+
     // The arm, through CLAP: one parameter, Record, on in a new instance,
     // turned off by the host and kept off in the state (a new instance's
     // default doesn't override it).

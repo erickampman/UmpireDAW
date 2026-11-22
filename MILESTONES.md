@@ -278,7 +278,18 @@ S2 and R1 to R6.
   effects, so they act again on playback, as StageHand's rows and a DAW's
   MIDI FX do) or what they put out; whether the grid's HE notes go through
   them; and how much of StageHand's note-effect hosting moves into uw-core
-  to be shared.
+  to be shared. *Decided with the author 2026-11-22: a take records what's
+  played, before the effects; the grid's HE notes go through them; the
+  chain is a new uw-core `NoteEffectChain` (uw::note-effects), Umpire its
+  first user, StageHand moving onto it later. Built 2026-11-22 on the Mac
+  (plugin-version.md, "NE"): the MIDI FX menu before the synth, with E;
+  each effect's editor in a window of its own; edits as undo steps; the
+  synth and its effects swapped as one slot, kept plugins staying active,
+  All Notes Off to a kept synth; the state's version 6. Checked headless:
+  11 of 11 (testEffects, testStateV6; with the real Retune in front of
+  PlainOldSynth in test-plugin-render), uw-core's test-note-effect-chain;
+  clap-validator 32 passed, 0 failed, 12 skipped; auval passes; the window
+  check passes. Left: the author's check in hosts, and Linux.*
 
 ## Zoom
 

@@ -66,6 +66,7 @@ PluginEngine::PluginEngine() {
     chaseIndex.assign(kKeys, -1);
     outEvents.resize(kMaxEvents);
     synthEvents.resize(kMaxEvents);
+    chainEvents.resize(kMaxEvents);
     liveBlock.resize(kMaxEvents);
 }
 
@@ -73,17 +74,63 @@ PluginEngine::~PluginEngine() = default;   // `owned` frees every PlayData, the 
 
 // --- main thread -----------------------------------------------------------------------
 
-std::unique_ptr<PluginEngine::SynthSlot> PluginEngine::makeSlot(uw::HostedPlugin* plugin) {
+bool PluginEngine::acquire(uw::HostedPlugin* plugin) {
+    int& count = activeCount[plugin];
+    if (count == 0 && !plugin->activate(sampleRate, maxFrames)) {
+        activeCount.erase(plugin);
+        return false;
+    }
+    ++count;
+    return true;
+}
+
+bool PluginEngine::given(const uw::HostedPlugin* plugin) const noexcept {
+    return plugin == synth ||
+           std::any_of(effects.begin(), effects.end(), [plugin](const Effect& e) { return e.plugin == plugin; });
+}
+
+// A plugin no slot holds any more is deactivated; if it's in neither the
+// synth nor the effects given since, it's the caller's again (retiredPlugin()).
+void PluginEngine::release(uw::HostedPlugin* plugin, bool retire) {
+    const auto it = activeCount.find(plugin);
+    if (it == activeCount.end() || --it->second > 0) return;
+    activeCount.erase(it);
+    plugin->deactivate();
+    if (retire && !given(plugin)) retired.push_back(plugin);
+}
+
+std::unique_ptr<PluginEngine::SynthSlot> PluginEngine::makeSlot(uw::HostedPlugin* plugin,
+                                                                const std::vector<Effect>& chain) {
     auto slot    = std::make_unique<SynthSlot>();
     slot->plugin = plugin;
-    if (plugin != nullptr && plugin->activate(sampleRate, maxFrames)) {
+    uw::NoteDialectMask dialects = 0;
+    if (plugin != nullptr && acquire(plugin)) {
+        slot->held.push_back(plugin);
         slot->active                = true;
         const uw::PortLayout layout = plugin->portLayout();
         slot->notePort              = layout.noteInputs.empty() ? -1 : 0;
-        slot->midi2 = !layout.noteInputs.empty() && (layout.noteInputs[0].supportedDialects & uw::NoteDialect::Midi2) != 0;
+        dialects                    = layout.noteInputs.empty() ? 0 : layout.noteInputs[0].supportedDialects;
+        slot->midi2                 = (dialects & uw::NoteDialect::Midi2) != 0;
         const int main = uw::mainAudioOutput(layout);
         slot->channels = main >= 0 ? layout.audioOutputs[static_cast<std::size_t>(main)].channelCount : 0;
+    } else if (plugin != nullptr) {
+        slot->unheld.push_back(plugin);
     }
+    std::vector<uw::NoteEffectChain::Stage> stages;
+    for (const Effect& e : chain) {
+        if (e.plugin == nullptr) continue;
+        if (acquire(e.plugin)) {
+            slot->held.push_back(e.plugin);
+            stages.push_back({e.plugin, e.bypassed});
+        } else {
+            slot->unheld.push_back(e.plugin);   // it wouldn't activate: left out, its MIDI goes around it
+        }
+    }
+    // A synth that takes neither MIDI protocol gets MIDI 1.0, as before the chain.
+    if ((dialects & (uw::NoteDialect::Midi | uw::NoteDialect::MidiMpe | uw::NoteDialect::Midi2)) == 0)
+        dialects = uw::NoteDialect::Midi;
+    slot->chain.prepare(std::move(stages), dialects, static_cast<std::uint16_t>(std::max(slot->notePort, 0)), maxFrames,
+                        static_cast<std::uint32_t>(kMaxEvents));
     slot->scratch.assign(slot->channels, std::vector<float>(maxFrames, 0.0f));
     slot->pointers.resize(slot->channels);
     for (std::uint32_t c = 0; c < slot->channels; ++c) slot->pointers[c] = slot->scratch[c].data();
@@ -93,22 +140,26 @@ std::unique_ptr<PluginEngine::SynthSlot> PluginEngine::makeSlot(uw::HostedPlugin
 bool PluginEngine::activate(double rate, std::uint32_t frames) {
     sampleRate = rate > 0 ? rate : 48000.0;
     maxFrames  = frames;
-    auto slot  = makeSlot(synth);
+    auto slot  = makeSlot(synth, effects);
     const bool ok = synth == nullptr || slot->active;
     running = latest = slot.get();
     slots.push_back(std::move(slot));
     wasPlaying = wasRolling = false;
+    notesOffDue = false;
     sounding.reset();
     isActive = true;
     return ok;
 }
 
-// Deactivates a slot's synth and frees the slot; a synth that isn't the
-// latest given is the caller's to destroy (retiredSynth()).
-void PluginEngine::retireSlot(SynthSlot* slot) {
+// Releases what a slot holds and frees it; a plugin no longer given (the
+// synth or an effect) is the caller's to destroy (retiredPlugin()).
+void PluginEngine::retireSlot(SynthSlot* slot, bool retire) {
     if (slot == nullptr) return;
-    if (slot->active) slot->plugin->deactivate();
-    if (slot->plugin != nullptr && slot->plugin != synth) retired.push_back(slot->plugin);
+    for (uw::HostedPlugin* p : slot->held) release(p, retire);
+    for (uw::HostedPlugin* p : slot->unheld)
+        if (retire && !given(p) && activeCount.find(p) == activeCount.end() &&
+            std::find(retired.begin(), retired.end(), p) == retired.end())
+            retired.push_back(p);
     if (latest == slot) latest = nullptr;
     std::erase_if(slots, [slot](const auto& s) { return s.get() == slot; });
 }
@@ -132,19 +183,27 @@ void PluginEngine::deactivate() {
     isActive = false;
 }
 
-PluginEngine::Swap PluginEngine::swapSynth(uw::HostedPlugin* next) {
+PluginEngine::Swap PluginEngine::swapSynth(uw::HostedPlugin* next) { return swapIn(next, effects); }
+
+PluginEngine::Swap PluginEngine::swapEffects(std::vector<Effect> next) { return swapIn(synth, std::move(next)); }
+
+PluginEngine::Swap PluginEngine::swapIn(uw::HostedPlugin* nextSynth, std::vector<Effect> nextEffects) {
     if (!isActive) {
-        synth = next;
+        synth   = nextSynth;
+        effects = std::move(nextEffects);
         return Swap::Done;
     }
-    retiredSynth();   // what's come back makes room
+    collectSlots();   // what's come back makes room
     if (slotsInFlight >= 4) return Swap::Busy;
-    uw::HostedPlugin* const was = synth;
-    synth                       = next;
-    auto slot                   = makeSlot(next);
+    uw::HostedPlugin* const wasSynth   = synth;
+    std::vector<Effect>     wasEffects = effects;
+    synth                              = nextSynth;
+    effects                            = std::move(nextEffects);
+    auto slot                          = makeSlot(synth, effects);
     if (!slotIn.push(slot.get())) {   // can't happen below the limit; undone if it does
-        synth = was;
-        if (slot->active) next->deactivate();
+        synth   = wasSynth;
+        effects = std::move(wasEffects);
+        for (uw::HostedPlugin* p : slot->held) release(p, false);   // the caller keeps what it gave
         return Swap::Busy;
     }
     ++slotsInFlight;
@@ -153,12 +212,16 @@ PluginEngine::Swap PluginEngine::swapSynth(uw::HostedPlugin* next) {
     return Swap::Pending;
 }
 
-uw::HostedPlugin* PluginEngine::retiredSynth() {
+void PluginEngine::collectSlots() {
     SynthSlot* back = nullptr;
     while (slotOut.pop(back)) {
         if (slotsInFlight > 0) --slotsInFlight;
         retireSlot(back);
     }
+}
+
+uw::HostedPlugin* PluginEngine::retiredPlugin() {
+    collectSlots();
     if (retired.empty()) return nullptr;
     uw::HostedPlugin* const plugin = retired.back();
     retired.pop_back();
@@ -462,7 +525,12 @@ void PluginEngine::adoptSynth() noexcept {
     SynthSlot* next = nullptr;
     while (slotIn.pop(next)) {
         if (running != nullptr) {
-            if (running->active) running->plugin->stopProcessing();
+            // What the new slot doesn't hold stops here; the rest goes on.
+            for (uw::HostedPlugin* p : running->held)
+                if (!next->holds(p)) p->stopProcessing();
+            // The same synth behind other effects: what they turned its notes
+            // into may not be what they turn the offs into now.
+            if (next->active && running->active && next->plugin == running->plugin) notesOffDue = true;
             slotOut.push(running);   // room: no more than four are in flight
         }
         running     = next;
@@ -619,42 +687,71 @@ void PluginEngine::runSynth(const Block& b) noexcept {
         return;
     }
 
+    const HostTransport& t = b.transport;
+    uw::TimeInfo         time;
+    time.sampleRate         = sampleRate;
+    time.samplePosition     = steadyFrames;
+    time.tempoBpm           = t.tempo > 0 ? t.tempo : 120.0;
+    time.timeSigNumerator   = t.tsigNum;
+    time.timeSigDenominator = t.tsigDen;
+    time.playing            = t.playing;
+    time.beatPosition       = t.songBeats;
+    time.barStartBeats      = t.barStartBeats;
+    time.barNumber          = t.barNumber;
+
     std::size_t n = 0;
-    if (slot->notePort >= 0) {
+    // One message for the synth's note port, downconverted if it takes only MIDI 1.0.
+    const auto put = [&](std::uint32_t offset, const uw::MidiMessage& m) noexcept {
         uw::MidiMessage converted[ump::kMaxTranslatedMessages];
-        for (std::size_t i = 0; i < outCount; ++i) {
-            const uw::MidiMessage& m = outEvents[i].message;
-            std::size_t            count = 1;
-            converted[0]                 = m;
-            if (!slot->midi2 && isMidi2(m)) count = ump::downconvert(m, converted, std::size(converted));
-            for (std::size_t k = 0; k < count && n < synthEvents.size(); ++k) {
-                uw::Event& e   = synthEvents[n++];
-                e              = uw::Event{};
-                e.sampleOffset = outEvents[i].offset;
-                e.type         = uw::EventType::Midi;
-                e.midi         = converted[k];
-                e.portIndex    = static_cast<std::uint16_t>(slot->notePort);
-            }
+        std::size_t     count = 1;
+        converted[0]          = m;
+        if (!slot->midi2 && isMidi2(m)) count = ump::downconvert(m, converted, std::size(converted));
+        for (std::size_t k = 0; k < count && n < synthEvents.size(); ++k) {
+            uw::Event& e   = synthEvents[n++];
+            e              = uw::Event{};
+            e.sampleOffset = offset;
+            e.type         = uw::EventType::Midi;
+            e.midi         = converted[k];
+            e.portIndex    = static_cast<std::uint16_t>(slot->notePort);
         }
+    };
+    if (notesOffDue && slot->notePort >= 0)   // All Notes Off (CC 123), every channel of group 1
+        for (std::uint32_t ch = 0; ch < 16; ++ch) {
+            uw::MidiMessage m;
+            m.words[0]  = 0x40000000u | 0xBu << 20 | ch << 16 | 123u << 8;
+            m.wordCount = 2;
+            put(0, m);
+        }
+    notesOffDue = false;
+
+    if (!slot->chain.passesThrough()) {
+        // NE: the block's MIDI through the effects; what comes out is already
+        // in the synth's protocol, for its port.
+        std::size_t k = 0;
+        for (std::size_t i = 0; i < outCount && k < chainEvents.size(); ++i) {
+            uw::Event& e   = chainEvents[k++];
+            e              = uw::Event{};
+            e.sampleOffset = outEvents[i].offset;
+            e.type         = uw::EventType::Midi;
+            e.midi         = outEvents[i].message;
+        }
+        const uw::EventBlock out =
+            slot->chain.run(b.frames, time, uw::EventBlock{chainEvents.data(), static_cast<std::uint32_t>(k)});
+        if (slot->notePort >= 0)
+            for (std::uint32_t i = 0; i < out.count && n < synthEvents.size(); ++i) synthEvents[n++] = out.events[i];
+        statDropped.fetch_add(slot->chain.takeDropped(), std::memory_order_relaxed);
+    } else if (slot->notePort >= 0) {
+        for (std::size_t i = 0; i < outCount; ++i) put(outEvents[i].offset, outEvents[i].message);
     }
 
     const std::uint32_t channels = slot->channels;
     for (std::uint32_t c = 0; c < channels; ++c) std::fill_n(slot->pointers[c], b.frames, 0.0f);
 
-    const HostTransport& t = b.transport;
-    uw::ProcessContext   ctx;
-    ctx.frameCount                = b.frames;
-    ctx.time.sampleRate           = sampleRate;
-    ctx.time.samplePosition       = steadyFrames;
-    ctx.time.tempoBpm             = t.tempo > 0 ? t.tempo : 120.0;
-    ctx.time.timeSigNumerator     = t.tsigNum;
-    ctx.time.timeSigDenominator   = t.tsigDen;
-    ctx.time.playing              = t.playing;
-    ctx.time.beatPosition         = t.songBeats;
-    ctx.time.barStartBeats        = t.barStartBeats;
-    ctx.time.barNumber            = t.barNumber;
-    ctx.audioOut = uw::AudioBuffer{slot->pointers.data(), channels, b.frames};
-    ctx.eventsIn = uw::EventBlock{synthEvents.data(), static_cast<std::uint32_t>(n)};
+    uw::ProcessContext ctx;
+    ctx.frameCount = b.frames;
+    ctx.time       = time;
+    ctx.audioOut   = uw::AudioBuffer{slot->pointers.data(), channels, b.frames};
+    ctx.eventsIn   = uw::EventBlock{synthEvents.data(), static_cast<std::uint32_t>(n)};
     slot->plugin->process(ctx);
 
     for (std::uint32_t c = 0; c < b.outChannels; ++c) {
@@ -668,13 +765,15 @@ void PluginEngine::runSynth(const Block& b) noexcept {
 }
 
 void PluginEngine::stopProcessing() noexcept {
-    if (running != nullptr && running->active) running->plugin->stopProcessing();
+    if (running != nullptr)
+        for (uw::HostedPlugin* p : running->held) p->stopProcessing();
 }
 
 void PluginEngine::reset() noexcept {
     sounding.reset();
     wasPlaying = false;
-    if (running != nullptr && running->active) running->plugin->reset();
+    if (running != nullptr)
+        for (uw::HostedPlugin* p : running->held) p->reset();
 }
 
 } // namespace umpire::plugin

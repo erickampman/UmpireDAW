@@ -252,7 +252,7 @@ if(UMPIRE_BUILD_PLUGIN)
         src/Plugin/Lane.cpp
         src/Plugin/LaneKeeper.cpp
         src/Plugin/PluginSetup.cpp)
-    target_link_libraries(umpire-plugin-core PUBLIC umpire-clip uw::plugin Threads::Threads PRIVATE umpire-warnings)
+    target_link_libraries(umpire-plugin-core PUBLIC umpire-clip uw::plugin uw::note-effects Threads::Threads PRIVATE umpire-warnings)
     set_target_properties(umpire-plugin-core PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 
     # The plugin's own sources, compiled into each binary: the .clap and the .vst3.
