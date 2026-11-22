@@ -286,6 +286,7 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
     }
     if (!ev.press) {
         if (ev.button != dgl::kMouseButtonLeft || drag == Drag::None) return false;
+        model.stopHearing();   // HE: the note sounds only while the button is held
         const Drag was = std::exchange(drag, Drag::None);
         if (was == Drag::Click) {   // a click on empty grid adds a note
             if (model.addNote(pitchAt(pressY), stepAt(pressX)) >= 0) model.commit();
@@ -322,6 +323,7 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
                 for (const GridNote& n : model.notes) boxBase.push_back(n.selected);
             } else {
                 model.select(-1);
+                model.hearRow(grabPitch);   // HE: what a note added here sounds like
             }
         } else {
             // Shift adds the note to the selection; let go without a drag,
@@ -333,6 +335,7 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
             else model.focus = note, model.touch();
             model.beginDrag();
             drag = edge >= 0 ? Drag::Resize : Drag::Move;
+            model.hearNote(model.focus);   // HE
         }
     }
     changed();
@@ -371,11 +374,15 @@ bool GridCanvas::onMotion(const MotionEvent& ev) {
     const bool snap  = (ev.mod & dgl::kModifierShift) == 0;
     const Tick ticks = snap ? (stepAt(x) - grabStep) * GridModel::kStep : tickAt(x) - grabTick;
     switch (drag) {
-    case Drag::Move: model.dragMove(ticks, pitchAt(y) - grabPitch, snap && toGrid); break;
+    case Drag::Move:
+        model.dragMove(ticks, pitchAt(y) - grabPitch, snap && toGrid);
+        model.hearNote(model.focus);   // HE: at its new pitch, if it changed
+        break;
     case Drag::Resize: model.dragResize(ticks, snap, snap && toGrid); break;
     case Drag::Click:
         if (std::abs(x - pressX) < kSlop && std::abs(y - pressY) < kSlop) return true;
         drag = Drag::Box;
+        model.stopHearing();   // a box, not a note: nothing to hear
         [[fallthrough]];
     case Drag::Box: {
         boxX = x, boxY = y;

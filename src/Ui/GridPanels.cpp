@@ -102,6 +102,10 @@ void GridPanels::menuBar() {
             model.commit();
         }
         clearAllItemRect = lastItem();
+        if (model.hear) {   // HE: only where notes have somewhere to sound
+            ImGui::Separator();
+            if (ImGui::MenuItem("Hear notes while editing", nullptr, model.hearing())) model.setHearing(!model.hearing());
+        }
         if (hooks.editMenuEnd) hooks.editMenuEnd();
         ImGui::EndMenu();
     }

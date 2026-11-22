@@ -1169,6 +1169,101 @@ void testStateV5() {
     check("a zoom that isn't a number is 1", decodeState(nan.data(), nan.size(), back, error) && back.zoom == ViewZoom{});
 }
 
+// HE: a note pressed in the grid sounds through the synth while it's held,
+// on the grid's own channel, and is never recorded; the switch is kept.
+void testHearing() {
+    FakeSynth    synth;
+    PluginEngine engine;
+    engine.setSynth(&synth);
+    engine.activate(kRate, 4096);
+    Host host(engine);
+
+    GridModel model;
+    bool      on = true;
+    model.hearSwitch = &on;
+    check("no hearing without somewhere to send it", !model.hearing());
+    model.hear = [&engine](const uw::MidiMessage* m, std::size_t n) {
+        for (std::size_t i = 0; i < n; ++i) engine.hear(m[i]);
+    };
+    check("on by default, once it can be heard", model.hearing());
+    const int note = model.addNote(62, 0, 2, 90);
+    model.hearNote(note);
+    host.block();
+    auto got = synth.last();
+    check("a pressed note reaches the synth at the block's start",
+          got.size() == 1 && ump::isNoteOn(got[0].message) && got[0].offset == 0 && ump::noteNumber(got[0].message) == 62);
+    check("on the grid's channel, at its own velocity",
+          got.size() == 1 && ump::channel(got[0].message) == GridModel::kHearChannel &&
+              (got[0].message.words[1] >> 16) == 90u * 65535u / 127u);
+    model.hearNote(note);
+    host.block();
+    check("still at that pitch: nothing more is sent", synth.last().empty());
+
+    // Dragged a row up: the old pitch ends, the new one starts.
+    model.beginDrag();
+    model.dragMove(0, 1);
+    model.hearNote(model.focus);
+    host.block();
+    got = synth.last();
+    check("a drag to a new row ends the note and sounds the new pitch",
+          got.size() == 2 && ump::isNoteOff(got[0].message) && ump::noteNumber(got[0].message) == 62 &&
+              ump::isNoteOn(got[1].message) && ump::noteNumber(got[1].message) == 63);
+
+    // While the host records: heard, never in the take.
+    host.play(0.0, true);
+    host.block();
+    model.stopHearing();
+    model.hearRow(70);
+    host.block();
+    got = synth.last();
+    check("heard while the host records",
+          got.size() == 2 && ump::isNoteOff(got[0].message) && ump::isNoteOn(got[1].message));
+    model.stopHearing();
+    host.block();
+    host.transport.recording = false;
+    host.block();
+    FinishedTake take;
+    const bool   any = engine.collectTake(take);
+    check("the grid's notes aren't recorded", !any || take.clip.events.empty());
+
+    // An EDO row's pitch goes in the note's Pitch 7.9.
+    model.setTuning(19, 60);
+    model.hearRow(model.referenceRow() + 1);
+    host.block();
+    got = synth.last();
+    check("an EDO row sounds at its own pitch (Pitch 7.9)",
+          got.size() == 1 && ump::notePitch79(got[0].message) == model.rowPitch79(model.referenceRow() + 1));
+
+    // Turned off: what sounds ends, and nothing more is sent.
+    model.setHearing(false);
+    check("the switch is the plugin's", !on && !model.hearing());
+    model.hearRow(60);
+    host.block();
+    got = synth.last();
+    check("turning it off ends the note sounding, and sends nothing new", got.size() == 1 && ump::isNoteOff(got[0].message));
+
+    // A render never hears it.
+    model.setHearing(true);
+    engine.setOffline(true);
+    model.hearRow(60);
+    host.block();
+    check("an offline render doesn't hear the grid", synth.last().empty());
+    engine.setOffline(false);
+    model.stopHearing();
+    engine.deactivate();
+
+    // The switch in the state: flags bit 2, set when off; older states are on.
+    SavedState s;
+    std::string error;
+    SavedState back;
+    s.hearNotes = false;
+    auto bytes = encodeState(s);
+    check("Hear notes off round-trips", decodeState(bytes.data(), bytes.size(), back, error) && !back.hearNotes, error);
+    s.hearNotes = true;
+    bytes       = encodeState(s);
+    check("and on", decodeState(bytes.data(), bytes.size(), back, error) && back.hearNotes, error);
+}
+
 // A step outside the lane, as the plugin's "Change synth" is: each swap
 // puts back what it holds and returns what it replaced.
 struct Swapped final : LaneKeeper::OtherStep {
@@ -1305,6 +1400,7 @@ int main() {
     testStateV5();
     testOtherSteps();
     testSynthSwap();
+    testHearing();
     std::printf("%s\n", failures == 0 ? "all passed" : "FAILURES");
     return failures == 0 ? 0 : 1;
 }

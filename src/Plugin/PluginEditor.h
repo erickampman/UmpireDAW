@@ -59,6 +59,9 @@ struct EditorLinks {
     // them, so they outlive the window); the window changes them. Null: the
     // window keeps its own.
     ViewZoom*                               zoom = nullptr;
+    // HE: Edit > Hear notes while editing, the plugin's (its state keeps it).
+    // Null: the window keeps its own, on.
+    bool*                                   hearNotes = nullptr;
 };
 
 class PluginEditor {

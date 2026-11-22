@@ -255,7 +255,7 @@ int main() {
         s.session.tracks  = {a, b};
         s.session.outputs = {Output{2, "plugin:fake"}, Output{5, "Synth2:in"}};
         s.counters        = SessionCounters{9, 4, 10, 12};
-        s.view            = SessionView{1.5625f, 0.25f};
+        s.view            = SessionView{1.5625f, 0.25f, false};   // HE: Hear notes off, kept too
         s.pluginStates[2] = PluginState{"plugin:fake", {std::byte{1}, std::byte{0}, std::byte{255}}};
         s.pluginStates[5] = PluginState{"plugin:gone", {std::byte{9}}};   // not its output any more: not saved
 
@@ -324,6 +324,11 @@ int main() {
         check("a zoom that isn't a positive number is 1, the other kept",
               viewOf("Odd.umpire", R"(, "view": {"trackZoom": "wide", "gridZoom": 2})") == SessionView{1, 2} &&
                   viewOf("Neg.umpire", R"(, "view": {"trackZoom": 0.5, "gridZoom": -3})") == SessionView{0.5f, 1});
+        // HE's switch: kept; left out (older sessions) or not a boolean, on.
+        check("Hear notes while editing: off is kept, left out or odd is on",
+              !viewOf("Quiet.umpire", R"(, "view": {"trackZoom": 1, "gridZoom": 1, "hearNotes": false})").hearNotes &&
+                  viewOf("Odd2.umpire", R"(, "view": {"trackZoom": 1, "gridZoom": 1, "hearNotes": "no"})").hearNotes &&
+                  viewOf("Old2.umpire", R"(, "view": {"trackZoom": 1, "gridZoom": 1})").hearNotes);
 
         SavedSession untouched;
         untouched.session.tempoBpm = 77;

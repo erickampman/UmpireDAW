@@ -241,11 +241,44 @@ S2 and R1 to R6.
   synth when it's clicked, as it's dragged (at each new pitch), and when
   it's added, in the plugin's grid and the app's. Asked for by the author,
   2026-11-20, during P3's checks in REAPER, as **required** (the grid made
-  no sound while editing; edits were heard only on playback). To decide
-  with the author before it's built: how long a note sounds (while the
-  mouse is held, or a short fixed length), its velocity (the note's own),
-  whether it sounds while the host plays, a way to turn it off, and
-  whether Pitch 7.25 within the note is heard.
+  no sound while editing; edits were heard only on playback). *Decided
+  with the author 2026-11-22: a note sounds while the mouse button is held
+  (a press on a note, or on empty grid where a note would be added), and a
+  drag to another row ends it and sounds the new pitch; at the note's own
+  velocity (a new note's, 100); whether or not the host plays; at its
+  starting pitch (its Pitch 7.9, or its row's once moved), bends within it
+  not played; Edit > Hear notes while editing, on by default, kept in the
+  plugin's state (flags bit 2, no new version) and the app's session
+  (`view.hearNotes`). Built 2026-11-22 on the Mac (clip-editor.md,
+  "Hearing notes"): `GridModel::hear`, on group 1, channel 16, so it never
+  ends a note the clip plays; in the plugin through `PluginEngine::hear`,
+  played at the next block's start and never recorded (an offline render
+  drops it); in the app through `TrackController::hear`, the clip's
+  track's output, as live input (Player::thru). Checked headless: 11 of
+  11, testHearing (the note, its channel and velocity, a drag's new pitch,
+  heard while recording but not in the take, an EDO row's Pitch 7.9, the
+  switch, a render, the state's bit) and test-files (the session's
+  switch); clap-validator 32 passed, 0 failed, 12 skipped; auval passes.
+  Left: hearing it by hand in a host and in the app, on both platforms.*
+- NE. [ ] Note effects in front of the synth: CLAP note effects (Retune,
+  NoteGran, EDOSpread12, others') hosted inside the plugin, in order, between
+  the input and the synth, since the host's own note effects never reach
+  Umpire (plugin-version.md, "What's given up"). Added 2026-11-22 at the
+  author's request. The UI follows StageHand's MIDI FX menu (its help,
+  "MIDI Effects"): a menu in the header beside the synth's button, showing
+  the first effect's name ("+1" for each more) or "MIDI FX" when there are
+  none; **Add a MIDI effect...** lists the installed note effects, a new one
+  going after the others; for each effect **Editor**, **Bypass**, **Move
+  up**, **Move down** and **Remove**; with one effect, **E** beside the menu
+  opens its editor; an effect that isn't installed shows as missing, is kept
+  and saved, and is passed by until it's back. The effects and their states
+  go in the plugin's state (a new version); adding, removing, moving and
+  bypassing are undo steps, as "Change synth". To decide with the author
+  before it's built: whether a take records what's played (before the
+  effects, so they act again on playback, as StageHand's rows and a DAW's
+  MIDI FX do) or what they put out; whether the grid's HE notes go through
+  them; and how much of StageHand's note-effect hosting moves into uw-core
+  to be shared.
 
 ## Zoom
 

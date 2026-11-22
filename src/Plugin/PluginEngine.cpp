@@ -272,6 +272,8 @@ void PluginEngine::onMidi(uw::MidiSourceHandle, const uw::TimedMidiMessage& msg)
     if (!live.push(msg)) statDropped.fetch_add(1, std::memory_order_relaxed);
 }
 
+bool PluginEngine::hear(const uw::MidiMessage& message) { return heard.push(message); }
+
 // --- audio thread ----------------------------------------------------------------------
 
 void PluginEngine::emit(std::uint32_t offset, const uw::MidiMessage& m) noexcept {
@@ -436,6 +438,14 @@ void PluginEngine::gatherLive(const Block& b) noexcept {
     }
 }
 
+// The grid's notes (HE), at the block's start: played, never recorded. A
+// render never hears them.
+void PluginEngine::playHeard() noexcept {
+    uw::MidiMessage m;
+    while (heard.pop(m))
+        if (!offline()) emit(0, m);
+}
+
 void PluginEngine::recordLive(const Piece& p) noexcept {
     const std::uint32_t end = p.first + p.frames;
     for (; liveNext < liveCount && liveBlock[liveNext].offset < end; ++liveNext) {
@@ -478,6 +488,7 @@ void PluginEngine::process(const Block& b) noexcept {
     adoptSynth();
     adoptPlayData();
     gatherLive(b);
+    playHeard();
 
     // The block's pieces, split where a change (a transport event, a tempo
     // change; the arm) changes them. A change at a piece's own first frame

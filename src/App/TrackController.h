@@ -113,6 +113,9 @@ public:
     // zooming alone leaves nothing unsaved.
     void               keepView(const SessionView& v) noexcept { sessionView = v; }
     const SessionView& keptView() const noexcept { return sessionView; }
+    // HE: a grid's note, heard through the output of the track `ref` is on,
+    // now, as live input is (Player::thru); never recorded.
+    void               hear(ClipRefId ref, const uw::MidiMessage* messages, std::size_t count);
     std::uint64_t      opened() const noexcept { return openCount; }
     bool               modified() const noexcept { return history.state() != savedState; }
 

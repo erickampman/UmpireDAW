@@ -252,6 +252,7 @@ public:
     bool                                   sourceConnected = false;
     InputChoice                            inputChoice;   // P4: chosen in the window, kept in the state
     ViewZoom                               zoom;          // Z1: the window's, kept in the state; not dirtying
+    bool                                   hearNotes = true;   // HE: Edit > Hear notes while editing; kept, not dirtying
     bool                                   inputMissing = false;   // the source chosen isn't here
 
     // Main-loop services forwarded for the synth: the host's ids to ours.
@@ -1040,6 +1041,7 @@ bool stateSave(const clap_plugin_t* p, const clap_ostream_t* stream) {
     saved.armed        = self->armed.load();
     saved.input        = self->inputChoice;
     saved.zoom         = self->zoom;
+    saved.hearNotes    = self->hearNotes;
     const std::vector<std::uint8_t> bytes = encodeState(saved);
     std::size_t                     at    = 0;
     while (at < bytes.size()) {
@@ -1123,6 +1125,7 @@ bool stateLoad(const clap_plugin_t* p, const clap_istream_t* stream) {
             synthLoaded = self->synth->loadState(saved.synthState.data(), saved.synthState.size());
     }
     if (!(saved.input == self->inputChoice)) self->chooseInput(saved.input);
+    self->hearNotes = saved.hearNotes;
     self->zoom = saved.zoom;   // an open window reads it as it draws
     self->log("loaded: %zu takes, %zu events; synth %s, state %s; record %s", takeCount, events,
               self->synth ? self->synth->descriptor().name.c_str()
@@ -1445,6 +1448,7 @@ bool guiSetParent(const clap_plugin_t* p, const clap_window_t* parentWindow) {
     };
     links.chooseSynth = [self](const std::string& id) { self->chooseSynth(id); };
     links.zoom        = &self->zoom;
+    links.hearNotes   = &self->hearNotes;
     unsigned w = 0, h = 0;
     double   scale = 1;
     windowSize(self, w, h, scale);

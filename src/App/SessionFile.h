@@ -35,6 +35,7 @@ struct SessionCounters {
 struct SessionView {
     float trackZoom = 1;
     float gridZoom  = 1;
+    bool  hearNotes = true;   // HE: the grids' Edit > Hear notes while editing
 
     bool operator==(const SessionView&) const = default;
 };

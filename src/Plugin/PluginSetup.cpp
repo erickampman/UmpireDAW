@@ -39,7 +39,9 @@ void putString(std::vector<std::uint8_t>& out, const std::string& s) {
     out.insert(out.end(), s.begin(), s.end());
 }
 
-constexpr std::uint32_t kArmed = 1u, kSynthChosen = 2u;
+// kHearOff (HE): Edit > Hear notes while editing turned off. Unset in every
+// older state, so hearing is on there; an older build ignores it.
+constexpr std::uint32_t kArmed = 1u, kSynthChosen = 2u, kHearOff = 4u;
 
 } // namespace
 
@@ -114,7 +116,7 @@ std::vector<std::uint8_t> encodeState(const SavedState& state) {
     putString(out, state.synthId);
     put32(out, static_cast<std::uint32_t>(state.synthState.size()));
     for (const std::byte b : state.synthState) out.push_back(static_cast<std::uint8_t>(b));
-    put32(out, (state.armed ? kArmed : 0u) | (state.synthChosen ? kSynthChosen : 0u));
+    put32(out, (state.armed ? kArmed : 0u) | (state.synthChosen ? kSynthChosen : 0u) | (state.hearNotes ? 0u : kHearOff));
     putString(out, state.synthPath);
     putString(out, state.synthName);
     put32(out, static_cast<std::uint32_t>(state.input.mode));
@@ -223,6 +225,7 @@ bool decodeState(const std::uint8_t* data, std::size_t size, SavedState& state, 
         }
         state.armed = (flags & kArmed) != 0;
         if (version >= 4) state.synthChosen = (flags & kSynthChosen) != 0;
+        state.hearNotes = (flags & kHearOff) == 0;
     }
     if (version < 4) {   // the synth was named by its id only; none named, the setup file's
         state.synthChosen = !state.synthId.empty();

@@ -45,7 +45,7 @@ Song.umpire/
   "clips": [{"id": 7, "file": "clips/clip-7.midi2", "name": "Keys 1",
              "scale": {"edo": 12, "reference": 60}, "scaleFit": "workedOut", "scaleCandidates": [12]}],
   "next": {"track": 3, "trackNumber": 2, "clipRef": 4, "clip": 8},
-  "view": {"trackZoom": 1.5625, "gridZoom": 2.0}
+  "view": {"trackZoom": 1.5625, "gridZoom": 2.0, "hearNotes": true}
 }
 ```
 
@@ -76,6 +76,10 @@ Song.umpire/
   views keep it within an eighth to eight times. No version change: a
   reader ignores fields it doesn't know, so an older Umpire opens it too.
   The scroll positions aren't kept.
+  Since 2026-11-22 it also keeps `hearNotes`, the grids' Edit > Hear notes
+  while editing (milestone HE, clip-editor.md, "Hearing notes"); left out
+  or not a boolean, it's on. Turning it off doesn't make the session unsaved
+  either.
 - **Audio files** (prints, mixes: milestones 15 and 17) will be an `audio`
   list beside `clips`. A reader ignores fields it doesn't know.
 

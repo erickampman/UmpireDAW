@@ -373,6 +373,7 @@ struct PluginEditor::Impl {
           window(app, parent, static_cast<uint>(std::lround(w * s)), static_cast<uint>(std::lround(h * s)), s, true) {}
 
     ~Impl() {
+        model.stopHearing();   // HE: the window closing mid-press leaves nothing sounding
         const dgl::Window::ScopedGraphicsContext context(window);
         canvas.reset();
     }
@@ -455,6 +456,12 @@ void PluginEditor::Impl::build() {
         }
         return made.edit;
     };
+
+    // HE: a note pressed in the grid sounds through the take's synth.
+    model.hear = [this](const uw::MidiMessage* messages, std::size_t count) {
+        for (std::size_t i = 0; i < count; ++i) links.engine->hear(messages[i]);
+    };
+    model.hearSwitch = links.hearNotes;
 
     band.view         = &view;
     band.selected     = &selected;

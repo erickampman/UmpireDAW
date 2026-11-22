@@ -203,6 +203,12 @@ public:
     // didn't collect them), since the last call.
     std::uint64_t takeMissedCount() { return missedTakes.exchange(0); }
 
+    // --- the main thread: the grid's notes (HE) ---
+    // A note the grid sounds while it's pressed (GridModel::hear): played to
+    // the synth at the next block's start, never recorded, whether or not
+    // the host plays. False if the queue was full (the host isn't processing).
+    bool hear(const uw::MidiMessage& message);
+
     // --- the MIDI thread (uw::MidiSink): one source ---
     void onMidi(uw::MidiSourceHandle source, const uw::TimedMidiMessage& msg) noexcept override;
 
@@ -296,6 +302,11 @@ private:
     std::bitset<kKeys>                         liveHeld;      // audio thread: live notes on, for a take's end
     std::vector<Out>                           liveBlock;
     std::size_t                                liveCount = 0, liveNext = 0;
+
+    // The grid's notes (HE): main thread -> audio thread. The grid sends each
+    // note's off itself (GridModel::stopHearing), on a channel of its own.
+    uw::SpscQueue<uw::MidiMessage, 64> heard;
+    void                               playHeard() noexcept;
 
     // What plays: lane side -> audio thread, and back to be freed.
     uw::SpscQueue<PlayData*, 16> toAudio;

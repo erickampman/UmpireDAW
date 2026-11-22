@@ -118,6 +118,30 @@ selected: they're found again by where the edit placed their note-ons
 music is the same. After an undo the selection is let go, as a clip that
 undo takes away is.
 
+## Hearing notes
+
+Milestone HE (MILESTONES.md), decided with the author on 2026-11-22, in the
+plugin's grid and the app's:
+
+- **A note sounds while the mouse button is held**: a press on a note sounds
+  it, and a press on empty grid sounds the row, as the note a click adds
+  there would. Let go and it ends. A drag that moves the note to another
+  row ends it and sounds the new pitch; a drag in time, a resize or a box
+  selection sounds nothing new (a box ends what the press started).
+- **At the note's own velocity** (a new note's is 100) and **its starting
+  pitch**: the clip's Pitch 7.9 while the note is on the row it came from,
+  else its row's in the grid's EDO. Pitch 7.25 bends within the note aren't
+  played.
+- **Whether or not the host plays.** It's on its own channel (group 1,
+  channel 16, `GridModel::kHearChannel`), so its Note Off never ends a note
+  the clip is playing. It's never recorded, and an offline render drops it.
+- **Edit > Hear notes while editing** turns it off; on by default. The
+  plugin's state keeps it (flags bit 2), the app's session too
+  (`view.hearNotes`, files.md).
+- **Where it goes**: the plugin's take's synth (`PluginEngine::hear`, at the
+  next block's start), the app's clip's track's output (`TrackController::hear`,
+  as live input goes through: a muted track stays silent).
+
 ## Decisions
 
 - **An edited clip gets a new id.** A clip's file is named by its id

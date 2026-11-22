@@ -73,6 +73,30 @@ public:
     std::function<void()> undo, redo;
     std::string           undoLabel, redoLabel;
 
+    // Hearing notes while editing (MILESTONES.md, HE; decided with the author
+    // 2026-11-22): a note pressed in the grid sounds while the button is held,
+    // at its own velocity and its starting pitch, whether or not the host
+    // plays; dragged to another row, it sounds at the new pitch. Sent through
+    // `hear` (the take's synth in the plugin, the clip's track's output in
+    // the app) on its own channel, kHearChannel, so it never ends a note the
+    // clip is playing. Unset: silent, and no menu item.
+    static constexpr std::uint8_t kHearGroup = 0, kHearChannel = 15;
+    std::function<void(const uw::MidiMessage* messages, std::size_t count)> hear;
+    // Where Edit > Hear notes while editing is kept (the plugin's state, the
+    // app's session); null: the model's own. On by default.
+    bool* hearSwitch = nullptr;
+    bool  hearing() const noexcept { return static_cast<bool>(hear) && (hearSwitch != nullptr ? *hearSwitch : ownHear); }
+    void  setHearing(bool on);
+    // The note at `index` sounds now (ending the one before), unless it's
+    // sounding at that pitch already.
+    void  hearNote(int index);
+    // A row sounds, as a note added there would (a press on empty grid).
+    void  hearRow(int row, int velocity = 100);
+    void  stopHearing();   // the note sounding ends (the button let go)
+    // A note's pitch as it starts, in 7.9: the clip's own while it's on the
+    // row it came from, else its row's.
+    std::uint16_t soundingPitch79(const GridNote& n) const noexcept;
+
     // Where the clip's tick 0 is on the grid, in ticks (0 in the app). The
     // plugin's grid is in the song's time, from the bar its take starts in,
     // so its columns and bar lines are the host's (milestone P3): there
@@ -191,6 +215,11 @@ private:
     std::vector<GridNote>       grabbed;    // the notes at beginDrag()
     bool                        pending = false;   // the notes differ from the clip's
     std::uint64_t               changes = 0;
+    void          startHearing(std::uint16_t pitch79, int velocity);
+    bool          ownHear   = true;
+    bool          heardOn   = false;   // a note is sounding through `hear`
+    std::uint8_t  heardKey  = 0;
+    std::uint16_t heardPitch = 0;
 };
 
 } // namespace umpire

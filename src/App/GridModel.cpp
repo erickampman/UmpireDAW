@@ -1,5 +1,7 @@
 #include "App/GridModel.h"
 
+#include "uw/ump/Ump.h"
+
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -42,6 +44,49 @@ int GridModel::noteAt(int pitch, Tick tick) const noexcept {
 
 std::uint16_t GridModel::rowPitch79(int row) const noexcept {
     return static_cast<std::uint16_t>(std::clamp(std::lround(rowSemitones(row) * 512), 0L, 65535L));
+}
+
+// --- hearing notes while editing (HE) ----------------------------------------------
+
+std::uint16_t GridModel::soundingPitch79(const GridNote& n) const noexcept {
+    return n.fromClip && n.pitch == n.clipRow ? n.pitch79 : rowPitch79(n.pitch);
+}
+
+void GridModel::setHearing(bool on) {
+    if (!on) stopHearing();
+    if (hearSwitch != nullptr) *hearSwitch = on;
+    else ownHear = on;
+    touch();
+}
+
+void GridModel::startHearing(std::uint16_t pitch79, int velocity) {
+    if (!hearing()) return;
+    if (heardOn && heardPitch == pitch79) return;
+    stopHearing();
+    heardKey   = static_cast<std::uint8_t>(std::clamp(pitch79 >> 9, 0, 127));
+    heardPitch = pitch79;
+    const int             v16 = std::clamp(velocity, kMinVelocity, kMaxVelocity) * 65535 / kMaxVelocity;
+    const uw::MidiMessage on  = uw::ump::midi2NoteOn(kHearGroup, kHearChannel, heardKey, static_cast<std::uint16_t>(v16), pitch79);
+    hear(&on, 1);
+    heardOn = true;
+}
+
+void GridModel::hearNote(int index) {
+    if (index < 0 || index >= static_cast<int>(notes.size())) return;
+    const GridNote& n = notes[static_cast<std::size_t>(index)];
+    startHearing(soundingPitch79(n), n.velocity);
+}
+
+void GridModel::hearRow(int row, int velocity) {
+    startHearing(rowPitch79(std::clamp(row, 0, rows() - 1)), velocity);
+}
+
+void GridModel::stopHearing() {
+    if (!heardOn) return;
+    heardOn = false;
+    if (!hear) return;
+    const uw::MidiMessage off = uw::ump::midi2NoteOff(kHearGroup, kHearChannel, heardKey, 0);
+    hear(&off, 1);
 }
 
 int GridModel::rowFor(std::uint16_t pitch79) const noexcept {

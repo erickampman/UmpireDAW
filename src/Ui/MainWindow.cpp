@@ -96,7 +96,7 @@ void place(dgl::Window& window, const char* title, double w, double h) {
 struct GridWindow {
     // `zoom`: the session's grid zoom, which a new window opens at.
     GridWindow(dgl::Application& app, TrackController& controller, ClipRefId r, const std::shared_ptr<const Clip>& clip,
-               float zoom)
+               float zoom, bool* hearNotes)
         : ref(r), seen(clip), window(app) {
         model.showClip(clip);
         model.chooseScale = [&controller, r](int edo, int reference) { controller.setClipScale(r, Scale{edo, reference}); };
@@ -109,6 +109,11 @@ struct GridWindow {
         model.renameClip = [&controller, r](const std::string& name) { controller.renameClip(r, name); };
         model.undo       = [&controller] { controller.undo(); };
         model.redo       = [&controller] { controller.redo(); };
+        // HE: a note pressed sounds through the clip's track's output.
+        model.hear       = [&controller, r](const uw::MidiMessage* messages, std::size_t count) {
+            controller.hear(r, messages, count);
+        };
+        model.hearSwitch = hearNotes;
         {
             const dgl::Window::ScopedGraphicsContext context(window);
             canvas = std::make_unique<GridCanvas>(window, model, probe);
@@ -120,6 +125,7 @@ struct GridWindow {
         window.show();
     }
     ~GridWindow() {
+        model.stopHearing();   // HE: closing mid-press leaves nothing sounding
         window.panels = nullptr;
         destroyWith(window, canvas);
     }
@@ -204,7 +210,8 @@ struct MainWindow::Impl {
     // left at, which the next one opens at. Each grid window zooms on its own.
     float                        gridZoom   = 1;
     std::uint64_t                viewOpened = ~std::uint64_t{0};   // controller.opened() when last taken
-    void                         keepView() { controller.keepView({canvas->timeZoom(), gridZoom}); }
+    bool                         hearNotes  = true;   // HE: every grid window's Edit > Hear notes while editing
+    void                         keepView() { controller.keepView({canvas->timeZoom(), gridZoom, hearNotes}); }
     std::uint64_t                drawnVersion   = ~std::uint64_t{0};
     double                       secondStart    = 0;
     std::uint64_t                framesAtSecond = 0;
@@ -254,7 +261,8 @@ void MainWindow::idle() {
         // Only if it's another zoom: setting it draws again.
         if (const float zoom = Zoom::clamp(m.controller.keptView().trackZoom); zoom != m.canvas->timeZoom())
             m.canvas->setZoom(zoom);
-        m.gridZoom = Zoom::clamp(m.controller.keptView().gridZoom);
+        m.gridZoom  = Zoom::clamp(m.controller.keptView().gridZoom);
+        m.hearNotes = m.controller.keptView().hearNotes;
     }
     m.app.idle();
 
@@ -265,7 +273,7 @@ void MainWindow::idle() {
     if (const ClipRefId ref = std::exchange(m.canvas->openRequested, 0); ref != 0) {
         if (const auto clip = m.controller.clip(ref)) {
             if (GridWindow* grid = m.gridFor(clip)) grid->window.focus();
-            else m.grids.push_back(std::make_unique<GridWindow>(m.app, m.controller, ref, clip, m.gridZoom));
+            else m.grids.push_back(std::make_unique<GridWindow>(m.app, m.controller, ref, clip, m.gridZoom, &m.hearNotes));
         }
     }
     for (auto& grid : m.grids) {

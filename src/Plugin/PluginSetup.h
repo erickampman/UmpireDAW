@@ -65,7 +65,7 @@ int chooseSource(const std::vector<uw::MidiSourceInfo>& sources, const std::stri
 //   the next take's number (u32),
 //   synth id, synth state size (u32) and bytes,
 //   flags (u32; bit 0: armed; bit 1: the synth was chosen, so an empty id is
-//   none),
+//   none; bit 2: Hear notes while editing is off, HE),
 //   the synth's .clap path, the synth's name,
 //   the input: how it's chosen (u32, InputMode), its name, its id,
 //   the zoom: the lane's, then the grid's (f32 each, a factor on their widths
@@ -125,6 +125,7 @@ struct SavedState {
     std::string               synthName;   // to say which is missing
     InputChoice               input;
     ViewZoom                  zoom;   // Z1, version 5
+    bool                      hearNotes = true;   // HE: flags bit 2 set when off (any version)
 };
 
 std::vector<std::uint8_t> encodeState(const SavedState& state);

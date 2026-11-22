@@ -170,7 +170,8 @@ SessionFileResult saveSession(const std::string& bundlePath, const SavedSession&
         doc["clips"]   = std::move(clips);
         doc["next"]    = {{"track", saved.counters.nextTrack}, {"trackNumber", saved.counters.nextNumber},
                           {"clipRef", saved.counters.nextRef}, {"clip", saved.counters.nextClip}};
-        doc["view"]    = {{"trackZoom", saved.view.trackZoom}, {"gridZoom", saved.view.gridZoom}};
+        doc["view"]    = {{"trackZoom", saved.view.trackZoom}, {"gridZoom", saved.view.gridZoom},
+                          {"hearNotes", saved.view.hearNotes}};
         {
             std::ofstream out(temp / kSessionJson, std::ios::trunc);
             out << doc.dump(2) << '\n';
@@ -301,6 +302,9 @@ SessionFileResult loadSession(const std::string& bundlePath, SavedSession& saved
         if (doc.contains("view") && doc.at("view").is_object()) {
             loaded.view.trackZoom = zoomFactor(doc.at("view"), "trackZoom");
             loaded.view.gridZoom  = zoomFactor(doc.at("view"), "gridZoom");
+            const Json& view      = doc.at("view");
+            if (view.contains("hearNotes") && view.at("hearNotes").is_boolean())
+                loaded.view.hearNotes = view.at("hearNotes").get<bool>();   // left out (older files): on
         }
     } catch (const std::exception& e) {
         result.error = jsonPath.string() + ": " + e.what();

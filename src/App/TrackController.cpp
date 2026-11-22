@@ -53,6 +53,13 @@ std::shared_ptr<const Clip> TrackController::clip(ClipRefId ref) const {
 
 // --- MIDI -------------------------------------------------------------------------
 
+void TrackController::hear(ClipRefId ref, const uw::MidiMessage* messages, std::size_t count) {
+    for (const Track& t : doc.tracks)
+        for (const ClipRef& r : t.clips)
+            if (r.id == ref) return player.thru(t.id, messages, count);
+}
+
+
 void TrackController::receive(uw::MidiSourceHandle source, const uw::MidiMessage& message) {
     arrived.push_back(MidiInputs::Received{source, uw::TimedMidiMessage{now(), message}});
 }
