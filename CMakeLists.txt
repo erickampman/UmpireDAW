@@ -256,10 +256,21 @@ if(UMPIRE_BUILD_PLUGIN)
     target_link_libraries(umpire-plugin-core PUBLIC umpire-clip uw::plugin uw::note-effects Threads::Threads PRIVATE umpire-warnings)
     set_target_properties(umpire-plugin-core PROPERTIES CXX_VISIBILITY_PRESET hidden VISIBILITY_INLINES_HIDDEN ON)
 
+    # The title row's logo and the Help window's page (help.md), compiled in as bytes, as the
+    # other Unlikelyware plugins'. Configure-time (cmake/EmbedFile.cmake): editing either
+    # re-runs configure.
+    include(cmake/EmbedFile.cmake)
+    embed_file("${CMAKE_SOURCE_DIR}/resources/Unlikelyware-Final-Color.png"
+               "${CMAKE_BINARY_DIR}/UnlikelywareLogo.cpp" kUnlikelywareLogo)
+    embed_file("${CMAKE_SOURCE_DIR}/resources/help.md" "${CMAKE_BINARY_DIR}/UmpireHelp.cpp" kUmpireHelp)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+                 "${CMAKE_SOURCE_DIR}/resources/Unlikelyware-Final-Color.png" "${CMAKE_SOURCE_DIR}/resources/help.md")
+
     # The plugin's own sources, compiled into each binary: the .clap and the .vst3.
     function(umpire_add_plugin_sources TARGET_NAME)
         # The window (P3, Plugin/PluginEditor.h): the grid's UI, DGL and ImGui.
-        target_sources(${TARGET_NAME} PRIVATE src/Plugin/UmpirePlugin.cpp src/Plugin/PluginEditor.cpp)
+        target_sources(${TARGET_NAME} PRIVATE src/Plugin/UmpirePlugin.cpp src/Plugin/PluginEditor.cpp
+                       "${CMAKE_BINARY_DIR}/UnlikelywareLogo.cpp" "${CMAKE_BINARY_DIR}/UmpireHelp.cpp")
         # P4: Export take and Import clip use the app's file dialogs (docs/files.md).
         if(APPLE)
             target_sources(${TARGET_NAME} PRIVATE src/Plugin/PluginEditorMac.mm src/App/FileDialogMac.mm)

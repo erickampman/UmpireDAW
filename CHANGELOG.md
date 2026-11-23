@@ -22,4 +22,5 @@ The first release will be 0.9.1.
   playhead, and the selected take's grid of EDO steps, with its own undo. The hosted synth's
   editor opens in a window of its own.
 - The takes and the hosted synth's state are saved in the host's project.
+- Help: the **?** at the window's top right opens a help page in a window of its own.
 - CLAP, for Linux (x86-64) and macOS 26 or later (Apple Silicon).

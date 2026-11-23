@@ -42,9 +42,13 @@ isn't released: only the plugin is.
   added; turn it on in its window or the host's view of its parameters). Every take is kept; the
   newest is heard where takes overlap, and a jump while recording starts a new take, so loop
   recording works. Takes live inside the plugin, not on the host's timeline.
-- **Keep the host from recording a clip of its own** on Umpire's track: in Bitwig, turn off the
-  track's record arm; in REAPER, leave it armed with monitoring on and set its record mode to
-  "Record: disable (input monitoring only)". Ardour records one anyway: ignore or delete it.
+- **The host may record a clip of its own** on Umpire's track as well, since it records an
+  armed track as usual. It does no harm (Umpire doesn't listen to it, so it plays nothing and
+  editing it changes nothing), but two recordings of one performance can confuse. Ardour won't
+  record without an armed track, so there you'll get one: delete or ignore it. In Bitwig, turn
+  off the track's record arm; in REAPER, leave it armed with monitoring on and set its record
+  mode to "Record: disable (input monitoring only)". It's a workaround: until DAWs pass MIDI
+  2.0 through to plugins, taking the notes straight from the input is what keeps them whole.
 - **The window** shows the lane of takes in the host's bars and the selected take's grid, with
   its own undo. The ▾ beside the input and the synth chooses them, saved with the project, so
   each track can have its own. The synth's editor opens from the button with its name.

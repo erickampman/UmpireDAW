@@ -48,6 +48,10 @@ void GridPanels::onImGuiDisplay() {
 }
 
 void GridPanels::menuBar() {
+    // A top inset (the plugin's title row) moves the bar down: ImGui places
+    // the main menu bar at the top of the viewport's work area.
+    const float inset = std::round(topInset * static_cast<float>(getWindow().getScaleFactor()));
+    if (inset > 0) static_cast<ImGuiViewportP*>(ImGui::GetMainViewport())->BuildWorkInsetMin.y += inset;
     if (!ImGui::BeginMainMenuBar()) return;
 #ifdef __APPLE__
     const char* quitKey = "Cmd+Q";
@@ -63,7 +67,7 @@ void GridPanels::menuBar() {
     {
         const ImVec2 p = ImGui::GetCursorScreenPos();
         const float  w = ImGui::CalcTextSize("Edit").x + ImGui::GetStyle().ItemSpacing.x * 2;
-        editMenuRect   = {p.x, 0, p.x + w, ImGui::GetFrameHeight()};
+        editMenuRect   = {p.x, inset, p.x + w, inset + ImGui::GetFrameHeight()};
     }
     editMenuOpen = ImGui::BeginMenu("Edit");
     if (editMenuOpen) {
@@ -115,7 +119,7 @@ void GridPanels::menuBar() {
         ImGui::EndMenu();
     }
     if (hooks.menuBarEnd) hooks.menuBarEnd();
-    menuH = ImGui::GetWindowSize().y;
+    menuH = inset + ImGui::GetWindowSize().y;
     ImGui::EndMainMenuBar();
 }
 

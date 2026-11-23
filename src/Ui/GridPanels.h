@@ -18,8 +18,12 @@ public:
     GridPanels(DGL_NAMESPACE::Widget* parent, GridModel& model, Probe& probe);
 
     // The area the canvas may draw in (window pixels): below the menu bar and
-    // left of the inspector. Known after the first frame.
+    // left of the inspector. Known after the first frame. With a top inset,
+    // the menu bar's bottom, from the window's top.
     float menuBarHeight() const noexcept { return menuH; }
+    // Room above the menu bar, in logical pixels: the plugin's title row
+    // (GridCanvas::setHeader). The app's windows have none.
+    void  setTopInset(float logical) noexcept { topInset = logical; }
     float panelWidth() const noexcept { return panelW; }
     std::string nameText() const { return nameBuf; }   // the name field, as typed
 
@@ -68,6 +72,7 @@ private:
     Probe&     probe;
     float      menuH  = 0;
     float      panelW = 0;
+    float      topInset = 0;   // logical
     char       nameBuf[128] = {};
     bool       tuningPending = false;   // a tuning dragged, for the clip when let go
     bool       editPending   = false;   // a note control dragged, for the clip when let go

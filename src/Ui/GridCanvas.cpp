@@ -49,6 +49,11 @@ GridCanvas::GridCanvas(dgl::Window& window, GridModel& m, Probe& p) : NanoTopLev
 
 GridCanvas::~GridCanvas() = default;
 
+void GridCanvas::setHeader(GridHeader* h) {
+    header = h;
+    imgui->setTopInset(h != nullptr ? h->height() : 0);
+}
+
 float GridCanvas::sf() {
     return static_cast<float>(getWindow().getScaleFactor());
 }
@@ -155,6 +160,13 @@ void GridCanvas::onNanoDisplay() {
     rect(0, 0, W, H);
     fillColor(rgb(17, 18, 22));   // the wells' graphite
     fill();
+
+    if (header != nullptr) {   // above the menu bar, which ImGui draws over the rest
+        save();
+        scissor(0, 0, W, header->height());
+        header->draw(*this, W);
+        restore();
+    }
 
     if (band != nullptr) {
         // Paging: while the playhead moves through the clip, the grid keeps
@@ -274,6 +286,8 @@ bool GridCanvas::onMouse(const MouseEvent& ev) {
     if (ev.press) getWindow().focus();
     if (NanoTopLevelWidget::onMouse(ev)) return true;
     const float x = static_cast<float>(ev.pos.getX()) / sf(), y = static_cast<float>(ev.pos.getY()) / sf();
+    if (header != nullptr && ev.press && drag == Drag::None && !bandPressed && y < header->height())
+        return header->mouse(ev, x, y);
     if (band != nullptr) {   // the band keeps what it took until the button's up
         const bool inBand = y >= bandY() && y < bandY() + bandH();
         if (ev.press && inBand && drag == Drag::None) bandPressed = true;

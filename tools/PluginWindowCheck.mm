@@ -288,11 +288,12 @@ int main(int argc, char** argv) {
     // (Z1); on a screen of another scale; back.
     bool    moved      = false;
     NSPoint homeOrigin = NSZeroPoint;
+    NSUInteger windowsBefore = 0;   // NSApp's windows before Help is clicked
     std::vector<std::function<void()>> steps = {
         [&] { shot("1-lane"); },
-        [&] { click(30, 62); },   // Take 1, at beat 1 in the lane (the ruler 16, a gap, the takes 40)
+        [&] { click(30, 102); },   // Take 1, at beat 1 in the lane (the title row 40, the bar, the ruler 16, a gap, the takes 40)
         [&] { shot("2-take-selected"); },
-        [&] { click(40, 11); },   // Record, first in the header
+        [&] { click(40, 51); },   // Record, first in the bar under the title row
         [&] {
             shot("3-record-on");
             check("the Record button tells the host: a gesture, On",
@@ -302,7 +303,7 @@ int main(int argc, char** argv) {
             params->get_value(p, 1, &v);
             check("and Record is on", v == 1.0);
         },
-        [&] { click(300, 400); },   // empty grid: a note added
+        [&] { click(300, 440); },   // empty grid: a note added
         [&] {
             shot("4-note-added");
             check("the grid's note goes into the take", notesOfTake(0) == 17, std::to_string(notesOfTake(0)));
@@ -312,13 +313,13 @@ int main(int argc, char** argv) {
             shot("5-undone");
             check("Cmd+Z undoes it, through the lane", notesOfTake(0) == 16, std::to_string(notesOfTake(0)));
             dirtyBefore = dirtyMarks;
-            commandWheel(300, 400, 2);   // over the grid: in
+            commandWheel(300, 440, 2);   // over the grid: in
         },
         [&] {
             shot("6-grid-zoomed");
             const plugin::ViewZoom z = savedZoom();
             check("Cmd-wheel over the grid zooms the grid in, not the lane", z.grid > 1.2f && z.lane == 1.0f, zoomText(z));
-            commandWheel(300, 62, -2);   // over the lane: out
+            commandWheel(300, 102, -2);   // over the lane: out
         },
         [&] {
             shot("7-lane-zoomed");
@@ -349,6 +350,15 @@ int main(int argc, char** argv) {
         },
         [&] {
             if (moved) shot("9-back");
+            // The title row's Help box, at its right: the help page opens in
+            // a window of its own.
+            windowsBefore = [[NSApp windows] count];
+            click([[window contentView] frame].size.width - 14 - 13, 20);
+        },
+        [&] {
+            check("Help opens a window of its own", [[NSApp windows] count] > windowsBefore,
+                  std::to_string([[NSApp windows] count] - windowsBefore) + " more");
+            shot("10-help");
         },
         [&] {
             gui->destroy(p);

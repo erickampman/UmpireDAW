@@ -47,6 +47,19 @@ public:
     virtual bool playing() { return false; }
 };
 
+// What a window shows above the menu bar: the plugin's title row (the
+// Unlikelyware logo, its name and Help, as the other Unlikelyware plugins'
+// headers). The app's grid windows have none. Coordinates are logical pixels
+// from the window's top left; drawing has the window's scale applied.
+class GridHeader {
+public:
+    virtual ~GridHeader() = default;
+    virtual float height() = 0;
+    virtual void  draw(DGL_NAMESPACE::NanoVG& vg, float width) = 0;
+    // A press in the header. True if taken.
+    virtual bool  mouse(const DGL_NAMESPACE::Widget::MouseEvent&, float /*x*/, float /*y*/) { return false; }
+};
+
 class GridCanvas final : public DGL_NAMESPACE::NanoTopLevelWidget {
 public:
     GridCanvas(DGL_NAMESPACE::Window& window, GridModel& model, Probe& probe);
@@ -55,6 +68,8 @@ public:
     GridPanels& panels() noexcept { return *imgui; }
     // The band above the grid (not owned; null: none, as in the app).
     void        setBand(GridBand* b) noexcept { band = b; }
+    // The header above the menu bar (not owned; null: none, as in the app).
+    void        setHeader(GridHeader* h);
     // Another clip shown: at the next draw, once the grid has its size, the
     // clip's first note (of a chord, its top) goes in the middle of the rows
     // and a quarter of the way across (or the grid's start, if that's
@@ -131,6 +146,7 @@ private:
     std::vector<bool>       boxBase;   // the selection when a Shift box began
     DGL_NAMESPACE::MouseCursor pointer = DGL_NAMESPACE::kMouseCursorArrow;
     GridBand*               band = nullptr;
+    GridHeader*             header = nullptr;
     bool                    bandPressed  = false;   // the band took the press
     bool                    handScrolled = false;   // scrolled while playing: no paging until the next play
     bool                    wasPlaying   = false;

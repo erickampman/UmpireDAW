@@ -17,6 +17,7 @@
 #include "Window.hpp"
 
 #include "imgui.h"
+#include "uw/dgl/HelpWindow.hpp"   // uw-core: the help page in a window of its own
 
 #include "App/ClipFile.h"
 #include "App/FileDialog.h"
@@ -29,6 +30,12 @@
 #include "Ui/Probe.h"
 #include "Ui/Widgets.h"
 #include "Ui/Zoom.h"
+
+// Embedded at configure time (cmake/EmbedFile.cmake): the logo and help.md.
+extern const unsigned char kUnlikelywareLogo[];
+extern const unsigned int  kUnlikelywareLogoSize;
+extern const unsigned char kUmpireHelp[];
+extern const unsigned int  kUmpireHelpSize;
 
 namespace umpire::plugin {
 
@@ -365,6 +372,80 @@ private:
     float ownZoom      = 1;
 };
 
+// --- the title row: the logo, the name and Help, as the other plugins' headers -----------
+
+// NoteGran's header, drawn by the canvas above ImGui's menu bar: the
+// Unlikelyware logo (a click opens unlikelyware.com), "Umpire", and the Help
+// box at the right (a click opens help.md in a window of its own).
+class TitleHeader final : public ui::GridHeader {
+public:
+    static constexpr float kHeight = 40, kMargin = 14, kLogoH = 22, kHelpW = 26;
+
+    dgl::Widget*       from = nullptr;   // the canvas: where the help window belongs
+    std::unique_ptr<dgl::NanoImage> logo;   // made on the first draw, in the canvas's context
+    dgl::uwhelp::HelpOpener help;
+
+    float height() override { return kHeight; }
+
+    void draw(dgl::NanoVG& vg, float width) override {
+        vg.beginPath();
+        vg.rect(0, 0, width, kHeight);
+        vg.fillColor(rgb(26, 28, 33));   // col::kPanel, NoteGran's window
+        vg.fill();
+        if (!logo) logo = std::make_unique<dgl::NanoImage>(vg.createImageFromMemory(kUnlikelywareLogo, kUnlikelywareLogoSize, 0));
+        float titleX = kMargin;
+        if (logo->isValid()) {
+            const dgl::Size<uint> sz = logo->getSize();
+            logoW = sz.getHeight() > 0 ? kLogoH * static_cast<float>(sz.getWidth()) / static_cast<float>(sz.getHeight()) : kLogoH;
+            const float y = (kHeight - kLogoH) / 2;
+            vg.beginPath();
+            vg.rect(kMargin, y, logoW, kLogoH);
+            vg.fillPaint(vg.imagePattern(kMargin, y, logoW, kLogoH, 0, *logo, 1));
+            vg.fill();
+            titleX += logoW + 12;
+        }
+        vg.fontFace(NANOVG_DEJAVU_SANS_TTF);
+        vg.textAlign(dgl::NanoVG::ALIGN_LEFT | dgl::NanoVG::ALIGN_MIDDLE);
+        vg.fontSize(22);
+        vg.fillColor(rgb(226, 230, 236));
+        vg.text(titleX, kHeight / 2, "Umpire", nullptr);
+
+        helpX = width - kMargin - kHelpW;
+        const float y = (kHeight - kHelpW) / 2;
+        vg.beginPath();
+        vg.roundedRect(helpX, y, kHelpW, kHelpW, 4);
+        vg.fillColor(rgb(34, 37, 43));
+        vg.fill();
+        vg.strokeColor(rgb(70, 76, 86));
+        vg.strokeWidth(1);
+        vg.stroke();
+        vg.textAlign(dgl::NanoVG::ALIGN_CENTER | dgl::NanoVG::ALIGN_MIDDLE);
+        vg.fontSize(15);
+        vg.fillColor(rgb(226, 230, 236));
+        vg.text(helpX + kHelpW / 2, kHeight / 2, "?", nullptr);
+    }
+
+    bool mouse(const dgl::Widget::MouseEvent& ev, float x, float y) override {
+        if (ev.button != dgl::kMouseButtonLeft) return false;
+        const float logoY = (kHeight - kLogoH) / 2;
+        if (x >= kMargin && x < kMargin + logoW && y >= logoY && y < logoY + kLogoH) {
+            dgl::uwhelp::openUrl("https://www.unlikelyware.com");
+            return true;
+        }
+        const float helpY = (kHeight - kHelpW) / 2;
+        if (from != nullptr && x >= helpX && x < helpX + kHelpW && y >= helpY && y < helpY + kHelpW) {
+            // help.md shows the logo as "Unlikelyware.png".
+            help.open(*from, "Umpire Help", kUmpireHelp, kUmpireHelpSize,
+                      {{"Unlikelyware.png", kUnlikelywareLogo, kUnlikelywareLogoSize}});
+            return true;
+        }
+        return false;
+    }
+
+private:
+    float logoW = kLogoH, helpX = 0;
+};
+
 // --- the window -------------------------------------------------------------------------
 
 struct PluginEditor::Impl {
@@ -375,6 +456,7 @@ struct PluginEditor::Impl {
     ~Impl() {
         model.stopHearing();   // HE: the window closing mid-press leaves nothing sounding
         const dgl::Window::ScopedGraphicsContext context(window);
+        title.logo.reset();   // freed while the canvas's NanoVG context is there
         canvas.reset();
     }
 
@@ -411,6 +493,7 @@ struct PluginEditor::Impl {
     GridModel        model;
     ui::Probe        probe;
     LaneBand         band;
+    TitleHeader      title;
     std::unique_ptr<ui::GridCanvas> canvas;
 
     LaneKeeper::View            view;
@@ -480,6 +563,8 @@ void PluginEditor::Impl::build() {
         canvas = std::make_unique<ui::GridCanvas>(window, model, probe);
     }
     canvas->setBand(&band);
+    title.from = canvas.get();
+    canvas->setHeader(&title);
     if (links.zoom != nullptr) canvas->linkZoom(&links.zoom->grid);
     window.scaleChanged = [this] {
         if (!canvas) return;

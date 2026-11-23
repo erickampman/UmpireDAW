@@ -617,6 +617,17 @@ recommended option each time, and "bring it back" for older takes:
   keeps Pitch 7.25 per key as the spec says, rather than the chase working
   around it: PlainOldSynth now does (plugin-version.md, "P2").
 
+- **The title row (2026-11-23, ReleaseUMP R1-47):** above the header, as the
+  other Unlikelyware plugins' (NoteGran's sizes and colours): the logo (a
+  click opens unlikelyware.com), "Umpire", and the Help box at the right,
+  which opens `resources/help.md` in a window of its own (uw-core's
+  `HelpWindow`). The author chose a row of its own over putting them in
+  the header, for the likeness, at 40 px of the grid's height. The canvas
+  draws it (`ui::GridHeader`, so the window check's frames show it) and
+  ImGui's menu bar moves down by its height (`GridPanels::setTopInset`);
+  the app's grid windows have none. The logo and help.md are compiled in
+  at configure time (cmake/EmbedFile.cmake).
+
 ## State and files (milestone P4, decided 2026-11-19)
 
 The scope was proposed on the Mac and agreed with the author before it was
