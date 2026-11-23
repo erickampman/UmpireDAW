@@ -1,15 +1,71 @@
 # Umpire
 
-A DAW built on MIDI 2.0's Universal MIDI Packet (UMP) from the ground up,
-rather than MIDI 1.0 with MIDI 2.0 added on. It starts MIDI-only and Linux
-first, and may take on audio later. An [unlikelyware.com](https://unlikelyware.com)
-product.
+An instrument plugin from Unlikelyware that records, edits and plays MIDI 2.0 inside your DAW,
+keeping what the DAW would throw away: exact pitch on every note, in any equal division of the
+octave (EDO), and per-note expression. Put it on a track in REAPER, Bitwig, Ardour or Logic, play
+a MIDI 2.0 keyboard such as [KeyboardEDO](https://github.com/erickampman/KeyboardEDO), and the
+synth it hosts hears every note as it was played.
 
-Status: early. `umpire-daw` is the track view (milestone 7): it listens to
-every MIDI input, records the armed tracks into clips of UMP, and plays them
-to MIDI devices, with a transport that loops, undo and a MIDI monitor; a clip
-opens in a grid of EDO steps. See [docs/playback.md](docs/playback.md),
-[docs/recording.md](docs/recording.md) and [docs/skeleton.md](docs/skeleton.md).
+<!-- Screenshot to come: docs/screenshot.png, Umpire's window in a host. -->
+
+| | |
+|---|---|
+| Formats | CLAP. VST® 3, and AUv2 on macOS, build from source; ready-built in a later preview |
+| Platforms | Linux x86-64, macOS 26 or later on Apple Silicon. No Windows |
+| Version | 0.9.1 (preview, not yet released) |
+| License | MIT |
+
+**Downloads:** ready-built plugins will be in the
+[Unlikelyware downloads](https://github.com/erickampman/unlikelyware). This repo has the source
+only.
+
+This repo also holds `umpire-daw`, a standalone MIDI 2.0 DAW that Umpire grew out of. The app
+isn't released: only the plugin is.
+
+## What makes it different
+
+- **The notes never pass through the host.** Today's DAWs give plugins MIDI 1.0 or their own
+  note events, rounding pitch to semitones. Umpire opens the MIDI 2.0 input itself (a device, or
+  KeyboardEDO's port), hosts the synth itself, and gives the host only audio. How the host
+  treats MIDI no longer matters.
+- **MIDI 2.0 throughout.** Takes are kept as Universal MIDI Packets, Pitch 7.25 and per-note
+  controllers included, and played to the synth as MIDI 2.0 where it takes it.
+- **The host does the rest.** Recording follows the host's transport and tempo; the takes and
+  the synth's patch are saved in the host's project; mixing, effects and rendering stay the
+  host's.
+- **Microtonal editing.** A take's notes sit on a grid of the EDO's steps, not a piano roll of
+  semitones.
+
+## Using it
+
+- **Record:** Umpire records while the host records and its own Record is on (off when it's
+  added; turn it on in its window or the host's view of its parameters). Every take is kept; the
+  newest is heard where takes overlap, and a jump while recording starts a new take, so loop
+  recording works. Takes live inside the plugin, not on the host's timeline.
+- **Keep the host from recording a clip of its own** on Umpire's track: in Bitwig, turn off the
+  track's record arm; in REAPER, leave it armed with monitoring on and set its record mode to
+  "Record: disable (input monitoring only)". Ardour records one anyway: ignore or delete it.
+- **The window** shows the lane of takes in the host's bars and the selected take's grid, with
+  its own undo. The ▾ beside the input and the synth chooses them, saved with the project, so
+  each track can have its own. The synth's editor opens from the button with its name.
+- **MIDI effects** (Retune, NoteGran, EDOSpread12 or others' CLAP note effects) go inside
+  Umpire, in front of the synth: the host's own note effects never reach it.
+- **Takes as files:** Edit > Export take... saves a MIDI Clip File (`.midi2`); Import clip...
+  puts one at the playhead.
+
+## Hosts
+
+| Host | Format | Notes |
+|---|---|---|
+| REAPER | CLAP | For the grid's keys, turn on "Send all keyboard input to plugin" |
+| Bitwig | CLAP | |
+| Ardour | VST3 | Open Umpire's window once per session if the synth needs timers |
+| Logic, MainStage | AUv2 | |
+
+On Linux with PipeWire, the block size comes from PipeWire: start the host with
+`pw-jack -p 256` (or set PipeWire's quantum) for a short delay between playing and hearing.
+
+## Building from source
 
 ```bash
 git clone https://github.com/erickampman/UmpireDAW.git
@@ -17,25 +73,24 @@ cd UmpireDAW
 tools/fetch_deps.sh
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-build/umpire-daw
 ```
 
-[BUILDING.md](BUILDING.md) has the dependencies for Linux and macOS,
-the tests, and running it.
+[BUILDING.md](BUILDING.md) has the prerequisites for Linux and macOS, the VST3 and AUv2 options
+and where each format installs. [docs/plugin-version.md](docs/plugin-version.md) explains how the
+plugin works; [CONTRIBUTING.md](CONTRIBUTING.md) is where to start on the code.
 
-- [Decisions](docs/decisions.md): what's decided, and the current milestone
-- [Milestones](MILESTONES.md): the milestones to a first useful version
-- [Building](BUILDING.md): Linux and macOS, dependencies, tests
-- [Contributing](CONTRIBUTING.md): before each commit, submodule push order
-- [Playback](docs/playback.md): milestone 7, outputs, scheduling, the loop, chasing Pitch 7.25
-- [Recording](docs/recording.md): milestone 6, transport, clips, undo, tuning
-- [Track view](docs/track-view.md): milestone 5, the main window and MIDI in
-- [Skeleton](docs/skeleton.md): milestone 4, what `umpire-daw` is built from
-- [UI spike](docs/ui-spike.md): milestone 1's findings on DGL plus Dear ImGui
-- [Naming](docs/naming.md): product name, repo, binary, IDs
-- [Ideas](docs/ideas.md): candidate UI and data ideas, design principles, open
-  questions (nothing decided)
-- [Plugin roadmap](docs/plugins-roadmap.md): MIDI 2.0 features to add to our
-  CLAP synths
+## Help and bugs
 
-MIT licensed; see [LICENSE](LICENSE).
+Questions and bug reports go to [GitHub Issues](https://github.com/erickampman/UmpireDAW/issues).
+
+## License
+
+MIT. See [LICENSE](LICENSE). Third-party components and their licenses are in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Trademarks
+
+VST is a registered trademark of Steinberg Media Technologies GmbH. Audio Units, Logic,
+MainStage, Mac and macOS are trademarks of Apple Inc., registered in the U.S. and other
+countries. Linux is the registered trademark of Linus Torvalds in the U.S. and other countries.
+Other product names are trademarks of their owners, named here only to say what works with what.

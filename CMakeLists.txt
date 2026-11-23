@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 # macOS: as StageHand's (its docs/macos.md, decisions 9 and 13). Set before
-# project(), and ignored elsewhere. The macOS port comes later (decisions.md).
+# project(), and ignored elsewhere.
 set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0 CACHE STRING "macOS 26 or later, as StageHand")
 set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "arm64 only, as StageHand")
 project(UmpireDAW VERSION 0.9.1 LANGUAGES C CXX)   # C: DGL's pugl and NanoVG
