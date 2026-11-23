@@ -41,6 +41,9 @@ compile_commands.json
 !.vscode/tasks.json
 !.vscode/c_cpp_properties.json
 
+# --- Local notes for AI sessions (never committed; ReleaseUMP R0-16) ----
+CLAUDE.md
+
 # --- OS cruft -------------------------------------------------------------
 .DS_Store
 Thumbs.db

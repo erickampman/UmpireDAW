@@ -16,7 +16,9 @@
 namespace umpire {
 
 namespace {
-uw::HostInfo umpireHostInfo() { return {"Umpire", "Unlikelyware", "https://unlikelyware.com", "0.0.1"}; }
+uw::HostInfo umpireHostInfo() {
+    return {"Umpire", "Unlikelyware", "https://unlikelyware.com", UMPIRE_VERSION_STRING};
+}
 } // namespace
 
 // The HostServices one voice's plugin sees: logging and identity are the

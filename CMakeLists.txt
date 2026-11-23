@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 # project(), and ignored elsewhere. The macOS port comes later (decisions.md).
 set(CMAKE_OSX_DEPLOYMENT_TARGET 26.0 CACHE STRING "macOS 26 or later, as StageHand")
 set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "arm64 only, as StageHand")
-project(UmpireDAW VERSION 0.0.1 LANGUAGES C CXX)   # C: DGL's pugl and NanoVG
+project(UmpireDAW VERSION 0.9.1 LANGUAGES C CXX)   # C: DGL's pugl and NanoVG
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -114,6 +114,7 @@ target_include_directories(umpire-app PUBLIC src)
 # nlohmann/json 3.11.3, vendored (external/nlohmann/README.md): session.json only.
 target_include_directories(umpire-app SYSTEM PRIVATE external)
 target_link_libraries(umpire-app PUBLIC umpire-clip uw::base uw::plugin uw::clap-host uw::editor-window uw::audio PRIVATE umpire-warnings)
+target_compile_definitions(umpire-app PRIVATE UMPIRE_VERSION_STRING="${PROJECT_VERSION}")   # the host version plugins see
 
 # --- umpire-grid-ui: the grid (canvas and panels), Umpire's ImGui widget and the
 # house widgets: what the app's grid windows and the plugin's window share

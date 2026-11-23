@@ -42,6 +42,42 @@ decisions.md and skeleton.md).
 its event handlers, and saves screenshots (binary PPM) to DIR. It opens two
 windows and is silent; don't touch the windows or play MIDI while it runs.
 
+## The docs
+
+Start with [docs/decisions.md](docs/decisions.md) (what's decided, and the
+working method) and [MILESTONES.md](MILESTONES.md). Since 2026-11-18 the
+product is the plugin (`src/Plugin`, `Umpire.clap` and `Umpire.vst3`):
+Umpire as an instrument inside REAPER, Bitwig or Ardour
+([docs/plugin-version.md](docs/plugin-version.md), milestones P2 to P5).
+The `umpire-daw` app goes on beside it (decisions.md, "The app goes on").
+Then, as needed:
+
+- [docs/naming.md](docs/naming.md): product name, binary, IDs, namespace.
+- [docs/ui-direction.md](docs/ui-direction.md): the UI direction (only what
+  you need); read before any UI work.
+- [docs/ideas.md](docs/ideas.md): candidate ideas, MIDI 2.0 features, design
+  principles; [docs/plugins-roadmap.md](docs/plugins-roadmap.md).
+- The app's milestones: [docs/ui-spike.md](docs/ui-spike.md) (1: DGL plus
+  Dear ImGui), [docs/skeleton.md](docs/skeleton.md) (4: how `umpire-daw` is
+  built), [docs/track-view.md](docs/track-view.md) (5: tracks and MIDI in),
+  [docs/recording.md](docs/recording.md) (6: transport, clips, recording,
+  undo; pitch and the grid's tuning), [docs/playback.md](docs/playback.md)
+  (7: outputs, scheduling, the loop, chasing Pitch 7.25),
+  [docs/plugins.md](docs/plugins.md) (8: hosting CLAP instruments, the audio
+  engine, sample-accurate timing), [docs/files.md](docs/files.md) (9: the
+  `.umpire` session bundle, MIDI Clip Files, the File menu),
+  [docs/clip-editor.md](docs/clip-editor.md) (10: the grid edits its clip),
+  [docs/plugin-editors.md](docs/plugin-editors.md) (11: plugin editor
+  windows, in uw-core).
+- Replaced by the plugin, not built: [docs/plugin-routing.md](docs/plugin-routing.md)
+  (the routing graph and mixers), [docs/stem-export.md](docs/stem-export.md)
+  (stems and the tempo map).
+
+Umpire shares code with [StageHand](https://github.com/erickampman/StageHand),
+a live-performance CLAP host, through uw-core. StageHand's
+`docs/architecture.md`, `docs/sequences.md`, `docs/rack-view.md` and
+`docs/macos.md` explain the code Umpire reuses.
+
 ## Working method
 
 One milestone per session, about a day of work each, with a fresh session
