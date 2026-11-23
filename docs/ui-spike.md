@@ -54,8 +54,7 @@ DPF_SCALE_FACTOR=2 build/umpire-ui-spike --self-test /tmp/shots   # HiDPI
 ```
 
 CMake finds DGL in a StageHand checkout (`../StageHand`,
-`~/Dev-MIDI/StageHand` or `~/dev/dev-audio/StageHand`, each with
-`/external/dpf`); otherwise pass `-DUMPIRE_DPF_DIR=<StageHand>/external/dpf`.
+with `/external/dpf`); otherwise pass `-DUMPIRE_DPF_DIR=<StageHand>/external/dpf`.
 This is temporary until the shared library's location is decided. DGL gets
 its own namespace, `UmpireDGL`, as StageHand has `StageHandDGL`.
 

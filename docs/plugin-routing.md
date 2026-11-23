@@ -194,9 +194,8 @@ Mixer strips stay with milestone 14.
 
 ## The mockups
 
-On a claude.ai canvas, "Umpire: Plugin Routing"
-(https://claude.ai/artifact/VEpCTv3BTQD17NeYMDoyAw), private to the
-author. Described here, since sessions on other machines can't open it:
+On a canvas, "Umpire: Plugin Routing", private to the author. Described
+here, since it isn't public:
 
 1. **Collapsed.** Four tracks. Keys: "Surge XT +2". Bass: an external
    synth, "Sub 37 +1" (an arpeggiator before it). Drums: "StruckKit",

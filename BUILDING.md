@@ -103,7 +103,7 @@ instrument for Logic (`-DUMPIRE_BUILD_AUV2=OFF` leaves it out; on trial
 since 2026-11-20, docs/plugin-version.md, "AUv2 for Logic"). clap-wrapper
 fetches Apple's AudioUnitSDK at configure time unless `AUDIOUNIT_SDK_ROOT`
 names a copy, such as Retune's:
-`-DAUDIOUNIT_SDK_ROOT=$HOME/Dev-MIDI/Retune/build/cpm/AudioUnitSDK`.
+`-DAUDIOUNIT_SDK_ROOT=../Retune/build/cpm/AudioUnitSDK`.
 `install-auv2` copies it into `~/Library/Audio/Plug-Ins/Components`, with
 the `Info.plist` that names it an Audio Unit (clap-wrapper puts that into
 `build/Umpire.component` only when the binary links, and a CMake re-run

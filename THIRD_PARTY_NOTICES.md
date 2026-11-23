@@ -13,9 +13,9 @@ Umpire is MIT licensed (see the LICENSE file). Its plugins contain the component
 | [NanoVG, with fontstash](https://github.com/memononen/nanovg) | in DPF | zlib | drawing the user interface, inside DPF |
 | [stb_image and stb_truetype](https://github.com/nothings/stb) | in DPF | Public domain (or MIT) | image and font loading, inside NanoVG |
 | [DejaVu Sans font](https://dejavu-fonts.github.io/) | in DPF | Bitstream Vera / DejaVu (free) | the interface text, embedded by DPF |
-| [DPF-Widgets](https://github.com/DISTRHO/DPF-Widgets) | 730da639 | ISC | carries Dear ImGui's sources for DPF (its own widgets aren't used) |
+| [DPF-Widgets](https://github.com/DISTRHO/DPF-Widgets) | 730da639 | ISC | carries Dear ImGui's sources for DPF; Umpire's ImGui widget (`src/Ui/ImGuiWidget.cpp`) is adapted from its `opengl/DearImGui.cpp` |
 | [Dear ImGui](https://github.com/ocornut/imgui) | 1.91.9b (in DPF-Widgets) | MIT | the panels of the plugin's window |
-| [JSON for Modern C++ (nlohmann/json)](https://github.com/nlohmann/json) | 3.11.3 | MIT | the `umpire-daw` app's session files only (the app isn't released; not in the plugin) |
+| [JSON for Modern C++ (nlohmann/json)](https://github.com/nlohmann/json) | 3.11.3 | MIT (its `integer_sequence` backport is from Abseil, Apache-2.0: the text is above, under AudioUnitSDK) | the `umpire-daw` app's session files only (the app isn't released; not in the plugin) |
 
 Also from Unlikelyware, under the same MIT license: uw-core.
 

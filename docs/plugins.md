@@ -159,8 +159,8 @@ by hand.
 
 This isn't caution for its own sake: scanning every `.clap` under
 `~/.clap` and `$CLAP_PATH` on this Mac, before this was fixed, loaded two
-of the author's own in-progress plugins (IFSynth and ModicumFM,
-`~/Dev-Audio`) into `umpire-daw`'s own process just to list them, and they
+of the author's own in-progress plugins (IFSynth and ModicumFM)
+into `umpire-daw`'s own process just to list them, and they
 turned out to define the same Objective-C class name
 (`WebViewDelegate__DISTRHO`) -- a real collision ("spurious casting
 failures and mysterious crashes", objc's own words), caught by

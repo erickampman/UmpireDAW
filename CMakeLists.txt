@@ -233,7 +233,7 @@ if(APPLE)
 endif()
 
 # --- Umpire as a plugin (milestones P1 and P2, docs/plugin-version.md) ------------
-# A CLAP instrument with its own entry point, as Retune's (~/Dev-MIDI/Retune):
+# A CLAP instrument with its own entry point, as Retune's:
 # it opens its own MIDI input and hosts a CLAP synth through uw-core, so the
 # notes never pass through the host. DGL and ImGui only for its window (P3),
 # as the app's grid uses them; no DPF plugin wrapper. clap-wrapper (Unlikelyware's fork, `unlikelyware`, as

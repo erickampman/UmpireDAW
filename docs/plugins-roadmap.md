@@ -1,6 +1,6 @@
 # Plugin roadmap
 
-Which MIDI 2.0 features to add to our own CLAP synths (in `~/Dev-Audio`) so
+Which MIDI 2.0 features to add to our own CLAP synths so
 Umpire can use them. Few plugins support MIDI 2.0 yet, and the aim is to be
 first. Feature numbers refer to the "MIDI 2.0-specific features" list in
 [ideas.md](ideas.md).

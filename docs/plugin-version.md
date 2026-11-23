@@ -83,7 +83,7 @@ mixing, saving and rendering, through open plugin standards, so it can be
 swapped. Open-source hosts that might do, none checked yet:
 
 - **Ardour** (GPL; Linux and the Mac), through clap-wrapper's VST3 build.
-  In the fork (`~/Dev-Common/clap-wrapper`), the VST3 side turns
+  In the fork (`erickampman/clap-wrapper`), the VST3 side turns
   `ProcessContext::kRecording` into `CLAP_TRANSPORT_IS_RECORDING`
   (`src/detail/vst3/process.cpp`), so the host's record button reaches the
   plugin, and the plugin gets CLAP `timer-support` and `posix-fd-support`

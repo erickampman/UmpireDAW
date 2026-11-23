@@ -19,9 +19,8 @@ machine can see them. Naming is in [naming.md](naming.md), candidate ideas in
 
 ## Shared code (decided 2026-10-07)
 
-- **Its own repo: `uw-core`** (decided 2026-10-07), in
-  `~/dev/dev-common/uw-core` on the Linux PC and private on GitHub
-  (`erickampman/uw-core`) for now.
+- **Its own repo: `uw-core`** (decided 2026-10-07), on GitHub
+  (`erickampman/uw-core`), private at first.
   Neither StageHand nor Umpire holds the other's code. One repo, with the
   layers as separate CMake targets (`uw::ump`, `uw::clap-host`, `uw::audio`,
   ...) and the C++ namespace `uw`. The company name keeps it neutral: it
@@ -57,21 +56,21 @@ Today every DPF user has its own modified copy. StageHand's carries PMU's
 patches and its own. Each plugin has a `dpf` submodule with separate
 changes, including the CLAP wrapper's UMP handling.
 
-- **DPF becomes its own private repo** on GitHub (in `~/dev/dev-common`
-  beside uw-core on the Linux PC): a fork of upstream DPF
+- **DPF becomes its own repo** on GitHub (`erickampman/DPF`, private at
+  first, beside uw-core): a fork of upstream DPF
   holding all the local patches (PMU's, StageHand's, the plugins').
   StageHand, Umpire and every plugin use it as a git submodule, each pinned
   to a commit. It replaces StageHand's vendored copy and Umpire's
   `UMPIRE_DPF_DIR`.
 - **pugl is forked too (decided 2026-10-14):** upstream DPF holds pugl as a
-  submodule, and PMU's macOS patches are in pugl. So pugl has its own private
-  fork (`erickampman/pugl`, `~/dev/dev-common/pugl`), which the DPF fork
-  (`erickampman/DPF`, `~/dev/dev-common/DPF`) pins. Upstream merges stay
+  submodule, and PMU's macOS patches are in pugl. So pugl has its own
+  fork (`erickampman/pugl`), which the DPF fork (`erickampman/DPF`) pins. Upstream merges stay
   plain git merges in both; the cost is one more repo to push first (pugl,
   then DPF, then the consumer), and CI tokens need access to both.
 - **Both machines:** a submodule is a URL and a commit, so the Linux PC
-  and the Mac work the same way, whatever the local paths. Each needs access
-  to the private repo (the same SSH key or credentials as StageHand's). Clone
+  and the Mac work the same way, whatever the local paths. While the forks were
+  private, each needed access to them (the same SSH key or credentials as
+  StageHand's). Clone
   with `--recurse-submodules`, and run `git submodule update --init` after a
   pull. The macOS patches (PMU's Retina fixes, StageHand's `pugl.mm`, the file
   browser) then reach every consumer.
@@ -417,7 +416,7 @@ Made while building milestone 8 on the Mac ([plugins.md](plugins.md)).
   `--self-test`'s early return -- because it loads every `.clap` it finds
   to read its descriptors. Found the hard way, building this: scanning
   loaded two of the author's own in-progress plugins (IFSynth and
-  ModicumFM, `~/Dev-Audio`) into `umpire-daw`'s process just to list them,
+  ModicumFM) into `umpire-daw`'s process just to list them,
   and they turned out to define the same Objective-C class name
   (`WebViewDelegate__DISTRHO`), a real collision that disturbed
   `--self-test`'s idle-frame checks before a human saw it. Worth carrying
@@ -712,7 +711,7 @@ Not settled yet, to agree with the author before the app's next milestone:
 
 ## Related projects
 
-- **Plugins** (`~/Dev-Audio` on the Mac): the author is working on plugin
+- **Plugins** (the author's CLAP synths): the author is working on plugin
   milestone 0 (see plugins-roadmap.md).
 - **KeyEDO** is being ported to Linux by the author. No MIDI 2.0 features
   beyond what it already supports, in the near term (see

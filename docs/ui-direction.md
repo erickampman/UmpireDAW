@@ -4,9 +4,7 @@ Decided 2026-10-23 on the Mac, after reading
 [daw-dynamic-ui-spec.md](daw-dynamic-ui-spec.md) and looking at mockups. The
 decisions are summarized in decisions.md ("The UI direction"); this file
 says what they mean and describes the mockups, since the mockups live in a
-private claude.ai canvas ("Umpire: Only What You Need",
-https://claude.ai/artifact/BpJESujowUiMnws4KSB7Ms) that sessions on other
-machines can't open.
+canvas ("Umpire: Only What You Need") private to the author.
 
 ## The principle
 
