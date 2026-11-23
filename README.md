@@ -6,7 +6,7 @@ octave (EDO), and per-note expression. Put it on a track in REAPER, Bitwig, Ardo
 a MIDI 2.0 keyboard such as [KeyboardEDO](https://github.com/erickampman/KeyboardEDO), and the
 synth it hosts hears every note as it was played.
 
-<!-- Screenshot to come: docs/screenshot.png, Umpire's window in a host. -->
+![Umpire's window in REAPER: takes in the host's bars, and a take's notes on a 23-EDO grid](docs/screenshot.png)
 
 | | |
 |---|---|
