@@ -820,8 +820,11 @@ Umpire's Record deciding which take. Bitwig ignores the lane after Record is cha
 button reaches it as a gesture): its Automation Override, undone with
 Restore Automation Control; Arranger Automation Write off while testing,
 or recording writes over the lane. Check 6: no latency line, as in REAPER and Ardour
-(neither PlainOldSynth nor ModicumFM reports any). Check 8 not yet done
-in Bitwig.
+(neither PlainOldSynth nor ModicumFM reports any). Check 8 passes: with
+Per-Note Management on (17-EDO), separate glides on one key each start at
+the struck pitch, from the start, from between them and looped; with it
+off (12-EDO), a key struck again after a slide sounds at the slid-to
+pitch, live, from the start and from between the two notes (the chase).
 
 ### P3: the editor (built 2026-11-19, on the Mac)
 
