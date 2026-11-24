@@ -815,8 +815,8 @@ automated in its lane on Umpire's track works (the log: "record: off" at
 beat 4.00, "armed" about five beats later at 81 bpm, and the take
 recorded through it starts at beat 9.00); two instances on one input both
 record the same take when both are armed (Take 7 and the second's Take 1,
-11 notes each). The log shows the first instance never disarmed, so
-"only the armed one records" isn't shown yet. The log also has: loop
+11 notes each), and with only one armed only that one records (the
+author, later the same day). The log also has: loop
 recording a take per pass (Takes 4 to 6, one recording); save and reopen
 ("saved: 2 takes", then "loaded: 2 takes, 126 events"); live input 0 late,
 0 dropped; Bitwig recording reaches every instance ("recording" in each),

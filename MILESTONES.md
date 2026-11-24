@@ -162,9 +162,10 @@ S2 and R1 to R6.
   other than the first, save and reopen, loop recording, a tempo change
   while playing (from the transport; Bitwig's tempo lane too obscure to
   find), recording over a take, the arm (Record off, no take; Record
-  automated) pass, and latency (check 6) has nothing to show, as
+  automated) and two instances on one input with only one armed pass,
+  and latency (check 6) has nothing to show, as
   elsewhere; PlainOldSynth's tuning table (check 8) passes both ways.
-  Left: two instances with only one armed. Left: the rest of Bitwig, and the Mac (REAPER
+  Left: the rest of Bitwig, and the Mac (REAPER
   passed check 7 there).*
 - P3. [ ] The editor: a lane in time with the host, and the grid. *Built
   2026-11-19 on the Mac (plugin-version.md, "P3"; decisions.md, "The
