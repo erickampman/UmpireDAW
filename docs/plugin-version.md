@@ -797,6 +797,32 @@ latency line. Notes from the checks:
   session.
 - **REAPER's pre-roll** is recorded into the take: MILESTONES.md, PR.
 
+**In Bitwig on Linux (the author, 2026-11-24; Ubuntu 24.04.4, CLAP,
+built from GitHub at `b887bf0`):** check 1 passes: several takes,
+recorded starting from bars other than 1.1.0, keep their places, and save
+and reopen bring them back. Check 3 passes: loop recording, the most
+recent pass plays. Check 5 passes: a tempo change while playing (made in
+the transport while the take played; Bitwig's tempo automation lane was too
+obscure to find: Show Transport Lanes, in the track list's menu, showed
+none). Check 2 passes: a take recorded over the middle of an
+older one plays there, with no stuck or cut-off notes at the joins. Check
+7: with Umpire's Record off, Bitwig's recording makes no take; Record
+automated in its lane on Umpire's track works (the log: "record: off" at
+beat 4.00, "armed" about five beats later at 81 bpm, and the take
+recorded through it starts at beat 9.00); two instances on one input both
+record the same take when both are armed (Take 7 and the second's Take 1,
+11 notes each). The log shows the first instance never disarmed, so
+"only the armed one records" isn't shown yet. The log also has: loop
+recording a take per pass (Takes 4 to 6, one recording); save and reopen
+("saved: 2 takes", then "loaded: 2 takes, 126 events"); live input 0 late,
+0 dropped; Bitwig recording reaches every instance ("recording" in each),
+Umpire's Record deciding which take. Bitwig ignores the lane after Record is changed by hand (Umpire's
+button reaches it as a gesture): its Automation Override, undone with
+Restore Automation Control; Arranger Automation Write off while testing,
+or recording writes over the lane. Check 6: no latency line, as in REAPER and Ardour
+(neither PlainOldSynth nor ModicumFM reports any). Check 8 not yet done
+in Bitwig.
+
 ### P3: the editor (built 2026-11-19, on the Mac)
 
 The plugin's own window, in place of the synth's editor, which until now
@@ -963,6 +989,17 @@ eight pass, so the X11 side (below, "Linux") works there. Notes:
   required (MILESTONES.md, HE). Before that was clear, the edits seemed
   lost; the take, its saved copy and a render through PlainOldSynth all
   had them.
+
+**In Bitwig on Linux (the author, 2026-11-24; Ubuntu 24.04.4, CLAP):**
+check 1, the window opens. Check 2's tempo change passes (P2's Bitwig
+note). Check 4: editing in the grid and undo work, and the project saves
+and reopens. Check 5: bringing an older take to the front works. Delete
+take works. HE (hearing notes while editing) works: notes sound in the
+grid as they're edited, the first time it's been heard in a host. Check
+3: Record's automation works (P2's Bitwig note). Check 8: two instances,
+each window shows its own lane. Check 6 passes: the synth's window opens
+and closes from Umpire's button, in both instances, and the synth can be
+changed (to ModicumFM). Check 7 passes: the keys in the grid.
 
 **Not in P3:**
 - **Names and scales of takes** aren't saved (P4: state and files), so the

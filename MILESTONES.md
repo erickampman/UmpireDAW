@@ -158,7 +158,14 @@ S2 and R1 to R6.
   VST3 validator 47 of 47. PlainOldSynth now keeps Pitch 7.25 per key, so
   the chase works with it. The checks in hosts (the author's, 8) pass on
   Linux in REAPER and Ardour 9 (2026-11-20; plugin-version.md, "P2", "On
-  Linux"). Left: Bitwig, and the Mac (REAPER passed check 7 there).*
+  Linux"). Bitwig on Linux, 2026-11-24 (the author): takes from bars
+  other than the first, save and reopen, loop recording, a tempo change
+  while playing (from the transport; Bitwig's tempo lane too obscure to
+  find), recording over a take, the arm (Record off, no take; Record
+  automated) pass, and latency (check 6) has nothing to show, as
+  elsewhere; left: two instances with only one armed, and check 8
+  (PlainOldSynth's tuning table). Left: the rest of Bitwig, and the Mac (REAPER
+  passed check 7 there).*
 - P3. [ ] The editor: a lane in time with the host, and the grid. *Built
   2026-11-19 on the Mac (plugin-version.md, "P3"; decisions.md, "The
   plugin's window"; the design agreed with the author first): the host's
@@ -173,7 +180,10 @@ S2 and R1 to R6.
   (the window opened and clicked in a bare Cocoa host), clap-validator (30,
   the 2 expected failures) and the VST3 validator (47 of 47). The checks
   in hosts (the author's, 8) pass in REAPER on Linux (2026-11-20;
-  plugin-version.md, "P3"). Left: Ardour on Linux, and the Mac.*
+  plugin-version.md, "P3"). Bitwig on Linux, 2026-11-24 (the author):
+  the window, editing and undo, Bring take to front, Delete take,
+  Record's automation and two instances work. Left: Ardour on Linux,
+  and the Mac. In Bitwig on Linux all eight pass.*
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
   synth's state, clip export. *Built 2026-11-19 on the Mac
   (plugin-version.md, "P4"; decisions.md, "State and files"; the scope
@@ -259,7 +269,9 @@ S2 and R1 to R6.
   heard while recording but not in the take, an EDO row's Pitch 7.9, the
   switch, a render, the state's bit) and test-files (the session's
   switch); clap-validator 32 passed, 0 failed, 12 skipped; auval passes.
-  Left: hearing it by hand in a host and in the app, on both platforms.*
+  Heard by hand in Bitwig on Linux (CLAP), 2026-11-24 (the author): notes
+  sound while editing in the grid. Left: the other hosts, the app, and the
+  Mac.*
 - NE. [ ] Note effects in front of the synth: CLAP note effects (Retune,
   NoteGran, EDOSpread12, others') hosted inside the plugin, in order, between
   the input and the synth, since the host's own note effects never reach
