@@ -494,7 +494,9 @@ it, or the host plays a take.
 **Ardour on the Mac: not tried.** The author's Ardour on the Mac isn't an
 arm64 build, and Umpire is built for arm64 only (as StageHand and Retune
 are), so it can't load the plugin. Ardour, check 7, waits for Linux, where
-the timer question belongs anyway.
+the timer question belongs anyway. Since 2026-11-24, Ardour on the Mac isn't
+a required host at all: its free download is a demo that goes silent after
+about ten minutes, and the full build is paid (P5).
 
 ### Found so far
 
@@ -585,9 +587,11 @@ Proposed milestones, about a day each, as the others:
   and the grid for the selected clip, from `GridCanvas` and `GridPanels`.
 - **P4. State and files**: clips as MIDI Clip Files in the state, the
   synth's state, exporting a clip as a file.
-- **P5. Host checks**: REAPER, Bitwig and Ardour on both platforms, as
-  ReleaseUMP's R3 host checks, and the other open-source hosts (Qtractor,
-  Carla, Zrythm).
+- **P5. Host checks**: REAPER and Bitwig on both platforms and Ardour on
+  Linux, as ReleaseUMP's R3 host checks, and the other open-source hosts
+  (Qtractor, Carla, Zrythm). Ardour on the Mac isn't required (decided
+  2026-11-24): its free download is a demo that goes silent after about ten
+  minutes, and the full build is paid.
 
 ### P2: recording and playback (built 2026-11-18, on the Mac)
 
@@ -957,7 +961,7 @@ controls but never state, nothing changes on a guess).
 take plays when the host plays):**
 
 1. **The window opens** in REAPER and Bitwig (CLAP) on the Mac, and in
-   Ardour (VST3) on Linux (Ardour on the Mac waits for an arm64 build): the
+   Ardour (VST3) on Linux (Ardour on the Mac isn't checked; see P5): the
    header, the lane with the takes, "window opened" in the log. Resize it.
 2. **It follows the host**: the playhead moves with the host's, in the lane
    and the grid, pages while playing, and stops when the host stops; a

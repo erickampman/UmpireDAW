@@ -220,9 +220,11 @@ S2 and R1 to R6.
   a take starts on its first note's beat (Take 1 had begun at beat -4).
   Untried in Logic: a count-in before a later bar. Left: in Logic, cycle recording, live input on a track that isn't selected, a bounce; in
   MainStage, record off.*
-- P5. [ ] Host checks: REAPER, Bitwig and Ardour on both platforms (and
-  Logic and MainStage on the Mac, for the AUv2); the other open-source
-  hosts (Qtractor, Carla, Zrythm)
+- P5. [ ] Host checks: REAPER and Bitwig on both platforms, Ardour on Linux
+  (and Logic and MainStage on the Mac, for the AUv2); the other open-source
+  hosts (Qtractor, Carla, Zrythm). Ardour on the Mac isn't required
+  (2026-11-24): its free download is a demo that goes silent after about
+  ten minutes, and the full build is paid
 - PR. [ ] REAPER's pre-roll: what a take keeps from before REAPER records.
   Found by the author, 2026-11-20: with pre-roll on, Take 2 began at bar -1
   (the log: "from beat -8.02 to beat 23.34, first note-on at beat -1.00"),
