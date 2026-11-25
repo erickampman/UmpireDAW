@@ -571,6 +571,9 @@ about ten minutes, and the full build is paid (P5).
   shows as "not installed": nothing sounds, and its patch is kept.
 - **Takes as files** (P4): Edit > Export take... saves a take as a MIDI
   Clip File (`.midi2`); Import clip... puts one on the lane at the playhead.
+  On Linux (zenity 4, Ubuntu 24.04's), the export dialog's Name starts
+  empty: type one (`.midi2` is added). Exporting over a file there may ask
+  "Replace?" twice, the dialog's and Umpire's; both mean the same.
 - **On Linux with PipeWire**, the block size comes from PipeWire, not the
   host: start the host with `pw-jack -p 256` (or set PipeWire's quantum)
   for a short delay between playing and hearing.
@@ -1206,6 +1209,13 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
 8. **The file panels open in front**, as a sheet on the plugin's window
    (REAPER on the Mac: the first try opened behind it, before the sheet);
    in Bitwig on the Mac too, whose plugin host is a separate process.
+
+**In Ardour 9 on Linux (the author, 2026-11-24; Ubuntu's package, VST3,
+the log's "in Ardour (CLAP-as-VST3)"):** all eight pass. Check 3: the
+export is written (and imported back in check 4), but zenity 4's save
+dialog starts with Name empty, though Umpire passes the take's name, and
+over an existing file both it and Umpire ask "Replace?". Left as they are,
+for the release notes (above, "For the release notes").
 
 **Not in P4:**
 - **Dragging a clip file** onto the lane, and **exporting several takes**

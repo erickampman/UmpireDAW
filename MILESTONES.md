@@ -201,7 +201,10 @@ S2 and R1 to R6.
   (47 of 47). tools/PluginWindowCheck.mm couldn't click into its window
   here (P3's build failed the same way the same day: the Mac was in use,
   so the check's window couldn't take the keys); to run again on an idle
-  Mac. Left: the checks in hosts (the author's), and Linux's build.*
+  Mac. Builds on Linux. Ardour 9 on Linux (VST3), 2026-11-24 (the
+  author): all eight checks pass; zenity 4's export dialog starts with no
+  name and asks "Replace?" as Umpire does, for the release notes. Left:
+  the checks in REAPER and Bitwig, and the Mac.*
 - AU. [ ] The AUv2, for Logic and MainStage (not a milestone of the
   proposal; asked for 2026-11-20, plugin-version.md, "AUv2 for Logic").
   *Built 2026-11-20 on the Mac: `Umpire.component` (aumu, "Umpr" under
