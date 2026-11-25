@@ -1022,6 +1022,10 @@ is heard again, and undo puts it back. Check 6 passes: the synth's window
 opens and closes from Umpire's button. Check 7 passes: the keys in the
 grid. Check 8 passes: two instances, each window shows its own lane. HE
 works: notes sound as they're edited in the grid. So all eight pass.
+Count-in (Transport → Record with Count-In, its length Preferences →
+Transport → Preroll): notes played during the count-in aren't recorded,
+as on Ardour's own MIDI tracks (checked on one, the author); the take
+starts where the transport starts recording.
 
 **Not in P3:**
 - **Names and scales of takes** aren't saved (P4: state and files), so the
