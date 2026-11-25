@@ -966,9 +966,12 @@ take plays when the host plays):**
 2. **It follows the host**: the playhead moves with the host's, in the lane
    and the grid, pages while playing, and stops when the host stops; a
    tempo change keeps it on the host's grid.
-3. **Record**: the button lights the host's Record parameter and back; host
-   automation of Record lights the button; recording with it on makes a take
-   that appears in the lane as soon as recording stops.
+3. **Record**: Umpire's Record button and the host's record button are
+   independent; a take needs both on. The button is Umpire's own Record
+   parameter, so host automation of that parameter lights the button, and
+   pressing the button changes it (a gesture the host can write). Recording
+   with both on makes a take that appears in the lane as soon as recording
+   stops.
 4. **Edit a take**: click it, move, add and delete notes in the grid; play:
    the edit is heard. Edit > Undo and Redo, with their names. Save, close
    and reopen the project: the edit is kept.
@@ -1007,6 +1010,18 @@ grid as they're edited, the first time it's been heard in a host. Check
 each window shows its own lane. Check 6 passes: the synth's window opens
 and closes from Umpire's button, in both instances, and the synth can be
 changed (to ModicumFM). Check 7 passes: the keys in the grid.
+
+**In Ardour 9 on Linux (the author, 2026-11-24; Ubuntu's package, VST3):**
+check 1, the window opens and resizes. Check 2 passes. Check 3 passes:
+a take with both record buttons on; none with Umpire's Record off; Record
+automated in its lane (Umpire's track's A button → Umpire → Record, the
+lane in Play) lights and darkens the button with the lane. Check 4 passes: edits in the
+grid are heard on playback, Undo and Redo work, and save and reopen keep
+them. Check 5 passes: an older take's covered part, brought to the front,
+is heard again, and undo puts it back. Check 6 passes: the synth's window
+opens and closes from Umpire's button. Check 7 passes: the keys in the
+grid. Check 8 passes: two instances, each window shows its own lane. HE
+works: notes sound as they're edited in the grid. So all eight pass.
 
 **Not in P3:**
 - **Names and scales of takes** aren't saved (P4: state and files), so the

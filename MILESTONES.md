@@ -183,8 +183,8 @@ S2 and R1 to R6.
   in hosts (the author's, 8) pass in REAPER on Linux (2026-11-20;
   plugin-version.md, "P3"). Bitwig on Linux, 2026-11-24 (the author):
   the window, editing and undo, Bring take to front, Delete take,
-  Record's automation and two instances work. Left: Ardour on Linux,
-  and the Mac. In Bitwig on Linux all eight pass.*
+  Record's automation and two instances work. In Bitwig on Linux all eight pass.
+  Ardour 9 on Linux (VST3), 2026-11-24: all eight pass. Left: the Mac.*
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
   synth's state, clip export. *Built 2026-11-19 on the Mac
   (plugin-version.md, "P4"; decisions.md, "State and files"; the scope
@@ -273,8 +273,8 @@ S2 and R1 to R6.
   switch, a render, the state's bit) and test-files (the session's
   switch); clap-validator 32 passed, 0 failed, 12 skipped; auval passes.
   Heard by hand in Bitwig on Linux (CLAP), 2026-11-24 (the author): notes
-  sound while editing in the grid. Left: the other hosts, the app, and the
-  Mac.*
+  sound while editing in the grid. Heard in Ardour 9 on Linux (VST3) too,
+  2026-11-24. Left: REAPER, the app, and the Mac.*
 - NE. [ ] Note effects in front of the synth: CLAP note effects (Retune,
   NoteGran, EDOSpread12, others') hosted inside the plugin, in order, between
   the input and the synth, since the host's own note effects never reach
