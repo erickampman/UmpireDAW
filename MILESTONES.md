@@ -165,8 +165,10 @@ S2 and R1 to R6.
   automated) and two instances on one input with only one armed pass,
   and latency (check 6) has nothing to show, as
   elsewhere; PlainOldSynth's tuning table (check 8) passes both ways.
-  Left: the rest of Bitwig, and the Mac (REAPER
-  passed check 7 there).*
+  REAPER on the Mac (VST3), 2026-11-25 (the author): all but check 4
+  (Ardour's) pass, two instances with only one armed included. Left:
+  Bitwig on the Mac (VST3), and a short CLAP pass in REAPER and Bitwig
+  on the Mac.*
 - P3. [ ] The editor: a lane in time with the host, and the grid. *Built
   2026-11-19 on the Mac (plugin-version.md, "P3"; decisions.md, "The
   plugin's window"; the design agreed with the author first): the host's
@@ -184,7 +186,10 @@ S2 and R1 to R6.
   plugin-version.md, "P3"). Bitwig on Linux, 2026-11-24 (the author):
   the window, editing and undo, Bring take to front, Delete take,
   Record's automation and two instances work. In Bitwig on Linux all eight pass.
-  Ardour 9 on Linux (VST3), 2026-11-24: all eight pass. Left: the Mac.*
+  Ardour 9 on Linux (VST3), 2026-11-24: all eight pass. REAPER on the
+  Mac (VST3), 2026-11-25: all eight pass (Cmd+Z reaches Umpire with "Send
+  all keyboard input to plugin" on). Left: Bitwig on the Mac (VST3), and
+  the short CLAP pass on the Mac.*
 - P4. [ ] State and files: clips as MIDI Clip Files in the state, the
   synth's state, clip export. *Built 2026-11-19 on the Mac
   (plugin-version.md, "P4"; decisions.md, "State and files"; the scope
@@ -203,8 +208,11 @@ S2 and R1 to R6.
   so the check's window couldn't take the keys); to run again on an idle
   Mac. Builds on Linux. Ardour 9 on Linux (VST3), 2026-11-24 (the
   author): all eight checks pass; zenity 4's export dialog starts with no
-  name and asks "Replace?" as Umpire does, for the release notes. Left:
-  the checks in REAPER and Bitwig, and the Mac.*
+  name and asks "Replace?" as Umpire does, for the release notes. REAPER
+  on the Mac (VST3), 2026-11-25: all eight pass, check 3 by the round trip
+  (nothing else opens a single clip file yet); a synth put back appears
+  only after the host restarts. Left: REAPER and Bitwig on Linux, and
+  Bitwig on the Mac.*
 - AU. [ ] The AUv2, for Logic and MainStage (not a milestone of the
   proposal; asked for 2026-11-20, plugin-version.md, "AUv2 for Logic").
   *Built 2026-11-20 on the Mac: `Umpire.component` (aumu, "Umpr" under
@@ -278,7 +286,8 @@ S2 and R1 to R6.
   switch); clap-validator 32 passed, 0 failed, 12 skipped; auval passes.
   Heard by hand in Bitwig on Linux (CLAP), 2026-11-24 (the author): notes
   sound while editing in the grid. Heard in Ardour 9 on Linux (VST3) too,
-  2026-11-24. Left: REAPER, the app, and the Mac.*
+  2026-11-24, and in REAPER on the Mac (VST3), 2026-11-25. Left: REAPER
+  on Linux, the app, and Bitwig on the Mac.*
 - NE. [ ] Note effects in front of the synth: CLAP note effects (Retune,
   NoteGran, EDOSpread12, others') hosted inside the plugin, in order, between
   the input and the synth, since the host's own note effects never reach

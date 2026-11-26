@@ -568,7 +568,10 @@ about ten minutes, and the full build is paid (P5).
   own synth; `plugin.conf` only sets what a new instance starts with. The
   first time the synth menu opens, Umpire looks at every CLAP plugin
   installed, which takes a moment. A project's synth that isn't installed
-  shows as "not installed": nothing sounds, and its patch is kept.
+  shows as "not installed": nothing sounds, and its patch is kept. The
+  list is made once while the host runs: a synth installed (or put back)
+  meanwhile shows up after the host is restarted, not after the host's
+  own rescan.
 - **Takes as files** (P4): Edit > Export take... saves a take as a MIDI
   Clip File (`.midi2`); Import clip... puts one on the lane at the playhead.
   On Linux (zenity 4, Ubuntu 24.04's), the export dialog's Name starts
@@ -833,6 +836,14 @@ the struck pitch, from the start, from between them and looped; with it
 off (12-EDO), a key struck again after a slide sounds at the slid-to
 pitch, live, from the start and from between the two notes (the chase).
 
+**In REAPER on the Mac (the author, 2026-11-25; REAPER 7.79, macOS 27.2,
+VST3, the log's "in REAPER (CLAP-as-VST3)"):** checks 1, 2, 3, 5, 6, 7 and 8
+pass (4 is Ardour's). Check 7 in full: with Record off, REAPER's recording
+makes no take; Record automated in an envelope on Umpire's track makes one;
+two instances on one input, only one armed: only it records (the first time
+this was checked on the Mac); Record is kept after save and reopen. Check 6:
+nothing breaks, with no latency to report, as elsewhere.
+
 ### P3: the editor (built 2026-11-19, on the Mac)
 
 The plugin's own window, in place of the synth's editor, which until now
@@ -1030,6 +1041,13 @@ Transport → Preroll): notes played during the count-in aren't recorded,
 as on Ardour's own MIDI tracks (checked on one, the author); the take
 starts where the transport starts recording.
 
+**In REAPER on the Mac (the author, 2026-11-25; REAPER 7.79, VST3):** all
+eight pass. Check 7: Delete, the arrows and Q reach the grid; Cmd+Z reaches
+Umpire's undo only with "Send all keyboard input to plugin" on (without it
+REAPER keeps Cmd+Z for its own undo, which the check allows; the Edit menu
+works either way). HE passes: notes sound as they're pressed, dragged and
+added in the grid.
+
 **Not in P3:**
 - **Names and scales of takes** aren't saved (P4: state and files), so the
   grid's name field is read only and its tuning is the window's, worked out
@@ -1192,6 +1210,10 @@ Inspector: Name [Verse riff]   Tuning: EDO 31, step 0 at 57, "Set by hand"
 3. **Export**: Export take... writes `Take 1.midi2`; it opens in the
    standalone app's grid (umpire-daw, or another app that reads MIDI Clip
    Files) with the same notes. On Linux, export over it: "Replace it?".
+   *No other app opens a single clip file yet (2026-11-25): umpire-daw
+   reads them only inside a session, and Logic and Bitwig don't read
+   MIDI Clip Files. So the check is the round trip: exported, then
+   imported back in check 4, with the same notes.*
 4. **Import**: put the playhead on bar 5, Import clip... that file: a new
    take at bar 5, chosen, heard; undo takes it away.
 5. **The synth menu**: choose another installed instrument (a moment's
@@ -1216,6 +1238,14 @@ export is written (and imported back in check 4), but zenity 4's save
 dialog starts with Name empty, though Umpire passes the take's name, and
 over an existing file both it and Umpire ask "Replace?". Left as they are,
 for the release notes (above, "For the release notes").
+
+**In REAPER on the Mac (the author, 2026-11-25; REAPER 7.79, VST3):** all
+eight pass. Check 3 by the round trip: nothing else opens a single clip
+file yet (umpire-daw reads `.midi2` files only inside a session; Logic and
+Bitwig don't read MIDI Clip Files), so the export was imported back
+(check 4) with the same notes. Check 6: a synth put back while REAPER runs
+isn't in the synth menu until REAPER restarts, and REAPER's own rescan
+doesn't change that: the list is made once per process ("Not in P4").
 
 **Not in P4:**
 - **Dragging a clip file** onto the lane, and **exporting several takes**
