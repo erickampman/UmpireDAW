@@ -6,7 +6,8 @@ released, so its changes aren't listed here.
 
 ## [Unreleased]
 
-The first release will be 0.9.1.
+No release is planned: the plugin is built from source only, and isn't in the Unlikelyware
+previews.
 
 ### Added
 

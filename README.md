@@ -10,17 +10,13 @@ synth it hosts hears every note as it was played.
 
 | | |
 |---|---|
-| Formats | CLAP. VST® 3, and AUv2 on macOS, build from source; ready-built in a later preview |
+| Formats | CLAP, VST® 3, and AUv2 on macOS, all built from source |
 | Platforms | Linux x86-64, macOS 26 or later on Apple Silicon. No Windows |
-| Version | 0.9.1 (preview, not yet released) |
+| Version | 0.9.1, source only: not in the Unlikelyware previews, and no ready-built download |
 | License | MIT |
 
-**Downloads:** ready-built plugins will be in the
-[Unlikelyware downloads](https://github.com/erickampman/unlikelyware). This repo has the source
-only.
-
-This repo also holds `umpire-daw`, a standalone MIDI 2.0 DAW that Umpire grew out of. The app
-isn't released: only the plugin is.
+This repo also holds `umpire-daw`, a standalone MIDI 2.0 DAW that Umpire grew out of. Neither
+the plugin nor the app is released.
 
 ## What makes it different
 
